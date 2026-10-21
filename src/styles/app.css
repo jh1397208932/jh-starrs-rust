@@ -1,0 +1,224 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* ---------- 全局基础 ---------- */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* 深浅切换时底色/文字走 --dur-2 过渡 */
+  transition:
+    background var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease);
+}
+
+/* 焦点环：所有可交互元素统一 ring-ring */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* 滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- 入出场动画（只动 transform / opacity / filter） ---------- */
+@keyframes starris-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@keyframes starris-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+/* 居中模态专用：keyframes 内保留 -50%/-50% 位移，避免动画期间跳位；+8px 上移入场 */
+@keyframes starris-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes starris-dialog-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 6px)) scale(0.98);
+  }
+}
+@keyframes starris-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes starris-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes starris-slide-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* 弹簧质感：小元素 pop 与模态入场走 --ease-pop（越过终点 ~2% 后回落） */
+.anim-pop-in {
+  animation: starris-pop-in var(--dur-2) var(--ease-pop);
+}
+.anim-pop-out {
+  animation: starris-pop-out var(--dur-1) var(--ease);
+}
+.anim-dialog-in {
+  animation: starris-dialog-in var(--dur-2) var(--ease-pop);
+  transform: translate(-50%, -50%);
+}
+.anim-dialog-out {
+  animation: starris-dialog-out var(--dur-1) var(--ease);
+  transform: translate(-50%, -50%);
+}
+.anim-fade-in {
+  animation: starris-fade-in var(--dur-2) var(--ease);
+}
+.anim-fade-out {
+  animation: starris-fade-out var(--dur-1) var(--ease);
+}
+.anim-slide-up-in {
+  animation: starris-slide-up-in var(--dur-2) var(--ease-pop);
+}
+
+/* ---------- ShimmerButton 扫光（模式来自 Magic UI，MIT；令牌化 --speed/--shimmer-color） ---------- */
+@keyframes starris-shimmer-slide {
+  to {
+    transform: translate(calc(100cqw - 100%), 0);
+  }
+}
+@keyframes starris-spin-around {
+  0% {
+    transform: translateZ(0) rotate(0deg);
+  }
+  15%,
+  35% {
+    transform: translateZ(0) rotate(90deg);
+  }
+  65%,
+  85% {
+    transform: translateZ(0) rotate(270deg);
+  }
+  100% {
+    transform: translateZ(0) rotate(360deg);
+  }
+}
+.animate-shimmer-slide {
+  animation: starris-shimmer-slide var(--speed, 3s) ease-in-out infinite alternate;
+}
+.animate-spin-around {
+  animation: starris-spin-around calc(var(--speed, 3s) * 2) infinite linear;
+}
+
+/* ---------- 主题切换 View Transitions（圆形揭示；不支持的平台由 JS 特性检测跳过） ---------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* 动效降级 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: 无障碍降级需要覆盖所有动画声明 */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 无障碍降级需要覆盖所有动画声明 */
+    animation: none !important;
+  }
+}
+
+/* ---------- 编辑器 mock 内容排版 ---------- */
+.doc-content {
+  font-size: var(--text-body);
+  line-height: 1.8;
+}
+.doc-content h1 {
+  font-size: var(--text-h1);
+  font-weight: var(--text-h1-weight);
+  line-height: var(--text-h1-lh);
+  letter-spacing: var(--text-h1-ls);
+  margin: 0 0 var(--space-4);
+}
+.doc-content h2 {
+  font-size: var(--text-h2);
+  font-weight: var(--text-h2-weight);
+  line-height: var(--text-h2-lh);
+  letter-spacing: var(--text-h2-ls);
+  margin: var(--space-6) 0 var(--space-3);
+}
+.doc-content p {
+  margin: 0 0 var(--space-3);
+}
+.doc-content pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+  overflow-x: auto;
+}
+.doc-content code {
+  font-family: var(--font-mono);
+}
+.doc-content blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: var(--space-4);
+  margin: 0 0 var(--space-4);
+  color: var(--muted-foreground);
+}
+.doc-content ul {
+  padding-left: 1.4em;
+  margin: 0 0 var(--space-3);
+  list-style: disc;
+}
+.doc-content ol {
+  padding-left: 1.4em;
+  margin: 0 0 var(--space-3);
+  list-style: decimal;
+}
+.doc-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-5) 0;
+}
+
+/* tiptap 编辑器去掉默认 outline */
+.doc-content .tiptap {
+  outline: none;
+}

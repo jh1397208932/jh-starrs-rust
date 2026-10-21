@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>星屿 Starris · 顶部区域重设计</title>
+<style>
+  /* ============ 页面外壳（深色，跟随 IDE 主题） ============ */
+  :root {
+    --pg-bg: #14100D;
+    --pg-fg: #F2E9E0;
+    --pg-muted: #A89A88;
+    --pg-card: #221B15;
+    --pg-card2: #1E1712;
+    --pg-border: #3A2F25;
+    --pg-accent: #E8722A;
+    --pg-accent-soft: #F2A45E;
+
+    /* App 令牌（对齐 src/styles/tokens.css · sunset 主题） */
+    --background: #FAF6F1;
+    --foreground: #2C241E;
+    --card: #FFFFFF;
+    --primary: #E8722A;
+    --primary-foreground: #FFF8F1;
+    --secondary: #F3EAE0;
+    --secondary-foreground: #5C4E40;
+    --muted-foreground: #8A7A68;
+    --accent: #FBE9DA;
+    --accent-foreground: #B4530F;
+    --border: #ECE1D4;
+    --ring: #E8722A;
+    --sidebar: #F5EEE5;
+    --sidebar-foreground: #4A3E32;
+    --sidebar-muted: #A2937F;
+    --sidebar-active: #F6E2CF;
+    --sidebar-active-fg: #C05A17;
+    --shadow-sm: 0 1px 2px rgb(60 40 20 / .05);
+    --shadow-md: 0 4px 14px -2px rgb(80 50 25 / .10);
+    --shadow-lg: 0 18px 44px -8px rgb(80 50 25 / .18);
+    --ease: cubic-bezier(.25, 1, .5, 1);
+    --dur-1: 150ms;
+    --dur-2: 300ms;
+    --font-ui: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--pg-bg); }
+  body {
+    font-family: var(--font-ui);
+    color: var(--pg-fg);
+    overflow-x: hidden;
+    background:
+      radial-gradient(900px 420px at 50% -80px, rgba(232,114,42,.10), transparent 65%),
+      var(--pg-bg);
+    padding: 32px 24px 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; }
+
+  .page-head {
+    max-width: 1180px; margin: 0 auto 20px;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  }
+  .page-head h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; }
+  .tag {
+    font-size: 11px; font-weight: 600; letter-spacing: .4px;
+    color: var(--pg-accent-soft); border: 1px solid rgba(232,114,42,.45);
+    background: rgba(232,114,42,.12); border-radius: 999px; padding: 3px 10px;
+  }
+  .sub { font-size: 12.5px; color: var(--pg-muted); margin-top: 6px; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .seg-dark { display: flex; background: #261E17; border: 1px solid var(--pg-border); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg-dark button {
+    border: 0; background: transparent; color: var(--pg-muted);
+    font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    transition: all var(--dur-1) var(--ease);
+  }
+  .seg-dark button.on { background: var(--pg-accent); color: #FFF8F1; font-weight: 600; }
+  .toggle {
+    border: 1px solid var(--pg-border); background: transparent; color: var(--pg-muted);
+    font-size: 12.5px; font-weight: 500; padding: 7px 14px; border-radius: 10px; cursor: pointer;
+    transition: all var(--dur-1) var(--ease);
+  }
+  .toggle.on { background: rgba(232,114,42,.14); border-color: rgba(232,114,42,.45); color: var(--pg-accent-soft); }
+  .toggle:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ============ 舞台与缩放 ============ */
+  .stage { position: relative; }
+  .scaler { position: absolute; left: 50%; top: 12px; transform-origin: top center; }
+
+  .frame {
+    width: 1280px; height: 800px;
+    background: var(--background);
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07);
+    display: flex; flex-direction: column;
+    position: relative;
+    color: var(--foreground);
+  }
+  .ic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+
+  /* ============ 窗口栏（新 · 44px） ============ */
+  .winbar {
+    height: 44px; flex: none;
+    display: flex; align-items: center;
+    background: var(--sidebar);
+    border-bottom: 1px solid var(--border);
+    padding-right: 8px;
+    position: relative; z-index: 5;
+  }
+  .tl { width: 76px; height: 100%; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 20px; }
+  .tl .dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+  .dot.r { background: #FF5F57; } .dot.y { background: #FEBC2E; } .dot.g { background: #28C840; }
+
+  .tabs-group { display: flex; align-items: flex-end; height: 100%; gap: 2px; min-width: 0; padding-top: 8px; }
+  .tab {
+    height: 36px; margin-bottom: -1px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 8px 0 10px; border-radius: 10px 10px 0 0;
+    font-size: 13px; color: var(--muted-foreground);
+    cursor: default; user-select: none; flex: none;
+    border: 1px solid transparent; border-bottom: 0;
+    transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  }
+  .tab:hover { background: rgba(0,0,0,.045); color: var(--secondary-foreground); }
+  .tab.active {
+    background: var(--background); color: var(--foreground);
+    border-color: var(--border);
+    box-shadow: 0 1px 0 0 var(--background);
+  }
+  .tab .ic { width: 14px; height: 14px; opacity: .65; }
+  .tab.active .ic { opacity: 1; color: var(--primary); }
+  .tabmain { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; cursor: default; color: inherit; font: inherit; }
+  .tabmain span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabclose {
+    width: 18px; height: 18px; border-radius: 5px; border: 0; background: transparent;
+    display: grid; place-items: center; color: inherit;
+    opacity: 0; cursor: pointer; transition: opacity var(--dur-1) var(--ease), background var(--dur-1);
+  }
+  .tabclose .ic { width: 11px; height: 11px; }
+  .tab:hover .tabclose, .tab.active .tabclose { opacity: .5; }
+  .tabclose:hover { opacity: 1 !important; background: rgba(0,0,0,.08); }
+
+  .newtab {
+    width: 28px; height: 28px; margin-left: 2px; flex: none; align-self: center;
+    border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground);
+    display: grid; place-items: center; cursor: pointer;
+    transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  }
+  .newtab:hover { background: rgba(0,0,0,.06); color: var(--secondary-foreground); }
+  .icon-btn {
+    width: 28px; height: 28px; flex: none;
+    border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground);
+    display: grid; place-items: center; cursor: pointer;
+    transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  }
+  .icon-btn:hover { background: rgba(0,0,0,.06); color: var(--foreground); }
+  .icon-btn.on { background: var(--accent); color: var(--accent-foreground); }
+  .icon-btn .ic { width: 16px; height: 16px; }
+  .icon-btn.starred { color: var(--primary); }
+  .icon-btn.starred .ic { fill: var(--primary); stroke: var(--primary); }
+
+  .drag-spacer { flex: 1; height: 100%; min-width: 24px; }
+
+  .search-pill {
+    flex: none; height: 30px; width: 240px;
+    display: flex; align-items: center; gap: 7px;
+    background: var(--secondary); border: 1px solid var(--border); border-radius: 9px;
+    padding: 0 7px 0 10px; cursor: text;
+    transition: width var(--dur-1) var(--ease), background var(--dur-1) var(--ease),
+                border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+  }
+  .search-pill:hover { background: #EEE3D6; }
+  .search-pill:focus-within {
+    width: 320px; background: var(--card); border-color: var(--ring);
+    box-shadow: 0 0 0 3px rgba(232,114,42,.16), var(--shadow-sm);
+  }
+  .search-pill .ic { width: 14px; height: 14px; color: var(--muted-foreground); flex: none; }
+  .search-pill input {
+    flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+    font-size: 12.5px; color: var(--foreground); font-family: inherit;
+  }
+  .search-pill input::placeholder { color: var(--muted-foreground); }
+  .kbd {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground);
+    background: var(--card); border: 1px solid var(--border); border-radius: 5px;
+    padding: 1px 5px; white-space: nowrap; flex: none;
+  }
+  .win-actions { display: flex; align-items: center; flex: none; }
+  .vdiv { width: 1px; height: 16px; background: var(--border); margin: 0 6px; }
+
+  /* ============ 原稿头部（对比模式） ============ */
+  .oldhead { display: none; }
+  .mode-old .winbar { display: none; }
+  .mode-old .oldhead { display: block; }
+  .orow { position: relative; display: flex; align-items: center; }
+  .otitle { height: 36px; background: var(--sidebar); border-bottom: 1px solid var(--border); }
+  .otitle .ologo {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--sidebar-foreground); letter-spacing: .3px;
+  }
+  .ologo .ic { width: 14px; height: 14px; }
+  .otitle .icon-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+  .otab { height: 36px; background: var(--background); border-bottom: 1px solid var(--border); padding: 0 8px; gap: 2px; }
+  .otab .stab {
+    height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px;
+    border-radius: 8px; font-size: 13px; color: var(--muted-foreground);
+  }
+  .otab .stab.active { background: var(--accent); color: var(--accent-foreground); }
+  .otab .stab .ic { width: 14px; height: 14px; }
+  .otool { height: 40px; background: var(--background); border-bottom: 1px solid var(--border); padding: 0 12px; gap: 4px; }
+  .otool .savestate { margin-left: auto; }
+  .otag {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 3;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+    padding: 3px 9px; border-radius: 7px;
+    background: rgba(232,114,42,.14); color: #F2A45E; border: 1px solid rgba(232,114,42,.4);
+  }
+  .otag.bad { background: rgba(214,69,69,.13); color: #F0938A; border-color: rgba(214,69,69,.4); }
+  .mode-old .otitle { outline: 1.5px dashed #D64545; outline-offset: -3px; background: linear-gradient(0deg, rgba(214,69,69,.05), rgba(214,69,69,.05)), var(--sidebar); }
+
+  /* ============ 应用主体 ============ */
+  .appbody { flex: 1; display: flex; min-height: 0; }
+  .oldrows { display: none; }
+  .mode-old .oldrows { display: block; }
+  .mode-old .doctoolbar { display: none; }
+
+  .sidebar {
+    width: 208px; flex: none;
+    background: var(--sidebar); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 10px 10px 0;
+    min-height: 0;
+  }
+  .ws-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 12px; font-size: 14.5px; font-weight: 700; color: var(--sidebar-foreground); }
+  .ws-head .ic { width: 18px; height: 18px; }
+  .quick { display: flex; justify-content: space-between; padding: 0 4px 10px; }
+  .quick button {
+    width: 56px; padding: 7px 0 6px; border: 0; background: none; border-radius: 10px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 11px; color: var(--sidebar-muted);
+    transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  }
+  .quick button:hover { background: var(--secondary); color: var(--sidebar-foreground); }
+  .quick .ic { width: 15px; height: 15px; }
+  .tree { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
+  .node {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px; border-radius: 8px; cursor: pointer; user-select: none;
+    font-size: 12.5px; color: var(--sidebar-foreground);
+    transition: background var(--dur-1) var(--ease);
+  }
+  .node:hover { background: rgba(0,0,0,.045); }
+  .node .chev { width: 12px; height: 12px; color: var(--sidebar-muted); flex: none; }
+  .node .fi { width: 14px; height: 14px; color: var(--sidebar-muted); flex: none; }
+  .node.child { margin-left: 20px; }
+  .node.active { background: var(--sidebar-active); color: var(--sidebar-active-fg); font-weight: 600; }
+  .node.active .fi { color: var(--sidebar-active-fg); }
+  .node .cnt { margin-left: auto; font-size: 11px; color: var(--sidebar-muted); }
+  .sb-foot {
+    margin: 8px -10px 0; padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sb-foot .more {
+    display: flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer;
+    font-size: 12px; color: var(--sidebar-muted); padding: 4px 6px; border-radius: 7px;
+    transition: background var(--dur-1), color var(--dur-1);
+  }
+  .sb-foot .more:hover { background: var(--secondary); color: var(--sidebar-foreground); }
+  .sb-foot .more .ic { width: 14px; height: 14px; }
+
+  .main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; background: var(--background); }
+  .doctoolbar {
+    height: 36px; flex: none;
+    display: flex; align-items: center; gap: 2px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    flex: none; background: var(--primary); color: var(--primary-foreground);
+    font-size: 11.5px; font-weight: 600; letter-spacing: .3px;
+    padding: 2.5px 8px; border-radius: 6px; margin-right: 6px;
+  }
+  .crumbs { display: flex; align-items: center; min-width: 0; }
+  .crumb {
+    border: 0; background: none; cursor: pointer; padding: 3px 5px; border-radius: 6px;
+    font-size: 12.5px; color: var(--muted-foreground);
+    transition: background var(--dur-1), color var(--dur-1);
+  }
+  .crumb:hover { background: var(--secondary); color: var(--foreground); }
+  .crumb.cur { color: var(--foreground); font-weight: 500; cursor: default; }
+  .crumb.cur:hover { background: none; }
+  .crumbs .chev { width: 12px; height: 12px; color: var(--sidebar-muted); margin: 0 1px; flex: none; }
+  .savestate {
+    display: flex; align-items: center; gap: 5px; margin-right: 6px; flex: none;
+    font-size: 12px; color: var(--muted-foreground);
+  }
+  .savestate .ic { width: 13px; height: 13px; color: var(--primary); }
+
+  .content { flex: 1; position: relative; overflow: hidden; }
+  .doc-col { position: absolute; left: 88px; top: 44px; max-width: 640px; }
+  .doc-col .badge { display: inline-block; margin: 0 0 14px; }
+  .doc-col h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.3; }
+  .doc-meta { margin-top: 10px; font-size: 12px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .doc-meta .sep { opacity: .5; }
+  .doc-meta .hint { display: flex; align-items: center; gap: 5px; }
+  .board-canvas {
+    position: absolute; inset: 20px 20px 20px 20px;
+    border: 1.5px dashed var(--border); border-radius: 16px;
+    background-image: radial-gradient(var(--border) 1px, transparent 1px);
+    background-size: 22px 22px;
+    display: grid; place-items: center;
+  }
+  .board-canvas .hint {
+    font-size: 13px; color: var(--sidebar-muted);
+    background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 16px; box-shadow: var(--shadow-sm);
+  }
+
+  .infopanel {
+    position: absolute; top: 16px; right: 16px; bottom: 16px; width: 232px; z-index: 6;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    display: flex; flex-direction: column; padding: 12px 12px 10px;
+    transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+  }
+  .infopanel:not(.open) { transform: translateX(14px); opacity: 0; pointer-events: none; }
+  .seg { display: flex; background: var(--secondary); border-radius: 10px; padding: 3px; gap: 2px; flex: none; }
+  .seg button {
+    flex: 1; border: 0; background: transparent; cursor: pointer;
+    font-size: 12px; font-weight: 500; color: var(--muted-foreground);
+    padding: 5.5px 0; border-radius: 8px;
+    transition: all var(--dur-1) var(--ease);
+  }
+  .seg button.on { background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm); }
+  .ip-body { flex: 1; overflow: auto; padding: 8px 2px; }
+  .ip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7.5px 2px; font-size: 12.5px; }
+  .ip-row .k { color: var(--muted-foreground); flex: none; }
+  .ip-row .v { color: var(--foreground); font-weight: 500; text-align: right; max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ip-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center; color: var(--muted-foreground); padding: 0 18px; }
+  .ip-empty .ic { width: 22px; height: 22px; opacity: .45; }
+  .ip-empty b { font-size: 12.5px; color: var(--secondary-foreground); font-weight: 600; }
+  .ip-empty span { font-size: 11.5px; line-height: 1.6; }
+  .ip-foot { flex: none; border-top: 1px solid var(--border); padding: 10px 2px 2px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted-foreground); }
+  .dotp { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); flex: none; }
+
+  /* ============ 标注层 ============ */
+  #annoBoxes { position: absolute; inset: 0; pointer-events: none; z-index: 20; display: none; }
+  body.anno-on #annoBoxes { display: block; }
+  body.anno-on .frame > :not(#annoBoxes) { filter: saturate(.96); }
+  .zrect { position: absolute; border-radius: 8px; border: 1.5px dashed; }
+  .znum {
+    position: absolute; left: -9px; top: -9px; width: 18px; height: 18px;
+    border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700;
+    display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    font-family: var(--font-ui);
+  }
+
+  /* ============ 标尺 ============ */
+  .ruler { position: absolute; left: -66px; top: 0; width: 58px; pointer-events: none; }
+  .rspan { position: absolute; left: 46px; width: 7px; border-left: 1.5px solid #8A7A68; }
+  .rspan::before, .rspan::after { content: ""; position: absolute; left: -1.5px; width: 7px; border-top: 1.5px solid #8A7A68; }
+  .rspan::before { top: 0; } .rspan::after { bottom: 0; }
+  .rlabel {
+    position: absolute; left: 0; width: 40px; text-align: right;
+    font-size: 10.5px; color: var(--pg-muted); line-height: 1.35;
+  }
+  .rchip {
+    position: absolute; left: 0; width: 58px; text-align: center;
+    font-size: 10.5px; font-weight: 700; line-height: 1.4;
+    padding: 3px 2px; border-radius: 7px;
+  }
+  .rchip.orange { color: var(--pg-accent-soft); border: 1px solid rgba(232,114,42,.45); background: rgba(232,114,42,.1); }
+  .rchip.red { color: #F0938A; border: 1px solid rgba(214,69,69,.45); background: rgba(214,69,69,.1); }
+  #rulerOld { display: none; }
+  .mode-old #rulerOld { display: block; }
+  .mode-old #rulerNew { display: none; }
+
+  /* ============ 图例 / 说明 / 映射 ============ */
+  .legend { max-width: 1180px; margin: 16px auto 0; display: none; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 8px 16px; }
+  body.anno-on .legend { display: grid; }
+  .legend .li { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: #C9BCAB; line-height: 1.6; }
+  .ln {
+    flex: none; width: 18px; height: 18px; border-radius: 50%;
+    color: #fff; font-size: 11px; font-weight: 700;
+    display: inline-grid; place-items: center; transform: translateY(3px);
+  }
+
+  .notes { max-width: 1180px; margin: 40px auto 0; }
+  .notes h2, .map h2 { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--pg-card); border: 1px solid var(--pg-border); border-radius: 14px; padding: 16px; }
+  .card .n {
+    width: 22px; height: 22px; border-radius: 7px; margin-bottom: 10px;
+    background: rgba(232,114,42,.16); color: var(--pg-accent-soft);
+    font-size: 11.5px; font-weight: 700; display: grid; place-items: center;
+  }
+  .card h3 { font-size: 13.5px; font-weight: 700; color: var(--pg-fg); margin-bottom: 6px; letter-spacing: -0.1px; }
+  .card p { font-size: 12.5px; color: var(--pg-muted); line-height: 1.75; }
+  .card p b { color: #D8CCBD; font-weight: 600; }
+
+  .map { max-width: 1180px; margin: 40px auto 0; }
+  .mrow {
+    display: grid; grid-template-columns: 200px 1fr; gap: 14px; align-items: baseline;
+    background: var(--pg-card2); border: 1px solid var(--pg-border); border-radius: 12px;
+    padding: 11px 14px; margin-bottom: 8px;
+  }
+  .mf { font-family: var(--font-mono); font-size: 12px; color: var(--pg-accent-soft); }
+  .md { font-size: 12.5px; color: var(--pg-muted); line-height: 1.65; }
+  .foot { max-width: 1180px; margin: 36px auto 0; text-align: center; font-size: 11.5px; color: #6E6152; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8722A"/><stop offset="1" stop-color="#B65718"/>
+    </linearGradient>
+  </defs>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></symbol>
+  <symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/><path d="M6 9V2h12v7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-filetext" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-present" viewBox="0 0 24 24"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></symbol>
+  <symbol id="i-table" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-sqpen" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path fill="url(#logoGrad)" stroke="none" d="M12 1.5l2.35 8.15L22.5 12l-8.15 2.35L12 22.5l-2.35-8.15L1.5 12l8.15-2.35Z"/></symbol>
+</svg>
+
+<header class="page-head">
+  <div>
+    <h1>顶部区域重设计 <span class="tag">方案 A · 窗口层 / 文档层 两行制</span></h1>
+    <p class="sub">starris-desktop · macOS 无边框窗口 · 原「标题栏 + 标签栏 + 工具栏」112px → 新「窗口栏 + 文档工具栏」80px</p>
+  </div>
+  <div class="controls">
+    <div class="seg-dark" id="modeSeg">
+      <button data-mode="new" class="on">新方案</button>
+      <button data-mode="old">对比原稿</button>
+    </div>
+    <button class="toggle" id="annoBtn">显示标注</button>
+    <button class="toggle on" id="panelBtn">信息面板</button>
+  </div>
+</header>
+
+<div class="stage" id="stage">
+  <div class="scaler" id="scaler">
+    <div class="frame" id="frame">
+
+      <!-- ◆ 新窗口栏：44px -->
+      <div class="winbar" id="winbar">
+        <div class="tl" id="tlZone" title="macOS 红绿灯 Overlay 注入区（拖拽）">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        </div>
+        <div class="tabs-group" id="tabsGroup" role="tablist" aria-label="标签页"></div>
+        <button class="newtab" id="newTab" title="新建标签页 (⌘N)" aria-label="新建标签页">
+          <svg class="ic" width="16" height="16"><use href="#i-plus"/></svg>
+        </button>
+        <div class="drag-spacer" id="dragSpacer" title="拖拽区：拖动窗口 / 双击最大化"></div>
+        <div class="search-pill" id="searchPill">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="searchInput" placeholder="搜索或跳转…" aria-label="全局搜索">
+          <span class="kbd">⌘ K</span>
+        </div>
+        <div class="win-actions" id="winActions">
+          <span class="vdiv"></span>
+          <button class="icon-btn" title="设置"><svg class="ic"><use href="#i-settings"/></svg></button>
+        </div>
+      </div>
+
+      <!-- ◆ 原稿头部（对比模式）：36 + 36 + 40 = 112px -->
+      <div class="oldhead" aria-hidden="true">
+        <div class="orow otitle">
+          <div class="tl"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+          <span class="ologo"><svg class="ic"><use href="#i-spark"/></svg>星屿 starris</span>
+          <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-search"/></svg></button>
+          <span class="otag bad">整行 36px · 仅 3 个静态元素</span>
+        </div>
+      </div>
+
+      <div class="appbody">
+        <!-- 侧栏 -->
+        <aside class="sidebar">
+          <div class="ws-head"><svg class="ic"><use href="#i-spark"/></svg>星屿工作区</div>
+          <div class="quick">
+            <button><svg class="ic"><use href="#i-star"/></svg>收藏</button>
+            <button><svg class="ic"><use href="#i-sqpen"/></svg>小记</button>
+            <button><svg class="ic"><use href="#i-plus"/></svg>新建</button>
+          </div>
+          <nav class="tree">
+            <div class="node"><svg class="ic chev"><use href="#i-chev-d"/></svg><svg class="ic fi"><use href="#i-folder"/></svg>产品灵感库</div>
+            <div class="node child active"><svg class="ic fi"><use href="#i-filetext"/></svg>Starris 设计系统走查</div>
+            <div class="node child"><svg class="ic fi"><use href="#i-filetext"/></svg>首页改版错绪板</div>
+            <div class="node child"><svg class="ic fi"><use href="#i-filetext"/></svg>功能优先级矩阵</div>
+            <div class="node"><svg class="ic chev"><use href="#i-chev-r"/></svg><svg class="ic fi"><use href="#i-folder"/></svg>技术手册</div>
+            <div class="node"><svg class="ic fi"><use href="#i-msg"/></svg>会议速记<span class="cnt">· 10/16</span></div>
+          </nav>
+          <div class="sb-foot">
+            <button class="more"><svg class="ic"><use href="#i-more"/></svg>更多</button>
+            <span class="kbd">⌘ ]</span>
+          </div>
+        </aside>
+
+        <!-- 主区 -->
+        <main class="main">
+          <!-- ◆ 文档工具栏（新 · 36px） -->
+          <div class="doctoolbar" id="doctoolbar">
+            <span class="badge" id="kindBadge">文档</span>
+            <nav class="crumbs" id="ctxGroup" aria-label="面包屑">
+              <button class="crumb">产品灵感库</button>
+              <svg class="ic chev"><use href="#i-chev-r"/></svg>
+              <span class="crumb cur" id="crumbCur">未命名文档</span>
+            </nav>
+            <div class="drag-spacer"></div>
+            <div class="win-actions" id="docActions">
+              <span class="savestate"><svg class="ic"><use href="#i-check"/></svg>已自动保存</span>
+              <button class="icon-btn" id="starBtn" title="收藏 (⌘D)" aria-pressed="false"><svg class="ic"><use href="#i-star"/></svg></button>
+              <button class="icon-btn" id="outlineBtn" title="文档目录"><svg class="ic"><use href="#i-list"/></svg></button>
+              <button class="icon-btn on" id="infoBtn" title="信息面板" aria-pressed="true"><svg class="ic"><use href="#i-panel"/></svg></button>
+              <button class="icon-btn" title="分享与导出"><svg class="ic"><use href="#i-share"/></svg></button>
+              <button class="icon-btn" title="打印"><svg class="ic"><use href="#i-printer"/></svg></button>
+            </div>
+          </div>
+
+          <!-- ◆ 原稿标签栏 + 工具栏（对比模式） -->
+          <div class="oldrows" aria-hidden="true">
+            <div class="orow otab">
+              <span class="stab"><svg class="ic"><use href="#i-present"/></svg>未命名画板</span>
+              <span class="stab active"><svg class="ic"><use href="#i-filetext"/></svg>未命名文档</span>
+              <span class="stab"><svg class="ic" style="width:14px;height:14px"><use href="#i-plus"/></svg></span>
+              <span class="otag">→ 整行上移进窗口栏</span>
+            </div>
+            <div class="orow otool">
+              <span class="badge">文档</span>
+              <span class="savestate"><svg class="ic"><use href="#i-check"/></svg>已自动保存</span>
+              <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-star"/></svg></button>
+              <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-list"/></svg></button>
+              <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-panel"/></svg></button>
+              <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-share"/></svg></button>
+              <button class="icon-btn" tabindex="-1"><svg class="ic"><use href="#i-printer"/></svg></button>
+              <span class="otag">→ 保留 + 左侧加面包屑 · 40→36px</span>
+            </div>
+          </div>
+
+          <div class="content">
+            <div class="doc-col" id="docView">
+              <span class="badge" id="docBadge">文档</span>
+              <h1 id="docTitle">未命名文档</h1>
+              <div class="doc-meta" id="docMeta">
+                <span>0 字</span><span class="sep">·</span>
+                <span>创建 2026-10-12 09:30</span><span class="sep">·</span>
+                <span>最近编辑 刚刚</span><span class="sep">·</span>
+                <span class="hint">输入 <span class="kbd">/</span> 以使用命令</span>
+              </div>
+            </div>
+            <div class="board-canvas" id="boardView" style="display:none">
+              <span class="hint">画布区域 · 双击添加便签</span>
+            </div>
+
+            <!-- 信息面板 -->
+            <aside class="infopanel open" id="infoPanel" aria-label="文档信息面板">
+              <div class="seg" id="ipSeg">
+                <button data-ip="info" class="on">信息</button>
+                <button data-ip="back">反链</button>
+                <button data-ip="rel">相关</button>
+              </div>
+              <div class="ip-body" data-ipbody="info">
+                <div class="ip-row"><span class="k">字数</span><span class="v">0</span></div>
+                <div class="ip-row"><span class="k">创建时间</span><span class="v">刚刚</span></div>
+                <div class="ip-row"><span class="k">最近更新</span><span class="v">刚刚</span></div>
+                <div class="ip-row"><span class="k">所在知识库</span><span class="v">产品灵感库</span></div>
+                <div class="ip-row"><span class="k">存储位置</span><span class="v" title="~/Starris/星屿工作区/产品灵感库">~/Starris/星屿工作区/产品…</span></div>
+                <div class="ip-row"><span class="k">引用关系</span><span class="v">0 反链</span></div>
+              </div>
+              <div class="ip-body" data-ipbody="back" hidden>
+                <div class="ip-empty">
+                  <svg class="ic"><use href="#i-msg"/></svg>
+                  <b>0 反链</b>
+                  <span>其他文档引用当前文档时，会集中展示在这里</span>
+                </div>
+              </div>
+              <div class="ip-body" data-ipbody="rel" hidden>
+                <div class="ip-empty">
+                  <svg class="ic"><use href="#i-spark"/></svg>
+                  <b>暂无相关推荐</b>
+                  <span>随内容积累，自动推荐同知识库的相关文档</span>
+                </div>
+              </div>
+              <div class="ip-foot"><span class="dotp"></span>产品灵感库 · 0 字</div>
+            </aside>
+          </div>
+        </main>
+      </div>
+
+      <!-- 标注层 -->
+      <div id="annoBoxes"></div>
+    </div>
+
+    <!-- 左侧标尺（置于 frame 外，避免被 overflow:hidden 裁剪） -->
+    <div class="ruler" id="rulerNew">
+      <div class="rspan" style="top:0;height:44px"></div>
+      <div class="rlabel" style="top:12px">44<br>窗口栏</div>
+      <div class="rspan" style="top:44px;height:36px"></div>
+      <div class="rlabel" style="top:50px">36<br>文档工具栏</div>
+      <div class="rchip orange" style="top:88px">80px<br><span style="font-weight:500">原 112px</span></div>
+    </div>
+    <div class="ruler" id="rulerOld">
+      <div class="rspan" style="top:0;height:36px"></div>
+      <div class="rlabel" style="top:10px">36<br>标题栏</div>
+      <div class="rspan" style="top:36px;height:36px"></div>
+      <div class="rlabel" style="top:46px">36<br>标签栏</div>
+      <div class="rspan" style="top:72px;height:40px"></div>
+      <div class="rlabel" style="top:84px">40<br>工具栏</div>
+      <div class="rchip red" style="top:120px">112px</div>
+    </div>
+  </div>
+</div>
+
+<!-- 标注图例 -->
+<div class="legend" id="legend">
+  <div class="li"><span class="ln" style="background:#8A7A68">1</span>红绿灯安全区 · 76px 拖拽保留，系统 Overlay 注入</div>
+  <div class="li"><span class="ln" style="background:#E8722A">2</span>标签页组 · 自原标签栏上移，激活态与内容区同色顺接</div>
+  <div class="li"><span class="ln" style="background:#A2937F">3</span>拖拽区 · 拖动窗口，双击最大化（弹性伸缩）</div>
+  <div class="li"><span class="ln" style="background:#1E76D2">4</span>全局搜索 · ⌘K 命令入口；&lt;900px 收缩为图标</div>
+  <div class="li"><span class="ln" style="background:#5C4E40">5</span>窗口级操作 · 设置（Windows 下此区含自绘窗控）</div>
+  <div class="li"><span class="ln" style="background:#B4530F">6</span>文档上下文 · 类型徽标 + 面包屑「知识库 / 文档名」</div>
+  <div class="li"><span class="ln" style="background:#C05A17">7</span>文档操作 · 保存状态 / 收藏 / 目录 / 信息面板 / 分享 / 打印</div>
+</div>
+
+<!-- 设计说明 -->
+<section class="notes">
+  <h2>设计说明</h2>
+  <div class="grid">
+    <div class="card"><div class="n">1</div><h3>三行并两行：112px → 80px</h3><p>空置的 36px 标题栏拆除，<b>标签页上移进窗口栏</b>；文档工具栏 40→36px。垂直空间省 <b>32px</b>，全部让给内容区。</p></div>
+    <div class="card"><div class="n">2</div><h3>职责分层：窗口层 / 文档层</h3><p>窗口层只放与窗口相关的（红绿灯、标签、搜索、设置）；文档层只放随文档变化的（类型、路径、保存、操作）。<b>切换标签时只有文档层变化</b>，认知负担更低。</p></div>
+    <div class="card"><div class="n">3</div><h3>搜索升级为 ⌘K 命令入口</h3><p>右上角裸图标 → 带快捷键提示的<b>搜索胶囊</b>，占据原 Logo 的视觉锚位但右置、不与标签争宽；聚焦展开 + 环形高亮；窄屏自动收缩为图标。</p></div>
+    <div class="card"><div class="n">4</div><h3>面包屑补齐上下文</h3><p>原「空间名 · 标签名」文字与侧栏、标签页三重重复，删除；文档层左侧改为 <b>类型徽标 + 知识库 / 文档名</b> 面包屑，一眼知道「我在哪」。</p></div>
+    <div class="card"><div class="n">5</div><h3>激活标签与内容同色顺接</h3><p>激活标签使用内容区底色（--background）并盖住分隔线，形成<b>「标签打开内容」的连续感</b>；未激活标签悬停浅灰，层次自然。</p></div>
+    <div class="card"><div class="n">6</div><h3>边界与降级</h3><p>&lt;900px 搜索收缩为图标；标签溢出横向滚动；<b>Windows / Linux 红绿灯区换自绘窗控</b>（沿用现有 fallback 逻辑）；红绿灯左侧 76px 永远保留拖拽。</p></div>
+  </div>
+</section>
+
+<!-- 落地映射 -->
+<section class="map">
+  <h2>落地改动映射</h2>
+  <div class="mrow"><span class="mf">TitleBar.tsx</span><span class="md">重构为 WindowBar（44px）：合并 TabBar；右侧搜索胶囊 + 设置；保留 data-tauri-drag-region、macOS Overlay 76px 注入区与 Windows 自绘窗控 fallback。</span></div>
+  <div class="mrow"><span class="mf">TabBar.tsx</span><span class="md">并入 WindowBar 后删除；激活态由 bg-accent 改为「与内容区同色顺接」（bg-background + 盖住分隔线）。</span></div>
+  <div class="mrow"><span class="mf">Toolbar.tsx</span><span class="md">40→36px；Badge 右侧新增面包屑（数据：tab.parent / 知识库名）；按钮 32→28px；画板类隐藏目录按钮的逻辑保留。</span></div>
+  <div class="mrow"><span class="mf">App.tsx</span><span class="md">布局由「TitleBar + TabBar + Toolbar 三层」改为「WindowBar（全宽）+ 主区 Toolbar」；TitleBar 的 workspaceName prop 移除，改传 tabs 数据。</span></div>
+  <div class="mrow"><span class="mf">tokens.css</span><span class="md">可选新增 --winbar-h: 44px / --doctoolbar-h: 36px，供布局与动效引用。</span></div>
+</section>
+
+<p class="foot">交互原型 · 可点击：标签页切换 / 关闭 / 新建、搜索胶囊、收藏、信息面板开关与页签 · 像素君 UI 设计提案 · 2026-10-20</p>
+
+<script>
+  var $ = function (s) { return document.querySelector(s); };
+  var $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  /* ---------- 缩放适配 ---------- */
+  var scaler = $('#scaler'), stage = $('#stage'), frame = $('#frame');
+  var scale = 1;
+  function fit() {
+    scale = Math.min(1, (window.innerWidth - 32) / 1430);
+    scaler.style.transform = 'translateX(-50%) scale(' + scale + ')';
+    stage.style.height = (800 * scale + 24) + 'px';
+  }
+  window.addEventListener('resize', function () { fit(); drawAnno(); });
+  fit();
+
+  /* ---------- 标签页状态 ---------- */
+  var KIND_ICON = { doc: 'i-filetext', board: 'i-present', table: 'i-table', starred: 'i-star' };
+  var KIND_LABEL = { doc: '文档', board: '画板', table: '表格', starred: '收藏' };
+  var tabs = [
+    { id: 't1', kind: 'board', title: '未命名画板' },
+    { id: 't2', kind: 'doc', title: '未命名文档' }
+  ];
+  var activeId = 't2';
+
+  function renderTabs() {
+    var g = $('#tabsGroup');
+    g.innerHTML = '';
+    tabs.forEach(function (t) {
+      var tab = document.createElement('div');
+      tab.className = 'tab' + (t.id === activeId ? ' active' : '');
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', t.id === activeId ? 'true' : 'false');
+      tab.innerHTML =
+        '<button class="tabmain" type="button">' +
+          '<svg class="ic"><use href="#' + KIND_ICON[t.kind] + '"/></svg>' +
+          '<span>' + t.title + '</span>' +
+        '</button>' +
+        '<button class="tabclose" type="button" aria-label="关闭标签页 ' + t.title + '">' +
+          '<svg class="ic"><use href="#i-x"/></svg>' +
+        '</button>';
+      tab.querySelector('.tabmain').addEventListener('click', function () { switchTab(t.id); });
+      tab.querySelector('.tabclose').addEventListener('click', function (e) { e.stopPropagation(); closeTab(t.id); });
+      g.appendChild(tab);
+    });
+  }
+
+  function switchTab(id) {
+    activeId = id;
+    renderTabs();
+    applyContext();
+    drawAnno();
+  }
+
+  function closeTab(id) {
+    if (tabs.length <= 1) return;
+    var idx = tabs.findIndex(function (t) { return t.id === id; });
+    var wasActive = id === activeId;
+    tabs.splice(idx, 1);
+    if (wasActive) activeId = tabs[Math.max(0, idx - 1)].id;
+    renderTabs();
+    applyContext();
+    drawAnno();
+  }
+
+  var addCount = 0;
+  $('#newTab').addEventListener('click', function () {
+    if (tabs.length >= 6) return;
+    addCount++;
+    var t = { id: 't' + Date.now(), kind: 'doc', title: '未命名文档 ' + addCount };
+    tabs.push(t);
+    activeId = t.id;
+    renderTabs();
+    applyContext();
+    drawAnno();
+  });
+
+  function applyContext() {
+    var t = tabs.find(function (x) { return x.id === activeId; }) || tabs[0];
+    $('#kindBadge').textContent = KIND_LABEL[t.kind];
+    $('#docBadge').textContent = KIND_LABEL[t.kind];
+    $('#crumbCur').textContent = t.title;
+    $('#docTitle').textContent = t.title;
+    var isBoard = t.kind === 'board';
+    $('#docView').style.display = isBoard ? 'none' : '';
+    $('#boardView').style.display = isBoard ? '' : 'none';
+    $('#outlineBtn').style.display = t.kind === 'doc' ? '' : 'none';
+  }
+
+  /* ---------- 搜索胶囊 ---------- */
+  var searchInput = $('#searchInput');
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') searchInput.blur();
+  });
+
+  /* ---------- 收藏 ---------- */
+  var starBtn = $('#starBtn');
+  starBtn.addEventListener('click', function () {
+    var on = starBtn.classList.toggle('starred');
+    starBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+
+  /* ---------- 信息面板 ---------- */
+  var infoPanel = $('#infoPanel'), infoBtn = $('#infoBtn'), panelBtn = $('#panelBtn');
+  function setPanel(open) {
+    infoPanel.classList.toggle('open', open);
+    infoBtn.classList.toggle('on', open);
+    infoBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    panelBtn.classList.toggle('on', open);
+  }
+  infoBtn.addEventListener('click', function () { setPanel(!infoPanel.classList.contains('open')); });
+  panelBtn.addEventListener('click', function () { setPanel(!infoPanel.classList.contains('open')); });
+
+  /* ---------- 信息面板页签 ---------- */
+  $('#ipSeg').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-ip]');
+    if (!btn) return;
+    $$('#ipSeg button').forEach(function (b) { b.classList.toggle('on', b === btn); });
+    $$('.ip-body').forEach(function (b) { b.hidden = b.getAttribute('data-ipbody') !== btn.getAttribute('data-ip'); });
+  });
+
+  /* ---------- 模式切换 ---------- */
+  var mode = 'new';
+  function setMode(m) {
+    mode = m;
+    $$('#modeSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === m); });
+    document.body.classList.toggle('mode-old', m === 'old');
+    var annoBtn = $('#annoBtn');
+    if (m === 'old') { setAnno(false); annoBtn.disabled = true; }
+    else { annoBtn.disabled = false; }
+    drawAnno();
+  }
+  $('#modeSeg').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-mode]');
+    if (btn) setMode(btn.getAttribute('data-mode'));
+  });
+
+  /* ---------- 标注 ---------- */
+  var anno = false;
+  var annoBtn = $('#annoBtn');
+  function setAnno(v) {
+    anno = v;
+    annoBtn.classList.toggle('on', v);
+    document.body.classList.toggle('anno-on', v);
+    drawAnno();
+  }
+  annoBtn.addEventListener('click', function () { setAnno(!anno); });
+
+  var ZONES = [
+    ['#tlZone',      '1', '#8A7A68'],
+    ['#tabsGroup',   '2', '#E8722A'],
+    ['#dragSpacer',  '3', '#A2937F'],
+    ['#searchPill',  '4', '#1E76D2'],
+    ['#winActions',  '5', '#5C4E40'],
+    ['#ctxGroup',    '6', '#B4530F'],
+    ['#docActions',  '7', '#C05A17']
+  ];
+
+  function drawAnno() {
+    var box = $('#annoBoxes');
+    box.innerHTML = '';
+    if (!anno || mode !== 'old' ? !anno : true) { /* noop guard */ }
+    if (!anno || mode === 'old') return;
+    var fr = frame.getBoundingClientRect();
+    ZONES.forEach(function (z) {
+      var el = document.querySelector(z[0]);
+      if (!el) return;
+      var r = el.getBoundingClientRect();
+      if (!r.width) return;
+      var left = (r.left - fr.left) / scale;
+      var top = (r.top - fr.top) / scale;
+      var d = document.createElement('div');
+      d.className = 'zrect';
+      d.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + (r.width / scale) + 'px;height:' + (r.height / scale) + 'px;border-color:' + z[2] + ';background:' + z[2] + '14;';
+      var dotStyle = left < 12 ? 'left:4px;top:4px;' : '';
+      d.innerHTML = '<span class="znum" style="' + dotStyle + 'background:' + z[2] + '">' + z[1] + '</span>';
+      box.appendChild(d);
+    });
+  }
+
+  /* ---------- 初始渲染 ---------- */
+  renderTabs();
+  applyContext();
+  setPanel(true);
+
+  /* ---------- URL 参数直达状态（?mode=old&anno=1&panel=0） ---------- */
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.get('mode') === 'old') setMode('old');
+    if (q.get('anno') === '1') setAnno(true);
+    if (q.get('panel') === '0') setPanel(false);
+  })();
+
+</script>
+</body>
+</html>

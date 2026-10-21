@@ -1,0 +1,459 @@
+/* ============================================================
+   星屿 Starris · 生产级设计令牌 (Tailwind v4)
+   事实来源: docs/设计/starris-design-system.html (唯一视觉基准)
+   结构: 基础令牌 → 8 主题 × 浅/深 → 语义字号/间距 → @theme inline
+   运行时切肤: 只改 <html> 的 data-theme 与 data-mode 两个属性
+
+   2026-10-21 第五轮「明亮清新」改造（复验: node scripts/check-contrast.mjs --check）:
+   - 底色纯白化: background 统一 #FFFFFF，卡片/弹窗白底，主题个性交给
+     sidebar/secondary/accent 的极浅倾向与主色承担
+   - 文字组统一中性碳黑（8 主题 light 共用一套，RGB max-min ≤ 4），
+     正文/辅助灰不再"泛主题色"
+   - 主色鲜明化: 全主题 primary 加深提饱和（HSL S ≥ 70%，graphite 中性除外），
+     主按钮白字对比 ≥ 4.5（普通字号 AA），取代上一轮 3:1 大字号线
+   - dark 模式维持 2026-10-21 第四轮校准值，未改动
+   ============================================================ */
+
+/* ---------- 1. 基础令牌（主题无关） ---------- */
+:root {
+  /* 圆角三档：窗口/弹窗 16 · 控件 12 · 徽标/小件 8 */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+
+  /* 字体栈：系统优先 + PingFang SC */
+  --font-ui: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  /* 动效：统一缓动 + 三档时长（150ms 微交互 / 300ms 主题与面板 / 500ms 强调入场） */
+  --ease: cubic-bezier(.25, 1, .5, 1);
+  /* 微回弹缓动：小元素 pop（下拉/Toast/弹窗内容）用，越过终点 ~2% 后回落 */
+  --ease-pop: cubic-bezier(.3, 1.36, .5, 1);
+  --dur-1: 150ms;
+  --dur-2: 300ms;
+  --dur-3: 500ms;
+
+  /* 字号阶梯（语义）：
+     display 30px/800  行高1.3  字距-0.4px  —— 页面级大标题
+     h1      24px/800  行高1.3  字距-0.3px  —— 区块标题
+     h2      18px/700  行高1.45 字距-0.2px  —— 卡片/面板标题
+     body    15px/400  行高1.7  字距 0      —— 正文默认（body 基准字号）
+     caption 12.5px/500 行高1.6 字距 0.3px  —— 辅助说明/元信息 */
+  --text-display: 30px;
+  --text-display-weight: 800;
+  --text-display-lh: 1.3;
+  --text-display-ls: -0.4px;
+  --text-h1: 24px;
+  --text-h1-weight: 800;
+  --text-h1-lh: 1.3;
+  --text-h1-ls: -0.3px;
+  --text-h2: 18px;
+  --text-h2-weight: 700;
+  --text-h2-lh: 1.45;
+  --text-h2-ls: -0.2px;
+  --text-body: 15px;
+  --text-body-weight: 400;
+  --text-body-lh: 1.7;
+  --text-body-ls: 0px;
+  --text-caption: 12.5px;
+  --text-caption-weight: 500;
+  --text-caption-lh: 1.6;
+  --text-caption-ls: 0.3px;
+
+  /* 间距（4px 基数） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* 顶栏两行制高度：窗口栏（窗口层，全宽）44 · 文档工具栏（文档层，主区）36 */
+  --winbar-h: 44px;
+  --doctoolbar-h: 36px;
+
+  /* 默认主题占位（防止变量未定义时渲染为透明），实际值由下方主题块覆盖 */
+  --background: #FFFFFF;
+  --foreground: #191A1C;
+  --card: #FFFFFF;
+  --card-foreground: #191A1C;
+  --popover: #FFFFFF;
+  --popover-foreground: #191A1C;
+  --primary: #C55008;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F6F3EE;
+  --secondary-foreground: #454649;
+  --muted: #F6F3EE;
+  --muted-foreground: #6C6D70;
+  --accent: #FAF1E3;
+  --accent-foreground: #B54A08;
+  --destructive: #CE3535;
+  --destructive-foreground: #FFFFFF;
+  --border: #E3DCD2;
+  --input: #D8D2C8;
+  --ring: #C55008;
+  --sidebar: #F9F6F1;
+  --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70;
+  --sidebar-active: #F6E9D8;
+  --sidebar-active-fg: #A84405;
+  --logo-a: #C55008;
+  --logo-b: #9C3F06;
+  --logo-c: #F2B33D;
+  --glow-a: #C55008;
+  --glow-b: #F2A93D;
+  --shadow-sm: 0 1px 2px rgb(60 40 20 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(80 50 25 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(80 50 25 / .18);
+}
+
+/* ---------- 2. 主题 1 · 暖屿橙（默认） ---------- */
+[data-theme="sunset"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #C55008; --primary-foreground: #FFFFFF;
+  --secondary: #F6F3EE; --secondary-foreground: #454649;
+  --muted: #F6F3EE; --muted-foreground: #6C6D70;
+  --accent: #FAF1E3; --accent-foreground: #B54A08;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #E3DCD2; --input: #D8D2C8; --ring: #C55008;
+  --sidebar: #F9F6F1; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #F6E9D8; --sidebar-active-fg: #A84405;
+  --logo-a: #C55008; --logo-b: #9C3F06; --logo-c: #F2B33D;
+  --glow-a: #C55008; --glow-b: #F2A93D;
+  --shadow-sm: 0 1px 2px rgb(60 40 20 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(80 50 25 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(80 50 25 / .18);
+}
+[data-theme="sunset"][data-mode="dark"] {
+  --background: #1B1512; --foreground: #F2E9E0;
+  --card: #241D18; --card-foreground: #F2E9E0;
+  --popover: #282019; --popover-foreground: #F2E9E0;
+  --primary: #F0813B; --primary-foreground: #241205;
+  --secondary: #2E251E; --secondary-foreground: #D8CCBD;
+  --muted: #2E251E; --muted-foreground: #A89A88;
+  --accent: #382718; --accent-foreground: #F2A45E;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #332A22; --input: #3A2F25; --ring: #F0813B;
+  --sidebar: #17110E; --sidebar-foreground: #E5DACC;
+  --sidebar-muted: #A89A88; --sidebar-active: #38261A; --sidebar-active-fg: #F5A760;
+  --logo-a: #F0813B; --logo-b: #C05F1D; --logo-c: #F2B33D;
+  --glow-a: #F0813B; --glow-b: #F2B33D;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .4);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .55);
+}
+
+/* ---------- 3. 主题 2 · 晴空蓝白 ---------- */
+[data-theme="azure"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #0B76D0; --primary-foreground: #FFFFFF;
+  --secondary: #F0F4F9; --secondary-foreground: #454649;
+  --muted: #F0F4F9; --muted-foreground: #6C6D70;
+  --accent: #E9F2FB; --accent-foreground: #0C63B4;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #D9E0E8; --input: #CDD6DF; --ring: #0B76D0;
+  --sidebar: #F4F8FB; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #DFEBF7; --sidebar-active-fg: #0C63B4;
+  --logo-a: #0B76D0; --logo-b: #0858A0; --logo-c: #35B5C9;
+  --glow-a: #0B76D0; --glow-b: #35B5C9;
+  --shadow-sm: 0 1px 2px rgb(20 40 60 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(20 40 60 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(20 40 60 / .16);
+}
+[data-theme="azure"][data-mode="dark"] {
+  --background: #0D1620; --foreground: #E3EDF6;
+  --card: #14202C; --card-foreground: #E3EDF6;
+  --popover: #172432; --popover-foreground: #E3EDF6;
+  --primary: #4D9AF0; --primary-foreground: #06121F;
+  --secondary: #1B2836; --secondary-foreground: #C4D3E0;
+  --muted: #1B2836; --muted-foreground: #8CA0B3;
+  --accent: #17304A; --accent-foreground: #7FB8F2;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #1F2E3D; --input: #253546; --ring: #4D9AF0;
+  --sidebar: #0A111A; --sidebar-foreground: #D4E0EB;
+  --sidebar-muted: #7E92A5; --sidebar-active: #153052; --sidebar-active-fg: #7FB8F2;
+  --logo-a: #4D9AF0; --logo-b: #2C6CB5; --logo-c: #43C4D8;
+  --glow-a: #4D9AF0; --glow-b: #43C4D8;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* ---------- 4. 主题 3 · 午夜星河 ---------- */
+[data-theme="midnight"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #4F5BE0; --primary-foreground: #FFFFFF;
+  --secondary: #F0F1F8; --secondary-foreground: #454649;
+  --muted: #F0F1F8; --muted-foreground: #6C6D70;
+  --accent: #EBEDFA; --accent-foreground: #434ECB;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #D8DAE7; --input: #CBCDDE; --ring: #4F5BE0;
+  --sidebar: #F3F4FA; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #E1E4F7; --sidebar-active-fg: #434ECB;
+  --logo-a: #4F5BE0; --logo-b: #3843B8; --logo-c: #8FA0FF;
+  --glow-a: #4F5BE0; --glow-b: #8F7BE8;
+  --shadow-sm: 0 1px 2px rgb(35 39 67 / .06);
+  --shadow-md: 0 4px 14px -2px rgb(35 39 67 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(35 39 67 / .18);
+}
+[data-theme="midnight"][data-mode="dark"] {
+  --background: #0A0E1D; --foreground: #E2E6F5;
+  --card: #111731; --card-foreground: #E2E6F5;
+  --popover: #151C3A; --popover-foreground: #E2E6F5;
+  --primary: #7D8BFF; --primary-foreground: #0B1030;
+  --secondary: #1A2142; --secondary-foreground: #C0C6E8;
+  --muted: #1A2142; --muted-foreground: #8D94BC;
+  --accent: #1B2350; --accent-foreground: #9AA6FF;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #1F2749; --input: #272F58; --ring: #7D8BFF;
+  --sidebar: #070A16; --sidebar-foreground: #D5DAF0;
+  --sidebar-muted: #7F86AE; --sidebar-active: #1C2452; --sidebar-active-fg: #9AA6FF;
+  --logo-a: #7D8BFF; --logo-b: #5260D9; --logo-c: #C3CDFF;
+  --glow-a: #7D8BFF; --glow-b: #B78BFF;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .5);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .65);
+}
+
+/* ---------- 5. 主题 4 · 暮岩金 ---------- */
+[data-theme="amber"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #9A6A08; --primary-foreground: #FFFFFF;
+  --secondary: #F6F3E9; --secondary-foreground: #454649;
+  --muted: #F6F3E9; --muted-foreground: #6C6D70;
+  --accent: #F7F0DA; --accent-foreground: #8A5E06;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #E2DCC8; --input: #D6CFB6; --ring: #9A6A08;
+  --sidebar: #F8F6EC; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #F1E8CC; --sidebar-active-fg: #8A5E06;
+  --logo-a: #9A6A08; --logo-b: #7A5405; --logo-c: #F2C14E;
+  --glow-a: #9A6A08; --glow-b: #E8B03C;
+  --shadow-sm: 0 1px 2px rgb(60 48 20 / .06);
+  --shadow-md: 0 4px 14px -2px rgb(60 48 20 / .11);
+  --shadow-lg: 0 18px 44px -8px rgb(60 48 20 / .18);
+}
+[data-theme="amber"][data-mode="dark"] {
+  --background: #191408; --foreground: #F0E9D8;
+  --card: #221C0E; --card-foreground: #F0E9D8;
+  --popover: #262011; --popover-foreground: #F0E9D8;
+  --primary: #E3A82E; --primary-foreground: #241B04;
+  --secondary: #2C250F; --secondary-foreground: #D6CBAE;
+  --muted: #2C250F; --muted-foreground: #A5966E;
+  --accent: #332812; --accent-foreground: #EFC25E;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #322A16; --input: #3A311C; --ring: #E3A82E;
+  --sidebar: #141006; --sidebar-foreground: #E3DBC6;
+  --sidebar-muted: #A5966E; --sidebar-active: #382D12; --sidebar-active-fg: #EFC25E;
+  --logo-a: #E3A82E; --logo-b: #B27F16; --logo-c: #F2C14E;
+  --glow-a: #E3A82E; --glow-b: #F2C14E;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* ---------- 6. 主题 5 · 青屿森语 ---------- */
+[data-theme="forest"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #12834E; --primary-foreground: #FFFFFF;
+  --secondary: #EEF4EF; --secondary-foreground: #454649;
+  --muted: #EEF4EF; --muted-foreground: #6C6D70;
+  --accent: #E7F3EA; --accent-foreground: #157347;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #D4DED6; --input: #C6D2C8; --ring: #12834E;
+  --sidebar: #F1F6F2; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #DAEBDF; --sidebar-active-fg: #157347;
+  --logo-a: #12834E; --logo-b: #0C6640; --logo-c: #86C86B;
+  --glow-a: #12834E; --glow-b: #86C86B;
+  --shadow-sm: 0 1px 2px rgb(28 46 36 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(28 46 36 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(28 46 36 / .16);
+}
+[data-theme="forest"][data-mode="dark"] {
+  --background: #0E1511; --foreground: #E0EDE4;
+  --card: #15201A; --card-foreground: #E0EDE4;
+  --popover: #18251E; --popover-foreground: #E0EDE4;
+  --primary: #4BBE85; --primary-foreground: #06180E;
+  --secondary: #1B2A21; --secondary-foreground: #C2D5C7;
+  --muted: #1B2A21; --muted-foreground: #83998A;
+  --accent: #1A2E23; --accent-foreground: #7AD3A4;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #1F2E25; --input: #26382C; --ring: #4BBE85;
+  --sidebar: #0A100C; --sidebar-foreground: #D2E2D6;
+  --sidebar-muted: #7C9284; --sidebar-active: #173524; --sidebar-active-fg: #7AD3A4;
+  --logo-a: #4BBE85; --logo-b: #2F9163; --logo-c: #86C86B;
+  --glow-a: #4BBE85; --glow-b: #86C86B;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* ---------- 7. 主题 6 · 樱屿绯粉 ---------- */
+[data-theme="rose"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #D0344F; --primary-foreground: #FFFFFF;
+  --secondary: #F6EEEF; --secondary-foreground: #454649;
+  --muted: #F6EEEF; --muted-foreground: #6C6D70;
+  --accent: #FAE9EB; --accent-foreground: #C22B46;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #E5D3D6; --input: #D9C4C8; --ring: #D0344F;
+  --sidebar: #F8F1F2; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #F6DCE0; --sidebar-active-fg: #B92843;
+  --logo-a: #D0344F; --logo-b: #A02440; --logo-c: #F09B59;
+  --glow-a: #D0344F; --glow-b: #F09B59;
+  --shadow-sm: 0 1px 2px rgb(51 25 31 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(51 25 31 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(51 25 31 / .16);
+}
+[data-theme="rose"][data-mode="dark"] {
+  --background: #1B1113; --foreground: #F4E5E7;
+  --card: #25181B; --card-foreground: #F4E5E7;
+  --popover: #291B1F; --popover-foreground: #F4E5E7;
+  --primary: #EF6E84; --primary-foreground: #2B0A10;
+  --secondary: #2C1B20; --secondary-foreground: #DCC2C7;
+  --muted: #2C1B20; --muted-foreground: #AC8B91;
+  --accent: #33191F; --accent-foreground: #F49AA8;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #332125; --input: #3D282C; --ring: #EF6E84;
+  --sidebar: #150D0F; --sidebar-foreground: #E8D3D6;
+  --sidebar-muted: #A5838A; --sidebar-active: #3A1E25; --sidebar-active-fg: #F49AA8;
+  --logo-a: #EF6E84; --logo-b: #C43E55; --logo-c: #F09B59;
+  --glow-a: #EF6E84; --glow-b: #F09B59;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* ---------- 8. 主题 7 · 靛夜霓虹 ---------- */
+[data-theme="violet"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #6D4FE3; --primary-foreground: #FFFFFF;
+  --secondary: #F1EEF8; --secondary-foreground: #454649;
+  --muted: #F1EEF8; --muted-foreground: #6C6D70;
+  --accent: #EDE9FA; --accent-foreground: #5B3FD4;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #DBD6EA; --input: #CEC8E0; --ring: #6D4FE3;
+  --sidebar: #F4F1FA; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #E4DDF7; --sidebar-active-fg: #5B3FD4;
+  --logo-a: #6D4FE3; --logo-b: #4F35B5; --logo-c: #C084FC;
+  --glow-a: #6D4FE3; --glow-b: #C084FC;
+  --shadow-sm: 0 1px 2px rgb(41 29 61 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(41 29 61 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(41 29 61 / .17);
+}
+[data-theme="violet"][data-mode="dark"] {
+  --background: #120D1D; --foreground: #EAE2F7;
+  --card: #1A1428; --card-foreground: #EAE2F7;
+  --popover: #1E172E; --popover-foreground: #EAE2F7;
+  --primary: #A183F5; --primary-foreground: #150B2B;
+  --secondary: #241C36; --secondary-foreground: #D0C6E6;
+  --muted: #241C36; --muted-foreground: #9A8DB8;
+  --accent: #271B40; --accent-foreground: #C3ABF8;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #29203E; --input: #322747; --ring: #A183F5;
+  --sidebar: #0D0916; --sidebar-foreground: #DED5EF;
+  --sidebar-muted: #9486B2; --sidebar-active: #2C1F4A; --sidebar-active-fg: #C3ABF8;
+  --logo-a: #A183F5; --logo-b: #774FD8; --logo-c: #C084FC;
+  --glow-a: #A183F5; --glow-b: #C084FC;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .38);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .48);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .62);
+}
+
+/* ---------- 9. 主题 8 · 墨玉石墨（中性） ---------- */
+[data-theme="graphite"] {
+  --background: #FFFFFF; --foreground: #191A1C;
+  --card: #FFFFFF; --card-foreground: #191A1C;
+  --popover: #FFFFFF; --popover-foreground: #191A1C;
+  --primary: #4A5058; --primary-foreground: #FFFFFF;
+  --secondary: #EFF1F3; --secondary-foreground: #454649;
+  --muted: #EFF1F3; --muted-foreground: #6C6D70;
+  --accent: #EBEEF0; --accent-foreground: #31363C;
+  --destructive: #CE3535; --destructive-foreground: #FFFFFF;
+  --border: #D8DCE0; --input: #CBD0D5; --ring: #4A5058;
+  --sidebar: #F3F5F7; --sidebar-foreground: #343537;
+  --sidebar-muted: #6C6D70; --sidebar-active: #E1E5E9; --sidebar-active-fg: #2A2F35;
+  --logo-a: #4A5058; --logo-b: #272B30; --logo-c: #A7AFB8;
+  --glow-a: #4A5058; --glow-b: #8E979F;
+  --shadow-sm: 0 1px 2px rgb(31 34 38 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(31 34 38 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(31 34 38 / .16);
+}
+[data-theme="graphite"][data-mode="dark"] {
+  --background: #121316; --foreground: #E8EAED;
+  --card: #1A1C20; --card-foreground: #E8EAED;
+  --popover: #1E2024; --popover-foreground: #E8EAED;
+  --primary: #C9CDD3; --primary-foreground: #17191C;
+  --secondary: #24262B; --secondary-foreground: #CDD1D6;
+  --muted: #24262B; --muted-foreground: #8F959C;
+  --accent: #26292F; --accent-foreground: #B7BCC3;
+  --destructive: #E5655E; --destructive-foreground: #1B0D0D;
+  --border: #26282E; --input: #2E3137; --ring: #C9CDD3;
+  --sidebar: #0E0F12; --sidebar-foreground: #DDE0E4;
+  --sidebar-muted: #83898F; --sidebar-active: #2A2D33; --sidebar-active-fg: #E2E5E9;
+  --logo-a: #C9CDD3; --logo-b: #7A828B; --logo-c: #A7AFB8;
+  --glow-a: #8E979F; --glow-b: #C9CDD3;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .5);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .65);
+}
+
+/* ---------- 10. Tailwind v4 映射（@theme inline） ----------
+   把上面的 CSS 变量映射为 Tailwind 工具类：
+   bg-background / text-foreground / bg-card / text-primary / ring-ring /
+   rounded-lg / rounded-sm / font-sans / font-mono / shadow-sm 等。
+   `inline` 表示引用 var() 本体，保证 data-theme/data-mode 切肤实时生效。 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-fg: var(--sidebar-active-fg);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+
+  --ease-starris: var(--ease);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}

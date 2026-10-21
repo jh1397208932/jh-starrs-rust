@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="sunset" data-mode="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星屿 Starris · UI 设计系统 v1.0</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='12' cy='13' r='3.2' fill='%23F2B33D'/%3E%3Cpath d='M33 9 L45 29 L21 29 Z' fill='%23F2B33D' stroke='%23F2B33D' stroke-width='7' stroke-linejoin='round'/%3E%3Crect x='11' y='31' width='30' height='22' rx='10.5' fill='%23E8722A' transform='rotate(-5 26 42)'/%3E%3Crect x='38' y='36' width='15' height='14' rx='6.5' fill='%23B65718' transform='rotate(6 45 43)'/%3E%3C/svg%3E">
+<style>
+/* ============================================================
+   星屿 Starris 设计系统
+   结构：tokens(8主题×2模式) → base → chrome → 组件 → mockup → gallery
+   变量命名对齐 shadcn/ui，可直接映射到 Tailwind v4 @theme
+   ============================================================ */
+
+/* ---------- 1. 设计令牌 ---------- */
+:root{
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --font-ui: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --ease: cubic-bezier(.25, 1, .5, 1);
+  --dur-1: 150ms; --dur-2: 300ms; --dur-3: 500ms;
+}
+
+/* —— 主题 1 · 暖屿橙（默认，还原参考稿）—— */
+[data-theme="sunset"]{
+  --background:#FAF6F1; --foreground:#2C241E;
+  --card:#FFFFFF; --card-foreground:#2C241E;
+  --popover:#FFFFFF; --popover-foreground:#2C241E;
+  --primary:#E8722A; --primary-foreground:#FFF8F1;
+  --secondary:#F3EAE0; --secondary-foreground:#5C4E40;
+  --muted:#F3EAE0; --muted-foreground:#8A7A68;
+  --accent:#FBE9DA; --accent-foreground:#B4530F;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#ECE1D4; --input:#E3D7C8; --ring:#E8722A;
+  --sidebar:#F5EEE5; --sidebar-foreground:#4A3E32;
+  --sidebar-muted:#A2937F; --sidebar-active:#F6E2CF; --sidebar-active-fg:#C05A17;
+  --logo-a:#E8722A; --logo-b:#B65718; --logo-c:#F2B33D;
+  --glow-a:#E8722A; --glow-b:#F2A93D;
+  --shadow-sm: 0 1px 2px rgb(60 40 20 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(80 50 25 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(80 50 25 / .18);
+}
+[data-theme="sunset"][data-mode="dark"]{
+  --background:#1B1512; --foreground:#F2E9E0;
+  --card:#241D18; --card-foreground:#F2E9E0;
+  --popover:#282019; --popover-foreground:#F2E9E0;
+  --primary:#F0813B; --primary-foreground:#241205;
+  --secondary:#2E251E; --secondary-foreground:#D8CCBD;
+  --muted:#2E251E; --muted-foreground:#A89A88;
+  --accent:#382718; --accent-foreground:#F2A45E;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#332A22; --input:#3A2F25; --ring:#F0813B;
+  --sidebar:#17110E; --sidebar-foreground:#E5DACC;
+  --sidebar-muted:#A89A88; --sidebar-active:#38261A; --sidebar-active-fg:#F5A760;
+  --logo-a:#F0813B; --logo-b:#C05F1D; --logo-c:#F2B33D;
+  --glow-a:#F0813B; --glow-b:#F2B33D;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .4);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .55);
+}
+
+/* —— 主题 2 · 晴空蓝白 —— */
+[data-theme="azure"]{
+  --background:#F7FAFD; --foreground:#14283C;
+  --card:#FFFFFF; --card-foreground:#14283C;
+  --popover:#FFFFFF; --popover-foreground:#14283C;
+  --primary:#1E76D2; --primary-foreground:#F4F9FF;
+  --secondary:#EAF1F8; --secondary-foreground:#3D5266;
+  --muted:#EAF1F8; --muted-foreground:#7A8CA0;
+  --accent:#E3EFFB; --accent-foreground:#0F5CAD;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#DEE8F0; --input:#D2DEEA; --ring:#1E76D2;
+  --sidebar:#EFF5FA; --sidebar-foreground:#2C4256;
+  --sidebar-muted:#8296A9; --sidebar-active:#DCEAF8; --sidebar-active-fg:#0F5CAD;
+  --logo-a:#1E76D2; --logo-b:#14549B; --logo-c:#35B5C9;
+  --glow-a:#1E76D2; --glow-b:#35B5C9;
+  --shadow-sm: 0 1px 2px rgb(20 40 60 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(20 40 60 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(20 40 60 / .16);
+}
+[data-theme="azure"][data-mode="dark"]{
+  --background:#0D1620; --foreground:#E3EDF6;
+  --card:#14202C; --card-foreground:#E3EDF6;
+  --popover:#172432; --popover-foreground:#E3EDF6;
+  --primary:#4D9AF0; --primary-foreground:#06121F;
+  --secondary:#1B2836; --secondary-foreground:#C4D3E0;
+  --muted:#1B2836; --muted-foreground:#8CA0B3;
+  --accent:#17304A; --accent-foreground:#7FB8F2;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#1F2E3D; --input:#253546; --ring:#4D9AF0;
+  --sidebar:#0A111A; --sidebar-foreground:#D4E0EB;
+  --sidebar-muted:#7E92A5; --sidebar-active:#153052; --sidebar-active-fg:#7FB8F2;
+  --logo-a:#4D9AF0; --logo-b:#2C6CB5; --logo-c:#43C4D8;
+  --glow-a:#4D9AF0; --glow-b:#43C4D8;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* —— 主题 3 · 午夜星河（主打深色）—— */
+[data-theme="midnight"]{
+  --background:#F4F5FA; --foreground:#232743;
+  --card:#FFFFFF; --card-foreground:#232743;
+  --popover:#FFFFFF; --popover-foreground:#232743;
+  --primary:#5661D6; --primary-foreground:#F2F3FF;
+  --secondary:#EAEBF5; --secondary-foreground:#454B70;
+  --muted:#EAEBF5; --muted-foreground:#7C81A3;
+  --accent:#E8EAFB; --accent-foreground:#3D49C0;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#E0E2F0; --input:#D3D6EA; --ring:#5661D6;
+  --sidebar:#EDEFF8; --sidebar-foreground:#3A3F63;
+  --sidebar-muted:#8489AC; --sidebar-active:#E0E3F9; --sidebar-active-fg:#3D49C0;
+  --logo-a:#5661D6; --logo-b:#3A43A8; --logo-c:#8FA0FF;
+  --glow-a:#5661D6; --glow-b:#8F7BE8;
+  --shadow-sm: 0 1px 2px rgb(35 39 67 / .06);
+  --shadow-md: 0 4px 14px -2px rgb(35 39 67 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(35 39 67 / .18);
+}
+[data-theme="midnight"][data-mode="dark"]{
+  --background:#0A0E1D; --foreground:#E2E6F5;
+  --card:#111731; --card-foreground:#E2E6F5;
+  --popover:#151C3A; --popover-foreground:#E2E6F5;
+  --primary:#7D8BFF; --primary-foreground:#0B1030;
+  --secondary:#1A2142; --secondary-foreground:#C0C6E8;
+  --muted:#1A2142; --muted-foreground:#8D94BC;
+  --accent:#1B2350; --accent-foreground:#9AA6FF;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#1F2749; --input:#272F58; --ring:#7D8BFF;
+  --sidebar:#070A16; --sidebar-foreground:#D5DAF0;
+  --sidebar-muted:#7F86AE; --sidebar-active:#1C2452; --sidebar-active-fg:#9AA6FF;
+  --logo-a:#7D8BFF; --logo-b:#5260D9; --logo-c:#C3CDFF;
+  --glow-a:#7D8BFF; --glow-b:#B78BFF;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .5);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .65);
+}
+
+/* —— 主题 4 · 暮岩金 —— */
+[data-theme="amber"]{
+  --background:#FAF6EB; --foreground:#332B18;
+  --card:#FFFFFF; --card-foreground:#332B18;
+  --popover:#FFFFFF; --popover-foreground:#332B18;
+  --primary:#BE8412; --primary-foreground:#FFF9EA;
+  --secondary:#F2EBD8; --secondary-foreground:#665426;
+  --muted:#F2EBD8; --muted-foreground:#95855B;
+  --accent:#F5EAD0; --accent-foreground:#96660A;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#E9E0C9; --input:#DED3B8; --ring:#BE8412;
+  --sidebar:#F3EDDC; --sidebar-foreground:#544623;
+  --sidebar-muted:#9C8D66; --sidebar-active:#F0E2BE; --sidebar-active-fg:#8F6309;
+  --logo-a:#BE8412; --logo-b:#94650C; --logo-c:#F2C14E;
+  --glow-a:#BE8412; --glow-b:#E8B03C;
+  --shadow-sm: 0 1px 2px rgb(60 48 20 / .06);
+  --shadow-md: 0 4px 14px -2px rgb(60 48 20 / .11);
+  --shadow-lg: 0 18px 44px -8px rgb(60 48 20 / .18);
+}
+[data-theme="amber"][data-mode="dark"]{
+  --background:#191408; --foreground:#F0E9D8;
+  --card:#221C0E; --card-foreground:#F0E9D8;
+  --popover:#262011; --popover-foreground:#F0E9D8;
+  --primary:#E3A82E; --primary-foreground:#241B04;
+  --secondary:#2C250F; --secondary-foreground:#D6CBAE;
+  --muted:#2C250F; --muted-foreground:#A5966E;
+  --accent:#332812; --accent-foreground:#EFC25E;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#322A16; --input:#3A311C; --ring:#E3A82E;
+  --sidebar:#141006; --sidebar-foreground:#E3DBC6;
+  --sidebar-muted:#A5966E; --sidebar-active:#382D12; --sidebar-active-fg:#EFC25E;
+  --logo-a:#E3A82E; --logo-b:#B27F16; --logo-c:#F2C14E;
+  --glow-a:#E3A82E; --glow-b:#F2C14E;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* —— 主题 5 · 青屿森语 —— */
+[data-theme="forest"]{
+  --background:#F5FAF6; --foreground:#1C2E24;
+  --card:#FFFFFF; --card-foreground:#1C2E24;
+  --popover:#FFFFFF; --popover-foreground:#1C2E24;
+  --primary:#2C855A; --primary-foreground:#F0FAF4;
+  --secondary:#E7F0E9; --secondary-foreground:#3C5747;
+  --muted:#E7F0E9; --muted-foreground:#77907F;
+  --accent:#E2F3E8; --accent-foreground:#1E6B45;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#DDE9E0; --input:#CDDCCF; --ring:#2C855A;
+  --sidebar:#ECF4EE; --sidebar-foreground:#33493C;
+  --sidebar-muted:#7E9484; --sidebar-active:#D8ECDD; --sidebar-active-fg:#1E6B45;
+  --logo-a:#2C855A; --logo-b:#1D6141; --logo-c:#86C86B;
+  --glow-a:#2C855A; --glow-b:#86C86B;
+  --shadow-sm: 0 1px 2px rgb(28 46 36 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(28 46 36 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(28 46 36 / .16);
+}
+[data-theme="forest"][data-mode="dark"]{
+  --background:#0E1511; --foreground:#E0EDE4;
+  --card:#15201A; --card-foreground:#E0EDE4;
+  --popover:#18251E; --popover-foreground:#E0EDE4;
+  --primary:#4BBE85; --primary-foreground:#06180E;
+  --secondary:#1B2A21; --secondary-foreground:#C2D5C7;
+  --muted:#1B2A21; --muted-foreground:#83998A;
+  --accent:#1A2E23; --accent-foreground:#7AD3A4;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#1F2E25; --input:#26382C; --ring:#4BBE85;
+  --sidebar:#0A100C; --sidebar-foreground:#D2E2D6;
+  --sidebar-muted:#7C9284; --sidebar-active:#173524; --sidebar-active-fg:#7AD3A4;
+  --logo-a:#4BBE85; --logo-b:#2F9163; --logo-c:#86C86B;
+  --glow-a:#4BBE85; --glow-b:#86C86B;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* —— 主题 6 · 樱屿绯粉 —— */
+[data-theme="rose"]{
+  --background:#FBF6F6; --foreground:#33191F;
+  --card:#FFFFFF; --card-foreground:#33191F;
+  --popover:#FFFFFF; --popover-foreground:#33191F;
+  --primary:#DD4A62; --primary-foreground:#FFF5F6;
+  --secondary:#F4E7E9; --secondary-foreground:#6A3A44;
+  --muted:#F4E7E9; --muted-foreground:#A07780;
+  --accent:#FAE3E7; --accent-foreground:#B92D47;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#EDDCDF; --input:#E2CCD0; --ring:#DD4A62;
+  --sidebar:#F6EDED; --sidebar-foreground:#5A333C;
+  --sidebar-muted:#A87F88; --sidebar-active:#F7DDE1; --sidebar-active-fg:#B92D47;
+  --logo-a:#DD4A62; --logo-b:#B03048; --logo-c:#F09B59;
+  --glow-a:#DD4A62; --glow-b:#F09B59;
+  --shadow-sm: 0 1px 2px rgb(51 25 31 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(51 25 31 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(51 25 31 / .16);
+}
+[data-theme="rose"][data-mode="dark"]{
+  --background:#1B1113; --foreground:#F4E5E7;
+  --card:#25181B; --card-foreground:#F4E5E7;
+  --popover:#291B1F; --popover-foreground:#F4E5E7;
+  --primary:#EF6E84; --primary-foreground:#2B0A10;
+  --secondary:#2C1B20; --secondary-foreground:#DCC2C7;
+  --muted:#2C1B20; --muted-foreground:#AC8B91;
+  --accent:#33191F; --accent-foreground:#F49AA8;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#332125; --input:#3D282C; --ring:#EF6E84;
+  --sidebar:#150D0F; --sidebar-foreground:#E8D3D6;
+  --sidebar-muted:#A5838A; --sidebar-active:#3A1E25; --sidebar-active-fg:#F49AA8;
+  --logo-a:#EF6E84; --logo-b:#C43E55; --logo-c:#F09B59;
+  --glow-a:#EF6E84; --glow-b:#F09B59;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .35);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .45);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .6);
+}
+
+/* —— 主题 7 · 靛夜霓虹 —— */
+[data-theme="violet"]{
+  --background:#F8F7FC; --foreground:#291D3D;
+  --card:#FFFFFF; --card-foreground:#291D3D;
+  --popover:#FFFFFF; --popover-foreground:#291D3D;
+  --primary:#7A55E0; --primary-foreground:#F7F3FF;
+  --secondary:#EEEAf7; --secondary-foreground:#4E3D6E;
+  --muted:#EEEAF7; --muted-foreground:#8A7FA3;
+  --accent:#EDE7FB; --accent-foreground:#5B38BE;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#E6E1F0; --input:#D9D2EA; --ring:#7A55E0;
+  --sidebar:#F1EEF9; --sidebar-foreground:#443362;
+  --sidebar-muted:#9188AB; --sidebar-active:#E6DDF8; --sidebar-active-fg:#5B38BE;
+  --logo-a:#7A55E0; --logo-b:#5A3BBA; --logo-c:#C084FC;
+  --glow-a:#7A55E0; --glow-b:#C084FC;
+  --shadow-sm: 0 1px 2px rgb(41 29 61 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(41 29 61 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(41 29 61 / .17);
+}
+[data-theme="violet"][data-mode="dark"]{
+  --background:#120D1D; --foreground:#EAE2F7;
+  --card:#1A1428; --card-foreground:#EAE2F7;
+  --popover:#1E172E; --popover-foreground:#EAE2F7;
+  --primary:#A183F5; --primary-foreground:#150B2B;
+  --secondary:#241C36; --secondary-foreground:#D0C6E6;
+  --muted:#241C36; --muted-foreground:#9A8DB8;
+  --accent:#271B40; --accent-foreground:#C3ABF8;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#29203E; --input:#322747; --ring:#A183F5;
+  --sidebar:#0D0916; --sidebar-foreground:#DED5EF;
+  --sidebar-muted:#9486B2; --sidebar-active:#2C1F4A; --sidebar-active-fg:#C3ABF8;
+  --logo-a:#A183F5; --logo-b:#774FD8; --logo-c:#C084FC;
+  --glow-a:#A183F5; --glow-b:#C084FC;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .38);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .48);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .62);
+}
+
+/* —— 主题 8 · 墨玉石墨（中性）—— */
+[data-theme="graphite"]{
+  --background:#F6F7F8; --foreground:#1F2226;
+  --card:#FFFFFF; --card-foreground:#1F2226;
+  --popover:#FFFFFF; --popover-foreground:#1F2226;
+  --primary:#3D4249; --primary-foreground:#F5F7F9;
+  --secondary:#EAEDEF; --secondary-foreground:#43484F;
+  --muted:#EAEDEF; --muted-foreground:#7E858D;
+  --accent:#E9ECEF; --accent-foreground:#31363C;
+  --destructive:#D64545; --destructive-foreground:#FFF5F5;
+  --border:#E2E5E8; --input:#D3D8DC; --ring:#3D4249;
+  --sidebar:#EFF1F3; --sidebar-foreground:#3A3F45;
+  --sidebar-muted:#828A92; --sidebar-active:#E2E6EA; --sidebar-active-fg:#2A2F35;
+  --logo-a:#3D4249; --logo-b:#272B30; --logo-c:#A7AFB8;
+  --glow-a:#3D4249; --glow-b:#8E979F;
+  --shadow-sm: 0 1px 2px rgb(31 34 38 / .05);
+  --shadow-md: 0 4px 14px -2px rgb(31 34 38 / .10);
+  --shadow-lg: 0 18px 44px -8px rgb(31 34 38 / .16);
+}
+[data-theme="graphite"][data-mode="dark"]{
+  --background:#121316; --foreground:#E8EAED;
+  --card:#1A1C20; --card-foreground:#E8EAED;
+  --popover:#1E2024; --popover-foreground:#E8EAED;
+  --primary:#C9CDD3; --primary-foreground:#17191C;
+  --secondary:#24262B; --secondary-foreground:#CDD1D6;
+  --muted:#24262B; --muted-foreground:#8F959C;
+  --accent:#26292F; --accent-foreground:#B7BCC3;
+  --destructive:#E5655E; --destructive-foreground:#1B0D0D;
+  --border:#26282E; --input:#2E3137; --ring:#C9CDD3;
+  --sidebar:#0E0F12; --sidebar-foreground:#DDE0E4;
+  --sidebar-muted:#83898F; --sidebar-active:#2A2D33; --sidebar-active-fg:#E2E5E9;
+  --logo-a:#C9CDD3; --logo-b:#7A828B; --logo-c:#A7AFB8;
+  --glow-a:#8E979F; --glow-b:#C9CDD3;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-md: 0 4px 14px -2px rgb(0 0 0 / .5);
+  --shadow-lg: 0 18px 44px -8px rgb(0 0 0 / .65);
+}
+
+/* ---------- 2. base ---------- */
+*{ box-sizing:border-box; margin:0; padding:0; }
+html{ scroll-behavior:smooth; scroll-padding-top:76px; }
+body{
+  font-family:var(--font-ui);
+  background:var(--background);
+  color:var(--foreground);
+  font-size:15px; line-height:1.7;
+  transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease);
+  -webkit-font-smoothing:antialiased;
+}
+::selection{ background:var(--accent); color:var(--accent-foreground); }
+a{ color:inherit; text-decoration:none; }
+button{ font-family:inherit; }
+
+/* ---------- 3. 页面 chrome ---------- */
+.ds-nav{
+  position:fixed; top:0; left:0; right:0; z-index:100;
+  display:flex; align-items:center; gap:20px;
+  padding:0 28px; height:60px;
+  background:color-mix(in srgb, var(--background) 88%, transparent);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+}
+.ds-nav .brand-lockup{ display:flex; align-items:center; gap:10px; font-weight:800; font-size:16px; letter-spacing:.5px; }
+.ds-nav .brand-lockup small{ font-weight:500; color:var(--muted-foreground); font-size:12px; letter-spacing:1px; margin-left:2px; }
+.ds-nav nav{ display:flex; gap:2px; margin-left:auto; }
+.ds-nav nav a{
+  padding:6px 12px; border-radius:999px; font-size:13px; color:var(--muted-foreground);
+  transition:all var(--dur-1) var(--ease);
+}
+.ds-nav nav a:hover{ color:var(--foreground); background:var(--secondary); }
+.ds-nav nav a.on{ color:var(--primary); background:var(--accent); font-weight:600; }
+.theme-dots{ display:flex; align-items:center; gap:7px; padding-left:16px; border-left:1px solid var(--border); }
+.tdot{
+  width:18px; height:18px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+  transition:all var(--dur-1) var(--ease); position:relative;
+}
+.tdot:hover{ transform:scale(1.18); }
+.tdot.on{ border-color:var(--foreground); box-shadow:0 0 0 2px var(--background) inset; }
+.mode-toggle{
+  margin-left:6px; width:34px; height:34px; border-radius:50%; border:1px solid var(--border);
+  background:var(--card); cursor:pointer; display:grid; place-items:center;
+  color:var(--foreground); transition:all var(--dur-1) var(--ease); font-size:15px;
+}
+.mode-toggle:hover{ border-color:var(--primary); color:var(--primary); transform:rotate(15deg); }
+
+.sec{ max-width:1180px; margin:0 auto; padding:72px 32px 8px; }
+.sec-head{ margin-bottom:28px; }
+.kicker{
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:700; letter-spacing:2.5px; color:var(--primary);
+  text-transform:uppercase; margin-bottom:10px;
+}
+.kicker::before{ content:""; width:22px; height:2px; background:var(--primary); border-radius:2px; }
+.sec-head h2{ font-size:30px; font-weight:800; letter-spacing:-.3px; line-height:1.3; }
+.sec-head p{ color:var(--muted-foreground); margin-top:8px; max-width:640px; font-size:14.5px; }
+.panel{
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm); overflow:hidden;
+}
+.panel-grid{ display:grid; gap:20px; }
+.note{
+  font-size:12.5px; color:var(--muted-foreground); padding:10px 14px;
+  border-top:1px dashed var(--border); background:var(--secondary); border-radius:0 0 var(--radius-lg) var(--radius-lg);
+}
+.note b{ color:var(--accent-foreground); }
+
+/* hero */
+.hero{
+  padding:150px 32px 60px; max-width:1180px; margin:0 auto;
+  display:grid; grid-template-columns:1.1fr .9fr; gap:48px; align-items:center;
+}
+.hero .h-kicker{ font-size:13px; letter-spacing:3px; color:var(--muted-foreground); font-weight:600; margin-bottom:16px; }
+.hero h1{ font-size:clamp(38px, 5vw, 56px); font-weight:800; letter-spacing:-1px; line-height:1.18; }
+.hero h1 em{
+  font-style:normal; color:var(--primary);
+  background:linear-gradient(120deg, var(--glow-a), var(--glow-b));
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+.hero .slogan{ font-size:17px; color:var(--muted-foreground); margin:18px 0 30px; letter-spacing:1px; }
+.hero .slogan b{ color:var(--foreground); }
+.hero-actions{ display:flex; gap:12px; flex-wrap:wrap; }
+.hero-visual{
+  background:var(--card); border:1px solid var(--border); border-radius:22px;
+  box-shadow:var(--shadow-lg); padding:44px; display:grid; place-items:center;
+  position:relative; overflow:hidden; min-height:320px;
+}
+.hero-visual::before{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(ellipse 70% 55% at 50% 42%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 70%);
+}
+.hero-meta{ display:flex; gap:26px; margin-top:26px; }
+.hero-meta div span{ display:block; font-size:11px; color:var(--muted-foreground); letter-spacing:1px; }
+.hero-meta div b{ font-size:15px; }
+
+/* ---------- 4. 品牌 ---------- */
+.brand-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.logo-stage{
+  display:grid; place-items:center; padding:40px; position:relative; min-height:280px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-size:28px 28px; background-position:center;
+}
+.logo-stage .tag{
+  position:absolute; top:14px; left:16px; font-size:11.5px; color:var(--muted-foreground); letter-spacing:1px;
+}
+.logo-row{ display:flex; align-items:flex-end; gap:26px; padding:34px 26px; flex-wrap:wrap; }
+.logo-size{ display:grid; justify-items:center; gap:10px; }
+.logo-size span{ font-size:11px; color:var(--muted-foreground); font-family:var(--font-mono); }
+.logo-dark{ background:var(--sidebar); }
+.anatomy{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:24px; }
+.anatomy figure{
+  border:1px solid var(--border); border-radius:var(--radius); padding:18px 12px 14px;
+  display:grid; justify-items:center; gap:8px; background:var(--background);
+}
+.anatomy figcaption{ font-size:12px; color:var(--muted-foreground); text-align:center; line-height:1.5; }
+.anatomy figcaption b{ display:block; color:var(--foreground); font-size:13px; margin-bottom:2px; }
+.wordmark{ display:flex; align-items:baseline; gap:14px; padding:34px 28px; flex-wrap:wrap; }
+.wordmark .cn{ font-size:44px; font-weight:800; letter-spacing:2px; }
+.wordmark .en{ font-size:30px; font-weight:600; color:var(--primary); letter-spacing:.5px; font-family:Georgia, "Times New Roman", serif; font-style:italic; }
+.wordmark .sl{ width:100%; color:var(--muted-foreground); font-size:15px; letter-spacing:4px; }
+
+/* ---------- 5. 色彩 / 排版 ---------- */
+.token-wrap{ padding:24px; display:grid; gap:10px; }
+.token-row{ display:grid; grid-template-columns:150px 1fr 64px; align-items:center; gap:14px; }
+.token-row .name{ font-family:var(--font-mono); font-size:12px; color:var(--muted-foreground); }
+.token-row .chip-live{
+  height:34px; border-radius:8px; border:1px solid var(--border);
+}
+.token-row .hex{ font-family:var(--font-mono); font-size:11px; color:var(--muted-foreground); text-align:right; }
+.scale-demo{ padding:26px 28px; display:grid; gap:14px; }
+.scale-demo .row{ display:grid; grid-template-columns:120px 1fr; gap:18px; align-items:baseline; }
+.scale-demo .row small{ font-family:var(--font-mono); font-size:11px; color:var(--muted-foreground); }
+.t-display{ font-size:30px; font-weight:800; letter-spacing:-.4px; }
+.t-h1{ font-size:24px; font-weight:800; }
+.t-h2{ font-size:18px; font-weight:700; }
+.t-body{ font-size:15px; }
+.t-cap{ font-size:12.5px; color:var(--muted-foreground); }
+.space-bars{ padding:26px 28px; display:grid; gap:12px; }
+.space-bars .row{ display:flex; align-items:center; gap:14px; }
+.space-bars i{ display:block; height:10px; border-radius:5px; background:linear-gradient(90deg, var(--glow-a), var(--glow-b)); opacity:.75; }
+.space-bars span{ font-family:var(--font-mono); font-size:11px; color:var(--muted-foreground); width:130px; }
+.radius-set{ display:flex; gap:18px; padding:26px 28px; align-items:flex-end; flex-wrap:wrap; }
+.radius-set figure{ display:grid; gap:8px; justify-items:center; }
+.radius-set .box{ width:74px; height:74px; background:var(--accent); border:1.5px solid var(--primary); }
+.radius-set figcaption{ font-family:var(--font-mono); font-size:11px; color:var(--muted-foreground); }
+
+/* ---------- 6. 组件 ---------- */
+.comp-wrap{ padding:28px; display:grid; gap:26px; }
+.comp-row{ display:grid; gap:12px; }
+.comp-row > h4{ font-size:12px; font-weight:700; letter-spacing:1.5px; color:var(--muted-foreground); text-transform:uppercase; }
+.comp-flex{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+
+/* 按钮（对应 shadcn Button variants）*/
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  height:38px; padding:0 18px; border-radius:10px; border:none; cursor:pointer;
+  font-size:14px; font-weight:600; font-family:inherit; line-height:1; white-space:nowrap;
+  transition:all var(--dur-1) var(--ease); user-select:none; text-decoration:none;
+}
+.btn:focus-visible{ outline:2px solid var(--ring); outline-offset:2px; }
+.btn:active{ transform:translateY(1px) scale(.99); }
+.btn:disabled{ opacity:.5; cursor:not-allowed; pointer-events:none; }
+.btn-primary{ background:var(--primary); color:var(--primary-foreground); box-shadow:var(--shadow-sm); }
+.btn-primary:hover:not(:disabled){ filter:brightness(1.06); box-shadow:var(--shadow-md); transform:translateY(-1px); }
+.btn-secondary{ background:var(--secondary); color:var(--secondary-foreground); }
+.btn-secondary:hover:not(:disabled){ background:var(--accent); color:var(--accent-foreground); }
+.btn-outline{ background:transparent; border:1px solid var(--border); color:var(--foreground); }
+.btn-outline:hover:not(:disabled){ background:var(--secondary); }
+.btn-ghost{ background:transparent; color:var(--foreground); }
+.btn-ghost:hover:not(:disabled){ background:var(--secondary); }
+.btn-destructive{ background:var(--destructive); color:var(--destructive-foreground); }
+.btn-destructive:hover:not(:disabled){ filter:brightness(1.08); }
+.btn-sm{ height:31px; padding:0 12px; font-size:12.5px; border-radius:8px; }
+.btn-lg{ height:44px; padding:0 24px; font-size:15px; border-radius:12px; }
+.btn-icon{ width:38px; padding:0; }
+.btn-icon.btn-sm{ width:31px; }
+.btn .spin{
+  width:14px; height:14px; border-radius:50%; border:2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color:currentColor; animation:spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+/* 输入 */
+.input{
+  height:38px; padding:0 13px; border-radius:10px; border:1px solid var(--input);
+  background:var(--background); color:var(--foreground); font-size:14px; font-family:inherit;
+  transition:all var(--dur-1) var(--ease); width:100%;
+}
+.input::placeholder{ color:var(--muted-foreground); }
+.input:focus{ outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent); }
+.input:disabled{ opacity:.55; cursor:not-allowed; background:var(--muted); }
+.input.err{ border-color:var(--destructive); }
+.field-err{ font-size:12px; color:var(--destructive); margin-top:5px; }
+
+/* 徽标 / 标签 */
+.badge{
+  display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px;
+  border-radius:999px; font-size:11.5px; font-weight:600; line-height:1;
+}
+.badge-doc{ background:var(--accent); color:var(--accent-foreground); }
+.badge-board{ background:var(--secondary); color:var(--secondary-foreground); border:1px solid var(--border); }
+.badge-solid{ background:var(--primary); color:var(--primary-foreground); }
+.badge-dot::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--primary); }
+
+/* 标签页 */
+.tabs{ display:flex; gap:2px; border-bottom:1px solid var(--border); }
+.tab{
+  padding:9px 15px; font-size:13.5px; color:var(--muted-foreground); cursor:pointer;
+  border-bottom:2px solid transparent; margin-bottom:-1px; transition:all var(--dur-1) var(--ease);
+}
+.tab:hover{ color:var(--foreground); }
+.tab.on{ color:var(--primary); font-weight:650; border-bottom-color:var(--primary); }
+
+/* 开关 */
+.switch{
+  width:42px; height:24px; border-radius:999px; background:var(--input); border:none; cursor:pointer;
+  position:relative; transition:background var(--dur-2) var(--ease);
+}
+.switch::after{
+  content:""; position:absolute; top:2.5px; left:2.5px; width:19px; height:19px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 3px rgb(0 0 0 / .25); transition:left var(--dur-2) var(--ease);
+}
+.switch.on{ background:var(--primary); }
+.switch.on::after{ left:20.5px; }
+
+/* 进度 */
+.progress{ height:7px; border-radius:99px; background:var(--muted); overflow:hidden; }
+.progress i{
+  display:block; height:100%; border-radius:99px; width:0;
+  background:linear-gradient(90deg, var(--glow-a), var(--glow-b));
+  transition:width 1.1s var(--ease);
+}
+
+/* kbd / tooltip / toast */
+.kbd{
+  display:inline-flex; align-items:center; height:22px; padding:0 7px;
+  border:1px solid var(--border); border-bottom-width:2px; border-radius:6px;
+  background:var(--card); font-family:var(--font-mono); font-size:11px; color:var(--muted-foreground);
+}
+.toast{
+  display:flex; align-items:center; gap:10px; padding:11px 16px;
+  background:var(--popover); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow-lg); font-size:13.5px; width:fit-content;
+}
+.toast .tick{ width:20px; height:20px; border-radius:50%; background:var(--primary); color:var(--primary-foreground); display:grid; place-items:center; font-size:11px; flex:none; }
+
+/* 侧栏树 */
+.tree{ display:grid; gap:2px; font-size:13.5px; min-width:230px; }
+.tree-item{
+  display:flex; align-items:center; gap:8px; padding:7px 11px; border-radius:9px;
+  color:var(--sidebar-foreground); cursor:pointer; transition:background var(--dur-1) var(--ease);
+}
+.tree-item:hover{ background:var(--secondary); }
+.tree-item.on{ background:var(--sidebar-active); color:var(--sidebar-active-fg); font-weight:600; }
+.tree-item .ico{ width:16px; text-align:center; flex:none; opacity:.85; }
+.tree-item.l1{ padding-left:26px; }
+.tree-item .t-muted{ color:var(--muted-foreground); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* 空状态 */
+.empty-state{ display:grid; justify-items:center; gap:6px; padding:44px 20px; text-align:center; }
+.empty-state .glyph{ font-size:34px; opacity:.4; margin-bottom:6px; }
+.empty-state b{ font-size:15.5px; }
+.empty-state p{ font-size:13px; color:var(--muted-foreground); }
+
+/* 表格 */
+.table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+.table th{ text-align:left; font-weight:600; color:var(--muted-foreground); font-size:12px; padding:8px 12px; border-bottom:1px solid var(--border); }
+.table td{ padding:11px 12px; border-bottom:1px solid var(--border); }
+.table tr:last-child td{ border-bottom:none; }
+.table tr.hl td{ background:var(--accent); }
+
+/* ---------- 7. 界面 Mockup ---------- */
+.shot{ display:grid; gap:10px; }
+.shot > .shot-title{ display:flex; align-items:baseline; gap:10px; padding:0 4px; }
+.shot > .shot-title b{ font-size:14.5px; }
+.shot > .shot-title span{ font-size:12px; color:var(--muted-foreground); }
+.frame{
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow-md); overflow:hidden; position:relative;
+  display:flex; flex-direction:column;
+}
+.frame-bar{
+  display:flex; align-items:center; gap:6px; padding:9px 12px;
+  border-bottom:1px solid var(--border); background:var(--sidebar); flex:none;
+}
+.frame-bar .dot{ width:9px; height:9px; border-radius:50%; }
+.frame-bar .r{ background:#FF5F57; } .frame-bar .y{ background:#FEBC2E; } .frame-bar .g{ background:#28C840; }
+.frame-bar .title{
+  flex:1; text-align:center; font-size:11px; color:var(--muted-foreground);
+  letter-spacing:.5px; margin:0 40px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+}
+.frame-body{ position:relative; flex:1; min-height:0; overflow:hidden; display:flex; }
+
+/* —— mockup 内部通用（小字号 UI）—— */
+.mk{ font-size:10px; line-height:1.5; width:100%; display:flex; min-height:0; }
+.mk *{ min-width:0; }
+/* 左侧栏 */
+.mk-side{
+  width:118px; flex:none; background:var(--sidebar); border-right:1px solid var(--border);
+  padding:9px 7px; display:flex; flex-direction:column; gap:6px;
+}
+.mk-logo{ display:flex; align-items:center; gap:5px; font-weight:800; font-size:11px; padding:2px 4px 4px; }
+.mk-quick{ display:grid; grid-template-columns:repeat(3,1fr); gap:2px; margin-bottom:4px; }
+.mk-quick div{
+  display:grid; justify-items:center; gap:1px; padding:5px 2px; border-radius:7px;
+  color:var(--sidebar-muted); font-size:8px; text-align:center;
+}
+.mk-quick div:hover{ background:var(--secondary); }
+.mk-quick .qi{ font-size:11px; line-height:1; }
+.mk-tree{ display:grid; gap:1.5px; align-content:start; }
+.mk-ti{
+  display:flex; align-items:center; gap:4px; padding:3.5px 6px; border-radius:6px;
+  color:var(--sidebar-foreground); overflow:hidden; white-space:nowrap;
+}
+.mk-ti .ic{ flex:none; font-size:8.5px; opacity:.8; width:10px; text-align:center; }
+.mk-ti span{ overflow:hidden; text-overflow:ellipsis; }
+.mk-ti.l1{ padding-left:14px; font-size:9px; }
+.mk-ti.on{ background:var(--sidebar-active); color:var(--sidebar-active-fg); font-weight:600; }
+.mk-side .more{ margin-top:auto; display:flex; align-items:center; justify-content:space-between; padding:5px 6px; color:var(--sidebar-muted); font-size:9px; border-top:1px dashed var(--border); }
+/* 主区通用 */
+.mk-main{ flex:1; display:flex; flex-direction:column; min-width:0; background:var(--background); }
+.mk-tabbar{
+  display:flex; align-items:center; gap:2px; padding:6px 8px; border-bottom:1px solid var(--border); flex:none;
+}
+.mk-tab{
+  display:flex; align-items:center; gap:4px; padding:3.5px 8px; border-radius:6px;
+  font-size:9px; color:var(--muted-foreground); max-width:92px;
+}
+.mk-tab span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mk-tab.on{ background:var(--accent); color:var(--accent-foreground); font-weight:600; }
+.mk-tab .x{ opacity:.5; font-size:8px; }
+.mk-add{ width:16px; height:16px; display:grid; place-items:center; border-radius:5px; color:var(--muted-foreground); font-size:10px; }
+/* 顶栏 */
+.mk-toolbar{
+  display:flex; align-items:center; gap:6px; padding:6px 12px; flex:none; font-size:9px; color:var(--muted-foreground);
+}
+.mk-toolbar .grow{ flex:1; }
+.mk-toolbar .pill{ display:flex; align-items:center; gap:3px; }
+/* 文档排版 */
+.mk-doc{ flex:1; padding:10px 26px; overflow:hidden; position:relative; }
+.mk-badge{
+  display:inline-flex; padding:2px 7px; border-radius:5px; font-size:8px; font-weight:700;
+  background:var(--accent); color:var(--accent-foreground); margin-bottom:6px;
+}
+.mk-h0{ font-size:19px; font-weight:800; letter-spacing:.3px; margin-bottom:3px; }
+.mk-meta{ font-size:8.5px; color:var(--muted-foreground); margin-bottom:12px; }
+.mk-h1{ font-size:14px; font-weight:800; margin:6px 0 7px; display:flex; align-items:center; gap:5px; }
+.mk-h1 .hnd{ color:var(--muted-foreground); font-weight:400; font-size:9px; }
+.mk-code{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  background:var(--muted); border:1px solid var(--border); border-radius:8px;
+  padding:7px 9px; font-family:var(--font-mono); font-size:9px; color:var(--foreground); margin-bottom:8px;
+}
+.mk-code .lang{
+  font-size:8px; padding:1.5px 7px; border:1px solid var(--border); border-radius:5px;
+  background:var(--card); color:var(--muted-foreground); flex:none;
+}
+.mk-quote{
+  border-left:3px solid var(--primary); background:var(--accent); border-radius:0 7px 7px 0;
+  padding:6px 10px; color:var(--accent-foreground); font-size:9.5px; width:fit-content; min-width:40px;
+}
+.mk-caret{ font-size:9.5px; color:var(--muted-foreground); font-style:italic; margin-top:9px; }
+.mk-caret::after{ content:""; display:inline-block; width:1px; height:10px; background:var(--foreground); margin-left:2px; vertical-align:-1px; }
+/* 右侧信息面板 */
+.mk-info{
+  width:118px; flex:none; border-left:1px solid var(--border); background:var(--card);
+  padding:9px 10px; display:flex; flex-direction:column; gap:7px;
+}
+.mk-info .seg{ display:flex; background:var(--muted); border-radius:7px; padding:2px; gap:2px; }
+.mk-info .seg i{ flex:1; text-align:center; font-style:normal; font-size:8.5px; padding:3px 0; border-radius:5px; color:var(--muted-foreground); }
+.mk-info .seg i.on{ background:var(--card); color:var(--foreground); font-weight:650; box-shadow:var(--shadow-sm); }
+.mk-kv{ display:flex; justify-content:space-between; gap:6px; font-size:8.5px; padding:2.5px 0; }
+.mk-kv b{ font-weight:600; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:66px; }
+.mk-kv span{ color:var(--muted-foreground); flex:none; }
+.mk-info .foot{ margin-top:auto; display:flex; align-items:center; gap:4px; font-size:8.5px; color:var(--muted-foreground); border-top:1px solid var(--border); padding-top:7px; }
+.mk-info .foot i{ width:7px; height:7px; border-radius:50%; background:var(--primary); }
+/* 画板 */
+.mk-board{ flex:1; position:relative; background:
+  radial-gradient(color-mix(in srgb, var(--muted-foreground) 22%, transparent) .8px, transparent .8px);
+  background-size:14px 14px; }
+.mk-tools{
+  position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:1px; background:var(--popover); border:1px solid var(--border);
+  border-radius:9px; padding:3px; box-shadow:var(--shadow-md);
+}
+.mk-tools i{
+  width:17px; height:17px; display:grid; place-items:center; border-radius:5px;
+  font-style:normal; font-size:9px; color:var(--muted-foreground);
+}
+.mk-tools i.on{ background:var(--accent); color:var(--accent-foreground); }
+.mk-prop{
+  position:absolute; top:32px; left:8px; width:86px; background:var(--popover);
+  border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:8px;
+  display:grid; gap:6px;
+}
+.mk-prop h5{ font-size:8px; color:var(--muted-foreground); font-weight:600; }
+.mk-sw-row{ display:flex; gap:3px; }
+.mk-sw{ width:11px; height:11px; border-radius:3.5px; border:1.5px solid var(--border); }
+.mk-sw.on{ outline:1.5px solid var(--primary); outline-offset:1px; }
+.mk-slider{ height:3px; border-radius:2px; background:var(--muted); position:relative; }
+.mk-slider i{ position:absolute; left:0; top:0; bottom:0; width:62%; border-radius:2px; background:var(--primary); }
+.mk-slider em{ position:absolute; left:62%; top:50%; transform:translate(-50%,-50%); width:8px; height:8px; border-radius:50%; background:var(--popover); border:2px solid var(--primary); }
+/* 组件库面板（画板右） */
+.mk-lib{
+  position:absolute; top:32px; right:8px; width:104px; bottom:8px;
+  background:var(--popover); border:1px solid var(--border); border-radius:9px;
+  box-shadow:var(--shadow-md); padding:7px; display:flex; flex-direction:column; gap:5px;
+}
+.mk-lib .head{ display:flex; justify-content:space-between; font-size:8.5px; font-weight:700; }
+.mk-lib .head i{ font-style:normal; color:var(--muted-foreground); }
+.mk-lib .chips{ display:flex; flex-wrap:wrap; gap:3px; }
+.mk-lib .chips i{ font-style:normal; font-size:7.5px; padding:2px 5px; border-radius:99px; background:var(--secondary); color:var(--secondary-foreground); }
+.mk-lib .chips i.on{ background:var(--accent); color:var(--accent-foreground); font-weight:600; }
+.mk-lib .cards{ display:grid; grid-template-columns:1fr 1fr; gap:4px; overflow:hidden; }
+.mk-lib .pcard{ border:1px solid var(--border); border-radius:6px; display:grid; place-items:center; height:26px; font-size:7.5px; color:var(--muted-foreground); background:var(--card); }
+.mk-lib .pcard.dark{ background:var(--foreground); color:var(--background); border-color:var(--foreground); }
+/* 弹窗层 */
+.mk-dim{ position:absolute; inset:0; background:color-mix(in srgb, var(--foreground) 32%, transparent); display:grid; place-items:center; backdrop-filter:blur(1.5px); z-index:5; }
+.mk-dialog{
+  background:var(--popover); border:1px solid var(--border); border-radius:12px;
+  box-shadow:var(--shadow-lg); padding:12px 13px; width:78%; max-width:230px; position:relative;
+}
+.mk-dialog h4{ font-size:11px; font-weight:800; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.mk-dialog h4 i{ font-style:normal; color:var(--muted-foreground); font-weight:400; }
+.mk-dialog .lbl{ font-size:9px; font-weight:600; margin:7px 0 3px; }
+.mk-in{
+  height:21px; border:1px solid var(--input); border-radius:6px; background:var(--background);
+  display:flex; align-items:center; padding:0 7px; font-size:8.5px; color:var(--muted-foreground);
+}
+.mk-btn{
+  display:inline-flex; align-items:center; justify-content:center; height:22px; padding:0 10px;
+  border-radius:6px; font-size:9px; font-weight:650;
+}
+.mk-btn.p{ background:var(--primary); color:var(--primary-foreground); }
+.mk-btn.s{ background:var(--secondary); color:var(--secondary-foreground); }
+.mk-btn.o{ border:1px solid var(--border); color:var(--foreground); background:var(--card); }
+.mk-btn.pale{ background:color-mix(in srgb, var(--primary) 45%, var(--card)); color:var(--card); }
+.mk-actions{ display:flex; justify-content:flex-end; gap:6px; margin-top:11px; }
+/* 设置弹窗 */
+.mk-set{ display:flex; gap:10px; }
+.mk-set .nav{ width:62px; flex:none; display:grid; gap:2px; align-content:start; }
+.mk-set .nav i{
+  font-style:normal; font-size:9px; padding:4px 8px; border-radius:6px; color:var(--muted-foreground);
+}
+.mk-set .nav i.on{ background:var(--accent); color:var(--accent-foreground); font-weight:650; }
+.mk-set .body{ flex:1; min-width:0; }
+.mk-appear{ display:flex; gap:7px; }
+.mk-appear .opt{
+  flex:1; border:1px solid var(--border); border-radius:9px; overflow:hidden; position:relative; background:var(--card);
+}
+.mk-appear .opt.on{ border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+.mk-appear .prev{ height:36px; margin:5px 5px 3px; border-radius:6px; }
+.mk-appear .prev.l{ background:var(--card); border:1px solid var(--border); }
+.mk-appear .prev.l i{ display:block; height:4px; margin:5px 6px 0; border-radius:3px; background:var(--glow-a); width:55%; }
+.mk-appear .prev.l i + i{ background:var(--muted-foreground); opacity:.35; width:80%; }
+.mk-appear .prev.d{ background:#26221E; border:1px solid #26221E; }
+.mk-appear .prev.d i{ display:block; height:4px; margin:5px 6px 0; border-radius:3px; background:var(--glow-a); width:55%; }
+.mk-appear .prev.d i + i{ background:#8a7f73; opacity:.6; width:80%; }
+.mk-appear .nm{ display:flex; align-items:center; gap:3px; font-size:8.5px; padding:4px 6px 6px; color:var(--foreground); }
+.mk-appear .nm .ck{ margin-left:auto; color:var(--primary); font-weight:800; }
+/* 快捷键行 */
+.mk-kb{ display:flex; align-items:center; justify-content:space-between; padding:4.5px 0; border-bottom:1px dashed var(--border); font-size:9px; }
+.mk-kb:last-child{ border-bottom:none; }
+.mk-kbd{ font-family:var(--font-mono); font-size:7.5px; padding:1.5px 5px; border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; background:var(--card); color:var(--muted-foreground); }
+/* 存储条 */
+.mk-store-row{ display:grid; grid-template-columns:64px 1fr 34px; align-items:center; gap:6px; font-size:8.5px; margin-bottom:5px; white-space:nowrap; }
+.mk-store-row .bar{ height:4px; border-radius:3px; background:var(--muted); overflow:hidden; }
+.mk-store-row .bar i{ display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,var(--glow-a),var(--glow-b)); }
+.mk-store-row .v{ text-align:right; color:var(--muted-foreground); font-family:var(--font-mono); font-size:7.5px; }
+/* 启动页 */
+.mk-splash{ flex:1; display:grid; place-items:center; background:
+  radial-gradient(ellipse 60% 45% at 50% 40%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 70%),
+  var(--background); }
+.mk-splash .inner{ display:grid; justify-items:center; gap:5px; text-align:center; }
+.mk-splash .nm{ font-size:15px; font-weight:800; margin-top:4px; }
+.mk-splash .nm small{ font-weight:600; color:var(--muted-foreground); font-size:11px; margin-left:3px; }
+.mk-splash .sl{ font-size:8.5px; color:var(--muted-foreground); letter-spacing:2px; }
+.mk-splash .prog{ width:120px; height:3px; border-radius:3px; background:var(--muted); margin-top:10px; overflow:hidden; }
+.mk-splash .prog i{ display:block; height:100%; width:95%; border-radius:3px; background:linear-gradient(90deg,var(--glow-a),var(--glow-b)); }
+.mk-splash .st{ display:flex; justify-content:space-between; width:120px; font-size:7.5px; color:var(--muted-foreground); margin-top:3px; }
+/* slash 菜单 */
+.mk-slash{
+  position:absolute; left:36px; top:46px; width:150px; background:var(--popover);
+  border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow-lg);
+  padding:5px; display:grid; gap:1px; z-index:6;
+}
+.mk-slash .cap{ font-size:7.5px; color:var(--muted-foreground); padding:3px 6px; }
+.mk-slash .it{ display:flex; align-items:center; gap:6px; padding:4.5px 6px; border-radius:6px; font-size:9px; }
+.mk-slash .it.on{ background:var(--accent); }
+.mk-slash .it .b{ width:16px; height:16px; border-radius:4px; background:var(--secondary); display:grid; place-items:center; font-size:8px; color:var(--muted-foreground); flex:none; font-weight:700; }
+/* 更多菜单（左侧弹出） */
+.mk-more{
+  position:absolute; left:8px; bottom:8px; width:150px; background:var(--popover);
+  border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow-lg); padding:5px; display:grid; gap:1px; z-index:6;
+}
+.mk-more .it{ display:flex; align-items:center; gap:6px; padding:5px 7px; border-radius:6px; font-size:9px; }
+.mk-more .it:hover{ background:var(--secondary); }
+.mk-more .it .ic{ width:12px; text-align:center; opacity:.75; }
+.mk-more .it small{ color:var(--muted-foreground); font-size:7.5px; margin-left:auto; }
+.mk-more .sep{ height:1px; background:var(--border); margin:3px 4px; }
+/* 头像色点 */
+.mk-avatars{ display:flex; gap:5px; }
+.mk-avatars i{ width:16px; height:16px; border-radius:50%; border:2px solid var(--popover); }
+.mk-avatars i.on{ outline:1.5px solid var(--primary); outline-offset:1.5px; }
+
+/* ---------- 8. 主题画廊 ---------- */
+.gal-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+.gal-card{
+  border:1.5px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; cursor:pointer;
+  background:var(--card); transition:all var(--dur-2) var(--ease); position:relative;
+}
+.gal-card:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); }
+.gal-card.on{ border-color:var(--primary); box-shadow:0 0 0 1px var(--primary), var(--shadow-md); }
+.gal-card.on::after{
+  content:"✓ 使用中"; position:absolute; top:10px; right:10px; font-size:10px; font-weight:700;
+  background:var(--primary); color:var(--primary-foreground); border-radius:99px; padding:2px 8px; z-index:3;
+}
+.gal-preview{ height:108px; position:relative; }
+.gal-meta{ padding:11px 13px 13px; }
+.gal-meta b{ font-size:14px; display:block; }
+.gal-meta span{ font-size:11.5px; color:var(--muted-foreground); }
+.gal-colors{ display:flex; gap:5px; margin-top:8px; }
+.gal-colors i{ width:14px; height:14px; border-radius:50%; border:1px solid rgb(0 0 0 / .08); }
+/* mini 预览（内联变量，不随全局主题） */
+.mini{
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  font-family:var(--font-ui);
+}
+.mini .bar{ height:16px; display:flex; align-items:center; gap:3px; padding:0 7px; flex:none; }
+.mini .bar i{ width:5px; height:5px; border-radius:50%; background:#FF5F57; }
+.mini .bar i + i{ background:#FEBC2E; } .mini .bar i + i + i{ background:#28C840; }
+.mini .cols{ flex:1; display:flex; min-height:0; }
+.mini .side{ width:34%; padding:6px 5px; display:grid; gap:3px; align-content:start; }
+.mini .side i{ display:block; height:5px; border-radius:3px; }
+.mini .side i.f{ width:60%; opacity:.5; }
+.mini .side i.on{ width:80%; }
+.mini .main{ flex:1; padding:8px 9px; display:grid; gap:4px; align-content:start; }
+.mini .main i{ display:block; height:5px; border-radius:3px; }
+.mini .main i.t{ height:8px; width:55%; }
+.mini .main i.b{ height:14px; width:38%; border-radius:5px; margin-top:3px; }
+
+/* ---------- 9. 指南 / 代码 ---------- */
+.guide-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+.code-block{
+  background:var(--sidebar); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 18px; font-family:var(--font-mono); font-size:11.5px; line-height:1.75;
+  overflow-x:auto; color:var(--foreground); white-space:pre;
+}
+.code-block .c{ color:var(--muted-foreground); }
+.code-block .k{ color:var(--primary); font-weight:600; }
+.code-block .v{ color:var(--accent-foreground); }
+.rule-list{ display:grid; gap:10px; padding:22px 24px; }
+.rule{ display:grid; grid-template-columns:20px 1fr; gap:10px; font-size:13.5px; align-items:start; }
+.rule i{ font-style:normal; font-weight:800; width:20px; height:20px; border-radius:6px; display:grid; place-items:center; font-size:11px; margin-top:2px; }
+.rule.ok i{ background:var(--accent); color:var(--accent-foreground); }
+.rule.no i{ background:color-mix(in srgb, var(--destructive) 14%, var(--card)); color:var(--destructive); }
+.rule small{ display:block; color:var(--muted-foreground); font-size:12px; }
+
+footer{
+  max-width:1180px; margin:70px auto 0; padding:26px 32px 42px;
+  border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;
+  color:var(--muted-foreground); font-size:12.5px; flex-wrap:wrap; gap:10px;
+}
+
+/* 动效 */
+@keyframes rise{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
+.sec, .hero{ animation:rise .55s var(--ease) both; }
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; }
+}
+@media (max-width: 980px){
+  .hero{ grid-template-columns:1fr; padding-top:110px; }
+  .brand-grid, .guide-grid{ grid-template-columns:1fr; }
+  .gal-grid{ grid-template-columns:repeat(2,1fr); }
+  .ds-nav nav{ display:none; }
+}
+</style>
+</head>
+<body>
+<!-- ============ 顶部导航 ============ -->
+<header class="ds-nav">
+  <div class="brand-lockup">
+    <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/>
+      <path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/>
+      <rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/>
+      <rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/>
+    </svg>
+    星屿 <small>STARRIS · DESIGN SYSTEM v1.0</small>
+  </div>
+  <nav id="dsNav">
+    <a href="#brand" class="on">品牌</a>
+    <a href="#color">色彩</a>
+    <a href="#layout">布局</a>
+    <a href="#component">组件</a>
+    <a href="#theme">主题</a>
+    <a href="#guide">接入</a>
+  </nav>
+  <div class="theme-dots" id="themeDots" title="切换主题预设">
+    <span class="tdot on" data-t="sunset"  style="background:#E8722A"></span>
+    <span class="tdot" data-t="azure"    style="background:#1E76D2"></span>
+    <span class="tdot" data-t="midnight" style="background:#5661D6"></span>
+    <span class="tdot" data-t="amber"    style="background:#BE8412"></span>
+    <span class="tdot" data-t="forest"   style="background:#2C855A"></span>
+    <span class="tdot" data-t="rose"     style="background:#DD4A62"></span>
+    <span class="tdot" data-t="violet"   style="background:#7A55E0"></span>
+    <span class="tdot" data-t="graphite" style="background:#3D4249"></span>
+    <button class="mode-toggle" id="modeToggle" title="切换浅色 / 深色">☀</button>
+  </div>
+</header>
+
+<!-- ============ Hero ============ -->
+<section class="hero">
+  <div>
+    <div class="h-kicker">KNOWLEDGE, SHAPED LIKE ISLANDS</div>
+    <h1>知识如星，<br>聚而成<em>屿</em>。</h1>
+    <p class="slogan">星屿 Starris —— 桌面端知识库。文档 · 画板 · 流程图，聚合成你的第二大脑。</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary btn-lg">＋ 新建文档</button>
+      <button class="btn btn-outline btn-lg">浏览设计规范</button>
+      <span style="display:inline-flex;align-items:center;gap:8px;color:var(--muted-foreground);font-size:13px;">
+        <span class="kbd">⌘K</span> 快速跳转
+      </span>
+    </div>
+    <div class="hero-meta">
+      <div><span>Tech Stack</span><b>TypeScript · Tauri · Tailwind · shadcn/ui</b></div>
+      <div><span>Themes</span><b>8 预设 × 深浅双模式</b></div>
+      <div><span>Radius</span><b>12px 基准 · 圆润有机</b></div>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <svg width="190" height="190" viewBox="0 0 64 64" aria-label="星屿品牌标志">
+      <circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/>
+      <path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/>
+      <rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/>
+      <rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ============ 品牌 ============ -->
+<section class="sec" id="brand">
+  <div class="sec-head">
+    <span class="kicker">Brand Identity</span>
+    <h2>品牌图标 —— 一颗星，落成一座屿</h2>
+    <p>标志由三个部件构成：金色的星（三角形）、主岛（大圆角体）与伴屿（深色小块），外加一颗远星（圆点）。
+       造型全部采用大圆角有机形态，呼应「知识聚合而成岛屿」的品牌隐喻。颜色绑定主题令牌，随 8 套预设联动。</p>
+  </div>
+  <div class="panel-grid">
+    <div class="brand-grid">
+      <div class="panel">
+        <div class="logo-stage" style="min-height:300px;">
+          <span class="tag">构成解析 · 64×64 网格</span>
+          <svg width="170" height="170" viewBox="0 0 64 64">
+            <circle cx="12" cy="13" r="3.2" fill="var(--logo-c)" opacity=".45"/>
+            <path d="M33 9 L45 29 L21 29 Z" fill="none" stroke="var(--logo-c)" stroke-width="1" stroke-dasharray="3 2.5"/>
+            <circle cx="26" cy="42" r="17" fill="none" stroke="var(--primary)" stroke-width=".7" stroke-dasharray="2.5 2.5" opacity=".6"/>
+            <circle cx="45.5" cy="43" r="9.5" fill="none" stroke="var(--logo-b)" stroke-width=".7" stroke-dasharray="2.5 2.5" opacity=".6"/>
+            <path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/>
+            <rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/>
+            <rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/>
+          </svg>
+        </div>
+        <div class="note">虚线为各部件的几何中心参考线。星以 <b>7px 圆角描边</b> 软化尖角；主岛 <b>rx≈10.5 / -5°</b>，伴屿 <b>rx≈6.5 / +6°</b>，倾斜制造漂浮感。</div>
+      </div>
+      <div class="panel">
+        <div class="logo-stage">
+          <span class="tag">部件拆解</span>
+          <div class="anatomy" style="padding:0;">
+            <figure>
+              <svg width="56" height="56" viewBox="10 4 44 30"><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/></svg>
+              <figcaption><b>星 · Star</b>知识原子，金色点亮</figcaption>
+            </figure>
+            <figure>
+              <svg width="56" height="56" viewBox="8 28 36 30"><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/></svg>
+              <figcaption><b>主岛 · Isle</b>主题色 primary</figcaption>
+            </figure>
+            <figure>
+              <svg width="56" height="56" viewBox="34 32 24 24"><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>
+              <figcaption><b>伴屿 · Companion</b>primary 加深 25%</figcaption>
+            </figure>
+          </div>
+        </div>
+        <div class="note">伴屿颜色由 <b>color-mix(primary, black 25%)</b> 派生，无需为每套主题单独维护；星色 --logo-c 是唯一独立品牌辅色。</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="logo-row">
+        <div class="logo-size"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg><span>64px</span></div>
+        <div class="logo-size"><svg width="48" height="48" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg><span>48px</span></div>
+        <div class="logo-size"><svg width="32" height="32" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg><span>32px</span></div>
+        <div class="logo-size"><svg width="24" height="24" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg><span>24px</span></div>
+        <div class="logo-size"><svg width="16" height="16" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg><span>16px favicon</span></div>
+        <div class="logo-size">
+          <svg width="52" height="52" viewBox="0 0 64 64" style="border-radius:14px; box-shadow:var(--shadow-md);">
+            <rect width="64" height="64" fill="var(--primary)"/>
+            <circle cx="12" cy="13" r="3.2" fill="#fff" opacity=".92"/>
+            <path d="M33 9 L45 29 L21 29 Z" fill="#fff" stroke="#fff" stroke-width="7" stroke-linejoin="round" opacity=".92"/>
+            <rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--background)" transform="rotate(-5 26 42)"/>
+            <rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/>
+          </svg><span>应用图标</span>
+        </div>
+        <div class="logo-size">
+          <div style="width:52px;height:52px;border-radius:14px;background:var(--sidebar);display:grid;place-items:center;border:1px solid var(--border);">
+            <svg width="30" height="30" viewBox="0 0 64 64" style="filter:grayscale(1) opacity(.75);"><path d="M33 9 L45 29 L21 29 Z" fill="var(--foreground)" stroke="var(--foreground)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--foreground)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--muted-foreground)" transform="rotate(6 45 43)"/></svg>
+          </div><span>单色版</span>
+        </div>
+        <div class="logo-size">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <svg width="30" height="30" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>
+            <b style="font-size:16px;font-weight:800;letter-spacing:1px;">星屿 <i style="font-family:Georgia,serif;font-style:italic;font-weight:600;color:var(--primary);">Starris</i></b>
+          </div><span>横版锁定</span>
+        </div>
+      </div>
+      <div class="wordmark">
+        <span class="cn">星屿</span><span class="en">Starris</span>
+        <span class="sl">知 识 如 星 ，聚 而 成 屿</span>
+      </div>
+      <div class="note">最小使用尺寸 <b>16px</b>（favicon 下隐去远星更清晰）；应用图标用 primary 纯色底 + 反白星形；字标间距：中文 800 字重、英文 Georgia Italic 形成对比。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 色彩 ============ -->
+<section class="sec" id="color">
+  <div class="sec-head">
+    <span class="kicker">Color &amp; Tokens</span>
+    <h2>色彩令牌 —— shadcn/ui 语义命名</h2>
+    <p>全部颜色以 <b style="color:var(--accent-foreground)">CSS 变量</b> 组织，命名与 shadcn/ui 完全对齐（background / card / primary / muted / accent / sidebar…），
+       切换主题即切换变量组，Tailwind v4 通过 @theme inline 映射为 bg-background、text-primary 等工具类。下方所有色值实时跟随顶部主题切换。</p>
+  </div>
+  <div class="panel-grid" style="grid-template-columns:1.05fr .95fr;">
+    <div class="panel">
+      <div class="token-wrap" id="tokenList">
+        <div class="token-row"><span class="name">--primary</span><span class="chip-live" style="background:var(--primary)"></span><span class="hex">主色</span></div>
+        <div class="token-row"><span class="name">--primary-foreground</span><span class="chip-live" style="background:var(--primary-foreground)"></span><span class="hex">主色上文字</span></div>
+        <div class="token-row"><span class="name">--background</span><span class="chip-live" style="background:var(--background)"></span><span class="hex">画布</span></div>
+        <div class="token-row"><span class="name">--card</span><span class="chip-live" style="background:var(--card);"></span><span class="hex">卡片</span></div>
+        <div class="token-row"><span class="name">--sidebar</span><span class="chip-live" style="background:var(--sidebar)"></span><span class="hex">侧栏</span></div>
+        <div class="token-row"><span class="name">--sidebar-active</span><span class="chip-live" style="background:var(--sidebar-active)"></span><span class="hex">侧栏选中</span></div>
+        <div class="token-row"><span class="name">--accent</span><span class="chip-live" style="background:var(--accent)"></span><span class="hex">强调底</span></div>
+        <div class="token-row"><span class="name">--muted</span><span class="chip-live" style="background:var(--muted)"></span><span class="hex">弱底</span></div>
+        <div class="token-row"><span class="name">--secondary</span><span class="chip-live" style="background:var(--secondary)"></span><span class="hex">次级底</span></div>
+        <div class="token-row"><span class="name">--border / --input</span><span class="chip-live" style="background:var(--input)"></span><span class="hex">边框</span></div>
+        <div class="token-row"><span class="name">--destructive</span><span class="chip-live" style="background:var(--destructive)"></span><span class="hex">危险</span></div>
+        <div class="token-row"><span class="name">--logo-a / b / c</span><span class="chip-live" style="background:linear-gradient(90deg,var(--logo-a) 33%,var(--logo-b) 33% 66%,var(--logo-c) 66%)"></span><span class="hex">品牌</span></div>
+        <div class="token-row"><span class="name">--glow-a → b</span><span class="chip-live" style="background:linear-gradient(90deg,var(--glow-a),var(--glow-b))"></span><span class="hex">进度渐变</span></div>
+      </div>
+      <div class="note">正文 --foreground 与 --primary 组合满足 <b>WCAG AA 4.5:1</b>；--muted-foreground 仅用于 12px 以上辅助文字；深色模式整体提亮主色约 8% 并压暗边框。</div>
+    </div>
+    <div class="panel-grid" style="grid-template-columns:1fr; gap:20px;">
+      <div class="panel">
+        <div class="scale-demo">
+          <div class="row"><small>display / 30px·800</small><span class="t-display">未命名文档</span></div>
+          <div class="row"><small>h1 / 24px·800</small><span class="t-h1">一级标题，可折叠</span></div>
+          <div class="row"><small>h2 / 18px·700</small><span class="t-h2">二级标题 · 小节</span></div>
+          <div class="row"><small>body / 15px·400</small><span class="t-body">正文 15px / 行高 1.7，中文界面以系统字体栈渲染，代码块使用等宽字体。</span></div>
+          <div class="row"><small>caption / 12.5px</small><span class="t-cap">18 字 · 最近编辑 2026-10-15 16:32</span></div>
+        </div>
+        <div class="note">中文排版：标题用 <b>-0.3px letter-spacing</b> 收紧，slogan 类短句放宽到 2–4px。</div>
+      </div>
+      <div class="panel">
+        <div class="space-bars">
+          <div class="row"><span>space-1 · 4px</span><i style="width:4px"></i></div>
+          <div class="row"><span>space-2 · 8px</span><i style="width:8px"></i></div>
+          <div class="row"><span>space-3 · 12px</span><i style="width:12px"></i></div>
+          <div class="row"><span>space-4 · 16px</span><i style="width:16px"></i></div>
+          <div class="row"><span>space-6 · 24px</span><i style="width:24px"></i></div>
+          <div class="row"><span>space-8 · 32px</span><i style="width:32px"></i></div>
+        </div>
+        <div class="radius-set">
+          <figure><div class="box" style="border-radius:8px;"></div><figcaption>--radius-sm 8</figcaption></figure>
+          <figure><div class="box" style="border-radius:12px;"></div><figcaption>--radius 12</figcaption></figure>
+          <figure><div class="box" style="border-radius:16px;"></div><figcaption>--radius-lg 16</figcaption></figure>
+          <figure><div class="box" style="border-radius:999px;"></div><figcaption>pill 999</figcaption></figure>
+        </div>
+        <div class="note">间距 4px 基数；弹窗与窗口圆角 12–16px，控件 8–10px，营造参考稿的<b>圆润有机感</b>。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 布局 ============ -->
+<section class="sec" id="layout">
+  <div class="sec-head">
+    <span class="kicker">Layout &amp; Screens</span>
+    <h2>布局系统 —— 13 个关键界面</h2>
+    <p>按参考稿复刻的高保真 mockup。整体骨架为「左侧栏 220px + 内容区 + 可选右面板 260px」三栏结构；
+       顶部为 macOS 窗口标题栏 + 标签页栏。所有 mockup 使用真实组件类渲染，跟随顶部主题实时换色。</p>
+  </div>
+  <div class="panel-grid" style="grid-template-columns:1fr 1fr;">
+
+    <!-- 1. 启动页 -->
+    <div class="shot">
+      <div class="shot-title"><b>① 启动页</b><span>品牌第一触点 · logo + 标语 + 初始化进度</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">星屿 Starris</span></div>
+        <div class="frame-body">
+          <div class="mk-splash">
+            <div class="inner">
+              <svg width="52" height="52" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>
+              <div class="nm">星屿 <small>Starris</small></div>
+              <div class="sl">知识如星，聚而成屿</div>
+              <div class="prog"><i></i></div>
+              <div class="st"><span>✦ 准备工作空间…</span><span>95%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 工作空间切换菜单 -->
+    <div class="shot">
+      <div class="shot-title"><b>② 工作空间切换</b><span>顶栏下拉 · 空间 / 知识库两级导航</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">山间工作室</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+              <div class="mk-tree">
+                <div class="mk-ti"><span class="ic">▸</span><span class="ic">▤</span><span>文件夹</span></div>
+                <div class="mk-ti l1"><span class="ic">▪</span><span>未命名文档</span></div>
+                <div class="mk-ti l1 on"><span class="ic">▪</span><span>未命名文档</span></div>
+              </div>
+              <div class="more"><span>⋯ 更多</span><span class="mk-kbd">⌘J</span></div>
+            </div>
+            <div class="mk-main"></div>
+          </div>
+          <!-- 下拉菜单 -->
+          <div class="mk-more" style="left:100px; top:6px; bottom:auto; width:170px;">
+            <div class="cap" style="font-size:7.5px;color:var(--muted-foreground);padding:2px 6px;">工作空间</div>
+            <div class="it" style="align-items:flex-start;">
+              <span style="width:18px;height:18px;border-radius:6px;background:var(--primary);color:var(--primary-foreground);display:grid;place-items:center;font-size:9px;flex:none;">山</span>
+              <span style="display:grid;line-height:1.4;"><b style="font-size:9px;">山间工作室</b><small style="color:var(--muted-foreground);font-family:var(--font-mono);font-size:7px;">/Users/jiahe/Downloads/1</small></span>
+            </div>
+            <div class="sep"></div>
+            <div class="cap" style="font-size:7.5px;color:var(--muted-foreground);padding:2px 6px;">知识库</div>
+            <div class="it on"><span style="width:8px;height:8px;border-radius:50%;background:var(--primary);"></span><b style="font-size:9px;">1</b><small>暂无描述</small></div>
+            <div class="sep"></div>
+            <div class="it"><span class="ic">▤</span><span>新建知识库</span></div>
+            <div class="it"><span class="ic">⚙</span><span>管理</span><small>工作空间 / 知识库</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 主界面 · 文档视图（全宽） -->
+    <div class="shot" style="grid-column:1/-1;">
+      <div class="shot-title"><b>③ 主工作区 · 文档视图</b><span>左栏导航 + 标签页 + 编辑器 + 右侧信息面板 · 已选中文档高亮</span></div>
+      <div class="frame" style="height:300px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名文档</span><span style="font-size:10px;color:var(--muted-foreground);">⌕</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+              <div class="mk-tree">
+                <div class="mk-ti"><span class="ic">▾</span><span class="ic">▤</span><span>文件夹</span></div>
+                <div class="mk-ti l1 on"><span class="ic">▪</span><span>未命名文档</span></div>
+                <div class="mk-ti l1"><span class="ic">▪</span><span>未命名文档</span></div>
+                <div class="mk-ti l1"><span class="ic">✎</span><span>未命名画板</span></div>
+                <div class="mk-ti l1"><span class="ic">✎</span><span>Mo Wang Da Ren…</span></div>
+                <div class="mk-ti l1"><span class="ic">✎</span><span>未命名画板</span></div>
+              </div>
+              <div class="more"><span>⋯ 更多</span><span class="mk-kbd">⌘J</span></div>
+            </div>
+            <div class="mk-main">
+              <div class="mk-tabbar">
+                <div class="mk-tab"><span>未命名画板</span><i class="x">✕</i></div>
+                <div class="mk-tab on"><span>未命名文档</span><i class="x">✕</i></div>
+                <div class="mk-add">＋</div>
+              </div>
+              <div class="mk-toolbar">
+                <span class="pill" style="color:var(--accent-foreground);background:var(--accent);border-radius:5px;padding:1.5px 7px;font-weight:700;">文档</span>
+                <span class="grow"></span>
+                <span class="pill">✓ 已自动保存</span><span>☆</span><span>☰</span><span style="color:var(--primary);">▮</span><span>⇪</span><span>⎙</span>
+              </div>
+              <div class="mk-doc">
+                <div class="mk-badge">文档</div>
+                <div class="mk-h0">未命名文档</div>
+                <div class="mk-meta">18 字 · 创建 2026-10-15 16:32 · 最近编辑 2026-10-15 16:32</div>
+                <div class="mk-h1"><span class="hnd">＋ ⠿</span>一级标题</div>
+                <div class="mk-code"><span style="color:var(--accent-foreground);">select * from a</span><span class="lang">SQL ▾</span></div>
+                <div class="mk-quote">引用</div>
+                <div class="mk-caret">输入 / 以使用命令</div>
+              </div>
+            </div>
+            <div class="mk-info">
+              <div class="seg"><i>⛓ 反链</i><i>✦ 相关</i><i class="on">ⓘ 信息</i></div>
+              <div class="mk-kv"><span>字数</span><b>18 字</b></div>
+              <div class="mk-kv"><span>创建时间</span><b>2026-10-15 16:32</b></div>
+              <div class="mk-kv"><span>最近更新</span><b>2026-10-15 16:32</b></div>
+              <div class="mk-kv"><span>所在知识库</span><b>111</b></div>
+              <div class="mk-kv"><span>存储位置</span><b>/Users/jiahe/Dow…</b></div>
+              <div class="mk-kv"><span>引用关系</span><b>0 条反链</b></div>
+              <div class="foot"><i></i>111 · 18 字</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 大纲面板 -->
+    <div class="shot">
+      <div class="shot-title"><b>④ 文档 · 大纲面板</b><span>右上角浮出卡片 · 标题层级导航</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名文档</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+              <div class="mk-tree">
+                <div class="mk-ti"><span class="ic">▸</span><span class="ic">▤</span><span>文件夹</span></div>
+                <div class="mk-ti l1 on"><span class="ic">▪</span><span>未命名文档</span></div>
+              </div>
+            </div>
+            <div class="mk-main">
+              <div class="mk-doc" style="padding-top:14px;">
+                <div class="mk-h0">未命名文档</div>
+                <div class="mk-meta">18 字 · 最近编辑 2026-10-15 16:32:18</div>
+                <div class="mk-h1"><span class="hnd">＋ ⠿</span>一级标题</div>
+                <div class="mk-code"><span style="color:var(--accent-foreground);">select * from a</span></div>
+                <div class="mk-quote">引用</div>
+              </div>
+            </div>
+          </div>
+          <div class="mk-dialog" style="position:absolute; top:12px; right:10px; width:150px; z-index:6;">
+            <h4><span style="display:flex;align-items:center;gap:4px;">≡ 大纲</span><i>✕</i></h4>
+            <div style="font-size:9px;color:var(--foreground);padding:3px 2px;">一级标题</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. slash 菜单 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑤ Slash 插入菜单</b><span>「/」唤起 · 表格与可折叠标题</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名文档</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+            </div>
+            <div class="mk-main">
+              <div class="mk-doc">
+                <div class="mk-h1" style="margin-top:2px;">一级标题</div>
+                <div class="mk-code"><span style="color:var(--accent-foreground);">select * from a</span><span class="lang">SQL ▾</span></div>
+                <div class="mk-quote">引用</div>
+                <div class="mk-caret" style="margin-top:26px;">|</div>
+              </div>
+            </div>
+          </div>
+          <div class="mk-slash" style="top:52px;">
+            <div class="it"><span class="b">—</span>分隔线</div>
+            <div class="cap">高级功能</div>
+            <div class="it on"><span class="b">⊞</span><b>表格</b></div>
+            <div class="cap">副标题</div>
+            <div class="it"><span class="b">H1</span>可折叠一级标题</div>
+            <div class="it"><span class="b">H2</span>可折叠二级标题</div>
+            <div class="it"><span class="b">H3</span>可折叠三级标题</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. 画板（全宽） -->
+    <div class="shot" style="grid-column:1/-1;">
+      <div class="shot-title"><b>⑥ 画板视图 · Excalidraw 风格</b><span>浮动工具栏 + 左属性面板 + 右组件库面板 + 底部缩放</span></div>
+      <div class="frame" style="height:296px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名画板</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+              <div class="mk-tree">
+                <div class="mk-ti"><span class="ic">▸</span><span class="ic">▤</span><span>文件夹</span></div>
+                <div class="mk-ti l1"><span class="ic">▪</span><span>未命名文档</span></div>
+                <div class="mk-ti l1 on"><span class="ic">✎</span><span>未命名画板</span></div>
+              </div>
+            </div>
+            <div class="mk-main">
+              <div class="mk-tabbar">
+                <div class="mk-tab on"><span>未命名画板</span><i class="x">✕</i></div>
+                <div class="mk-add">＋</div>
+              </div>
+              <div class="mk-toolbar">
+                <span class="pill" style="color:var(--accent-foreground);background:var(--accent);border-radius:5px;padding:1.5px 7px;font-weight:700;">画板</span>
+                <span style="font-weight:700;">未命名画板</span>
+                <span class="grow"></span>
+                <span class="pill">✓ 已自动保存</span>
+              </div>
+              <div class="mk-board">
+                <div class="mk-tools">
+                  <i>🔒</i><i>✋</i><i class="on">➤</i><i>▭</i><i>◇</i><i>○</i><i>→</i><i>—</i><i>✏️</i><i>A</i><i>🖼</i><i>⧉</i>
+                </div>
+                <div style="position:absolute; top:50%; left:46%; transform:translate(-50%,-50%); width:150px; height:84px; background:var(--popover); border:2px solid var(--primary); border-radius:10px; box-shadow:var(--shadow-md);"></div>
+                <div style="position:absolute; top:66%; left:63%; width:22px; height:14px; background:var(--primary); border-radius:8px 10px 10px 8px;"></div>
+                <div style="position:absolute; top:34%; left:30%; font-size:8px; color:var(--muted-foreground);">按住 Enter 以生成文本 · Hold Cmd and Arrow to create a flowchart</div>
+                <!-- 属性面板 -->
+                <div class="mk-prop">
+                  <h5>描边</h5>
+                  <div class="mk-sw-row"><span class="mk-sw on" style="background:#1E1E1E;"></span><span class="mk-sw" style="background:#E03131;"></span><span class="mk-sw" style="background:#2F9E44;"></span><span class="mk-sw" style="background:#1971C2;"></span><span class="mk-sw" style="background:#F08C00;"></span></div>
+                  <h5>背景</h5>
+                  <div class="mk-sw-row"><span class="mk-sw on" style="background:var(--accent);"></span><span class="mk-sw" style="background:#FFE3E3;"></span><span class="mk-sw" style="background:#D3F9D8;"></span><span class="mk-sw" style="background:#A5D8FF;"></span><span class="mk-sw" style="background:#FFEC99;"></span></div>
+                  <h5>描边宽度</h5>
+                  <div class="mk-sw-row"><span class="mk-sw">—</span><span class="mk-sw on">▬</span><span class="mk-sw">━━</span></div>
+                  <h5>边角</h5>
+                  <div class="mk-sw-row"><span class="mk-sw on">└</span><span class="mk-sw"> Tumblr</span></div>
+                  <h5>透明度</h5>
+                  <div class="mk-slider"><i></i><em></em></div>
+                </div>
+                <!-- 组件库 -->
+                <div class="mk-lib">
+                  <div class="head"><span>组件</span><i>✕</i></div>
+                  <div class="chips"><i class="on">基础</i><i>架构</i><i>流程建模</i><i>产品原型</i><i>数据图表</i></div>
+                  <div class="chips"><i>表单控件</i><i>UX 线框</i><i>低保真</i></div>
+                  <div class="cards">
+                    <div class="pcard" style="border-color:var(--foreground); color:var(--foreground); font-size:8.5px;">Button</div>
+                    <div class="pcard"><span style="display:flex;gap:1px;"><i style="background:var(--primary);color:#fff;font-style:normal;padding:1px 4px;border-radius:2px;">One</i><i style="font-style:normal;padding:1px 4px;">Two</i></span></div>
+                    <div class="pcard" style="border-color:var(--foreground); color:var(--foreground);">ComboBox ▾</div>
+                    <div class="pcard">/ / / 📅</div>
+                    <div class="pcard" style="border-color:var(--foreground); color:var(--foreground);">42 ▲▼</div>
+                    <div class="pcard"><span style="width:18px;height:10px;border-radius:6px;background:var(--primary);position:relative;"><i style="position:absolute;right:1px;top:1px;width:8px;height:8px;border-radius:50%;background:#fff;"></i></span></div>
+                    <div class="pcard" style="border-color:var(--foreground); color:var(--foreground);">Button ▾</div>
+                    <div class="pcard" style="border-color:var(--foreground); color:var(--foreground);">Button ＞</div>
+                  </div>
+                  <div style="font-size:7px;color:var(--muted-foreground);margin-top:auto;">点击插入到画布中央，可继续拖动与改色</div>
+                </div>
+                <!-- 底部缩放 -->
+                <div style="position:absolute; bottom:8px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:8px; background:var(--popover); border:1px solid var(--border); border-radius:8px; padding:3px 9px; box-shadow:var(--shadow-sm); font-size:8.5px; color:var(--muted-foreground);">
+                  <span>－</span><b style="color:var(--foreground);">100%</b><span>＋</span><span style="opacity:.4;">|</span><span>↺</span><span>↻</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 更多菜单 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑦ 「更多」功能菜单</b><span>左下 ⋯ 唤起 · 导入导出与备份入口</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名文档</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+              <div class="mk-quick"><div><span class="qi">☆</span>收藏</div><div><span class="qi">✎</span>小记</div><div><span class="qi">＋</span>新建</div></div>
+            </div>
+            <div class="mk-main"></div>
+          </div>
+          <div class="mk-more" style="left:8px; bottom:8px;">
+            <div class="it"><span class="ic">⚙</span><span>设置</span></div>
+            <div style="font-size:7.5px;color:var(--muted-foreground);padding:0 7px 2px;">通用 / 外观 / 快捷键 / 存储 / 云同步 / 关于</div>
+            <div class="sep"></div>
+            <div class="it"><span class="ic">▤</span><span>模板库</span><small>读书笔记·会议纪要</small></div>
+            <div class="it"><span class="ic">▦</span><span>组件库</span><small>上传/管理画板组件</small></div>
+            <div class="sep"></div>
+            <div class="it"><span class="ic">⬇</span><span>全部导出</span><small>知识库文档打包为 ZIP</small></div>
+            <div class="it"><span class="ic">⬆</span><span>导入文档</span><small>Markdown、文本与文件夹</small></div>
+            <div class="sep"></div>
+            <div class="it"><span class="ic">🏪</span><span>备份与恢复</span><small>最近备份: 今天 08:00</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. 分享与导出 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑧ 分享与导出</b><span>文档 → Markdown / 发布到云</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">测试工作空间 · 未命名文档</span></div>
+        <div class="frame-body">
+          <div class="mk">
+            <div class="mk-side">
+              <div class="mk-logo"><svg width="13" height="13" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>星屿</div>
+            </div>
+            <div class="mk-main"><div class="mk-doc" style="padding-top:14px;"><div class="mk-h0">未命名文档</div></div></div>
+          </div>
+          <div class="mk-dim">
+            <div class="mk-dialog" style="width:64%;">
+              <h4>分享与导出<i>✕</i></h4>
+              <div style="background:var(--accent); border-radius:8px; padding:7px 9px; margin-bottom:7px;">
+                <div style="font-size:9px;font-weight:700;color:var(--accent-foreground);">📄 未命名文档</div>
+                <div style="font-size:7.5px;color:var(--accent-foreground);opacity:.75;">111 · 18 字 · 最近编辑 2026-10-15 16:32:18</div>
+              </div>
+              <div style="border:1px solid var(--border); border-radius:8px; padding:7px 9px; margin-bottom:6px; display:flex; align-items:center; gap:7px;">
+                <span style="flex:1;display:grid;"><b style="font-size:9px;">导出为 Markdown</b><small style="font-size:7.5px;color:var(--muted-foreground);">保留标题、列表与引用结构</small></span><span style="color:var(--muted-foreground);">↗</span>
+              </div>
+              <div style="border:1px solid var(--border); border-radius:8px; padding:7px 9px; display:flex; align-items:center; gap:7px;">
+                <span style="flex:1;display:grid;"><b style="font-size:9px;">发布到云</b><small style="font-size:7.5px;color:var(--muted-foreground);">以提交 Markdown 发布到 Git / OSS</small></span><span style="color:var(--muted-foreground);">↗</span>
+              </div>
+              <div class="mk-actions"><span class="mk-btn" style="color:var(--muted-foreground);">关闭</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9. 设置 · 外观 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑨ 设置 · 外观</b><span>浅色 / 深色，共享同一组设计令牌</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">设置</span></div>
+        <div class="frame-body" style="background:var(--background); justify-content:center;">
+          <div class="mk-dialog" style="width:82%; max-width:none;">
+            <h4>设置<i>✕</i></h4>
+            <div class="mk-set">
+              <div class="nav">
+                <i>通用</i><i class="on">外观</i><i>快捷键</i><i>存储</i><i>云同步</i><i>发布</i><i>关于</i>
+              </div>
+              <div class="body">
+                <div style="font-size:8.5px;color:var(--muted-foreground);margin-bottom:7px;">选择界面的整体外观。两者外观共享同一组设计令牌，保证层次与对比度一致。</div>
+                <div class="mk-appear">
+                  <div class="opt on">
+                    <div class="prev l"><i></i><i></i></div>
+                    <div class="nm">☀ 浅色<span class="ck">✓</span></div>
+                  </div>
+                  <div class="opt">
+                    <div class="prev d"><i></i><i></i></div>
+                    <div class="nm">🌙 深色</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. 设置 · 存储 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑩ 设置 · 存储</b><span>容量条形图 + 清理入口</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">设置</span></div>
+        <div class="frame-body" style="background:var(--background); justify-content:center;">
+          <div class="mk-dialog" style="width:82%; max-width:none;">
+            <h4>设置<i>✕</i></h4>
+            <div class="mk-set">
+              <div class="nav">
+                <i>通用</i><i>外观</i><i>快捷键</i><i class="on">存储</i><i>云同步</i><i>发布</i><i>关于</i>
+              </div>
+              <div class="body">
+                <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:700;">本地存储占用<span style="color:var(--muted-foreground);font-weight:400;">共 7.89 MB</span></div>
+                <div style="font-size:7.5px;color:var(--muted-foreground);margin:2px 0 8px;">知识库数据保存在工作空间目录中，附件与图片会占用额外空间。</div>
+                <div class="mk-store-row"><span>全局缓存</span><span class="bar"><i style="width:1%;"></i></span><span class="v">0 B</span></div>
+                <div class="mk-store-row"><span>全局数据</span><span class="bar"><i style="width:3%;"></i></span><span class="v">48.0 KB</span></div>
+                <div class="mk-store-row"><span>工作空间数据</span><span class="bar"><i style="width:8%;"></i></span><span class="v">416 KB</span></div>
+                <div class="mk-store-row"><span>大文件存储</span><span class="bar"><i style="width:86%;"></i></span><span class="v">6.64 MB</span></div>
+                <div class="mk-store-row"><span>工作空间缓存</span><span class="bar"><i style="width:1%;"></i></span><span class="v">0 B</span></div>
+                <div style="display:flex;gap:5px;margin-top:7px;"><span class="mk-btn o">清理缓存</span><span class="mk-btn o">打开存储目录</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11. 设置 · 快捷键 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑪ 设置 · 快捷键</b><span>点击录制 · ⌘/Ctrl 组合</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">设置</span></div>
+        <div class="frame-body" style="background:var(--background); justify-content:center;">
+          <div class="mk-dialog" style="width:82%; max-width:none;">
+            <h4>设置<i>✕</i></h4>
+            <div class="mk-set">
+              <div class="nav">
+                <i>通用</i><i>外观</i><i class="on">快捷键</i><i>存储</i><i>云同步</i><i>发布</i><i>关于</i>
+              </div>
+              <div class="body">
+                <div style="font-size:7.5px;color:var(--muted-foreground);margin-bottom:4px;">点击右侧组合键开始录制，再按下含 ⌘/Ctrl 的新组合；按回车或点击空白处保存，Esc 取消。</div>
+                <div class="mk-kb">新建文档<span class="mk-kbd">⌘N</span></div>
+                <div class="mk-kb">快速跳转<span class="mk-kbd">⌘K</span></div>
+                <div class="mk-kb">全局搜索知识库<span class="mk-kbd">⌘⇧F</span></div>
+                <div class="mk-kb">打开设置<span class="mk-kbd">⌘,</span></div>
+                <div class="mk-kb">关闭当前标签页<span class="mk-kbd">⌘W</span></div>
+                <div class="mk-kb">保存当前文档<span class="mk-kbd">⌘S</span></div>
+                <div class="mk-kb">显示 / 隐藏侧边栏<span class="mk-kbd">⌘\</span></div>
+                <div class="mk-kb">全屏放映当前画板<span class="mk-kbd">⌘P</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 12. 创建工作空间 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑫ 创建你的知识空间</b><span>首启向导 · 本地 / 云同步</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">星屿 Starris</span></div>
+        <div class="frame-body" style="background:
+          radial-gradient(ellipse 60% 50% at 50% 30%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 70%), var(--background); justify-content:center;">
+          <div class="mk-dialog" style="width:66%;">
+            <div style="display:flex;gap:7px;align-items:center;margin-bottom:2px;">
+              <svg width="22" height="22" viewBox="0 0 64 64"><circle cx="12" cy="13" r="3.2" fill="var(--logo-c)"/><path d="M33 9 L45 29 L21 29 Z" fill="var(--logo-c)" stroke="var(--logo-c)" stroke-width="7" stroke-linejoin="round"/><rect x="11" y="31" width="30" height="22" rx="10.5" fill="var(--logo-a)" transform="rotate(-5 26 42)"/><rect x="38" y="36" width="15" height="14" rx="6.5" fill="var(--logo-b)" transform="rotate(6 45 43)"/></svg>
+              <div><div style="font-size:11px;font-weight:800;">创建你的知识空间</div><div style="font-size:7.5px;color:var(--muted-foreground);">工作空间对应磁盘上一个文件夹，所有知识库都保存在其中</div></div>
+            </div>
+            <div class="lbl">选择存储方式</div>
+            <div style="display:flex;gap:6px;">
+              <div style="flex:1;border:1.5px solid var(--primary);border-radius:8px;padding:5px 8px;background:var(--accent);">
+                <b style="font-size:8.5px;color:var(--accent-foreground);">▤ 本地文件</b>
+                <div style="font-size:7px;color:var(--accent-foreground);opacity:.75;">保存在本机磁盘</div>
+              </div>
+              <div style="flex:1;border:1px solid var(--border);border-radius:8px;padding:5px 8px;">
+                <b style="font-size:8.5px;">☁ 云同步</b>
+                <div style="font-size:7px;color:var(--muted-foreground);">加入已有云同步空间</div>
+              </div>
+            </div>
+            <div class="lbl">空间名称</div>
+            <div class="mk-in" style="color:var(--foreground);">山间工作室</div>
+            <div class="lbl">存储位置</div>
+            <div style="display:flex;gap:5px;">
+              <div class="mk-in" style="flex:1;">/repository</div>
+              <span class="mk-btn o" style="flex:none;">选择文件夹…</span>
+            </div>
+            <div style="font-size:7px;color:var(--muted-foreground);margin-top:3px;">知识库数据将以 db/wb-data.db 形式保存在该目录。</div>
+            <div class="lbl">空间头像</div>
+            <div class="mk-avatars">
+              <i style="background:#2F6F4F; display:grid;place-items:center;color:#fff;font-size:8px;font-style:normal;">山</i>
+              <i class="on" style="background:var(--primary);"></i>
+              <i style="background:#C25B3F;"></i>
+              <i style="background:#7A8B3D;"></i>
+              <i style="background:#A98F4E;"></i>
+              <i style="background:#6E5A4E;"></i>
+            </div>
+            <div class="mk-actions"><span class="mk-btn pale" style="width:100%;">创建工作空间</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 13. 知识库管理 -->
+    <div class="shot">
+      <div class="shot-title"><b>⑬ 知识库 / 工作空间管理</b><span>表格列表 · 当前项标记</span></div>
+      <div class="frame" style="height:252px;">
+        <div class="frame-bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="title">山间工作室</span></div>
+        <div class="frame-body" style="background:var(--background); justify-content:center;">
+          <div class="mk-dialog" style="width:82%; max-width:none;">
+            <h4>知识库管理<i>✕</i></h4>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-size:8.5px;color:var(--muted-foreground);flex:1;">当前空间: 山间工作室</span>
+              <span class="mk-btn p">＋ 新建知识库</span>
+            </div>
+            <table class="table" style="font-size:9px;">
+              <thead><tr><th>名称</th><th>描述</th><th>文档</th><th></th></tr></thead>
+              <tbody>
+                <tr class="hl">
+                  <td style="display:flex;align-items:center;gap:5px;"><i style="width:7px;height:7px;border-radius:50%;background:var(--primary);"></i><b>1</b></td>
+                  <td style="color:var(--muted-foreground);">暂无描述</td>
+                  <td>0 篇</td>
+                  <td style="display:flex;gap:5px;align-items:center;"><span style="color:var(--muted-foreground);font-size:8px;">当前</span><span style="color:var(--muted-foreground);">⋯</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 组件 ============ -->
+<section class="sec" id="component">
+  <div class="sec-head">
+    <span class="kicker">Components</span>
+    <h2>组件库 —— shadcn/ui 变体规格</h2>
+    <p>命名与 shadcn/ui 的 Button / Input / Badge / Tabs / Switch / Progress 等一一对应，
+       可直接替换为 React 组件；高度分 31 / 38 / 44 三档，控件圆角统一 10px。</p>
+  </div>
+  <div class="panel">
+    <div class="comp-wrap">
+
+      <div class="comp-row">
+        <h4>Button · 5 变体 + 尺寸 / 状态</h4>
+        <div class="comp-flex">
+          <button class="btn btn-primary">＋ 新建文档</button>
+          <button class="btn btn-secondary">选择文件夹…</button>
+          <button class="btn btn-outline">导入 Markdown</button>
+          <button class="btn btn-ghost">取消</button>
+          <button class="btn btn-destructive">删除知识库</button>
+          <button class="btn btn-primary"><span class="spin"></span>同步中</button>
+          <button class="btn btn-primary" disabled>创建工作空间</button>
+          <button class="btn btn-outline btn-icon" title="更多">⋯</button>
+        </div>
+        <div class="comp-flex">
+          <button class="btn btn-primary btn-sm">小按钮 sm</button>
+          <button class="btn btn-primary">默认 md</button>
+          <button class="btn btn-primary btn-lg">大按钮 lg</button>
+          <button class="btn btn-primary btn-icon btn-sm">＋</button>
+          <button class="btn btn-primary btn-icon">＋</button>
+          <button class="btn btn-primary btn-icon btn-lg">＋</button>
+        </div>
+      </div>
+
+      <div class="comp-row">
+        <h4>Input · 输入与校验</h4>
+        <div class="comp-flex" style="align-items:flex-start;">
+          <div style="width:230px;"><input class="input" placeholder="例如: 田野调查笔记"><div class="field-err" style="display:none;"></div></div>
+          <div style="width:230px;"><input class="input err" value="空格开头"><div class="field-err">名称不能以空格开头</div></div>
+          <input class="input" style="width:230px;" placeholder="搜索知识库…  ⌘⇧F" disabled>
+        </div>
+      </div>
+
+      <div class="comp-row">
+        <h4>Badge · 文档类型 / 状态</h4>
+        <div class="comp-flex">
+          <span class="badge badge-doc">文档</span>
+          <span class="badge badge-board">画板</span>
+          <span class="badge badge-solid">PRO</span>
+          <span class="badge badge-dot">自动保存已开启</span>
+          <span class="badge" style="background:color-mix(in srgb, var(--destructive) 12%, var(--card)); color:var(--destructive);">已删除 · 可恢复</span>
+        </div>
+      </div>
+
+      <div class="comp-row">
+        <h4>Tabs / Switch / Progress / Kbd</h4>
+        <div class="tabs" style="max-width:420px;">
+          <span class="tab on">全部</span><span class="tab">文档</span><span class="tab">画板</span><span class="tab">表格</span><span class="tab">收藏</span>
+        </div>
+        <div class="comp-flex" style="margin-top:4px;">
+          <span style="display:flex;align-items:center;gap:9px;font-size:13.5px;"><span class="switch on"></span>云同步</span>
+          <span style="display:flex;align-items:center;gap:9px;font-size:13.5px;"><span class="switch"></span>自动折叠标题</span>
+          <span style="display:flex;align-items:center;gap:8px;">已用 <span class="progress" style="width:130px;"><i data-w="86%"></i></span> 86%</span>
+          <span class="kbd">⌘K</span><span class="kbd">⌘⇧F</span><span class="kbd">Esc</span>
+        </div>
+      </div>
+
+      <div class="comp-row" style="display:grid; grid-template-columns:1fr 1fr; gap:22px;">
+        <div>
+          <h4 style="margin-bottom:10px;">侧栏树 · Sidebar Tree</h4>
+          <div class="tree" style="background:var(--sidebar); padding:10px; border-radius:12px;">
+            <div class="tree-item"><span class="ico">▾</span><span>▤</span>文件夹</div>
+            <div class="tree-item l1 on"><span class="ico">▪</span>未命名文档</div>
+            <div class="tree-item l1"><span class="ico">▪</span>田野调查笔记</div>
+            <div class="tree-item l1"><span class="ico">✎</span>Mo Wang Da Ren Shen…</div>
+            <div class="tree-item l1"><span class="ico">✎</span>未命名画板</div>
+            <div class="tree-item"><span class="ico">▸</span><span>▤</span>归档</div>
+          </div>
+        </div>
+        <div>
+          <h4 style="margin-bottom:10px;">Toast / 空状态</h4>
+          <div class="toast" style="margin-bottom:14px;"><span class="tick">✓</span>已导出为 Markdown<span class="kbd" style="margin-left:6px;">⌘E</span></div>
+          <div class="empty-state" style="border:1px dashed var(--border); border-radius:12px;">
+            <div class="glyph">⛰</div>
+            <b>从一个标签页开始</b>
+            <p>新建文档，或把 Markdown 文件拖进来</p>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;">＋ 新建文档</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="comp-row">
+        <h4>Table · 知识库管理</h4>
+        <table class="table" style="border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+          <thead><tr><th style="width:30%;">名称</th><th>描述</th><th style="width:14%;">文档</th><th style="width:20%;">状态</th></tr></thead>
+          <tbody>
+            <tr class="hl"><td><b>1</b></td><td style="color:var(--muted-foreground);">暂无描述</td><td>0 篇</td><td><span class="badge badge-doc">当前</span></td></tr>
+            <tr><td><b>产品需求池</b></td><td style="color:var(--muted-foreground);">PRD 与评审记录</td><td>24 篇</td><td><span class="badge badge-board">3 天前更新</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ 主题画廊 ============ -->
+<section class="sec" id="theme">
+  <div class="sec-head">
+    <span class="kicker">Theme Presets</span>
+    <h2>主题预设 —— 8 套配色，点击即换肤</h2>
+    <p>每套预设都是一组完整的 shadcn/ui 变量（浅色 + 深色两套）。午夜星河与靛夜霓虹为深色优先，
+       其余为浅色优先。切换后整页（含全部 mockup）实时换色，模拟应用内「设置 → 外观」的效果。</p>
+  </div>
+  <div class="gal-grid" id="galGrid">
+
+    <div class="gal-card on" data-t="sunset">
+      <div class="gal-preview" style="--m-bg:#FAF6F1; --m-side:#F5EEE5; --m-fg:#2C241E; --m-muted:#ECE1D4; --m-primary:#E8722A;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.22;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>暖屿橙</b><span>Sunset Isle · 默认 · 还原参考稿</span>
+        <div class="gal-colors"><i style="background:#E8722A;"></i><i style="background:#F2B33D;"></i><i style="background:#FAF6F1;"></i><i style="background:#B65718;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="azure">
+      <div class="gal-preview" style="--m-bg:#F7FAFD; --m-side:#EFF5FA; --m-fg:#14283C; --m-muted:#DEE8F0; --m-primary:#1E76D2;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.2;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>晴空蓝白</b><span>Azure · 清爽办公风</span>
+        <div class="gal-colors"><i style="background:#1E76D2;"></i><i style="background:#35B5C9;"></i><i style="background:#F7FAFD;"></i><i style="background:#14549B;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="midnight">
+      <div class="gal-preview" style="--m-bg:#0A0E1D; --m-side:#070A16; --m-fg:#E2E6F5; --m-muted:#1F2749; --m-primary:#7D8BFF;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.28;"></i><i style="background:var(--m-fg); opacity:.22;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.22;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>午夜星河</b><span>Midnight · 深色优先 · 星夜靛蓝</span>
+        <div class="gal-colors"><i style="background:#7D8BFF;"></i><i style="background:#C3CDFF;"></i><i style="background:#0A0E1D;"></i><i style="background:#B78BFF;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="amber">
+      <div class="gal-preview" style="--m-bg:#FAF6EB; --m-side:#F3EDDC; --m-fg:#332B18; --m-muted:#E9E0C9; --m-primary:#BE8412;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.2;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>暮岩金</b><span>Amber Rock · 暖沙纸感</span>
+        <div class="gal-colors"><i style="background:#BE8412;"></i><i style="background:#F2C14E;"></i><i style="background:#FAF6EB;"></i><i style="background:#94650C;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="forest">
+      <div class="gal-preview" style="--m-bg:#F5FAF6; --m-side:#ECF4EE; --m-fg:#1C2E24; --m-muted:#DDE9E0; --m-primary:#2C855A;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.2;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>青屿森语</b><span>Forest Isle · 自然专注</span>
+        <div class="gal-colors"><i style="background:#2C855A;"></i><i style="background:#86C86B;"></i><i style="background:#F5FAF6;"></i><i style="background:#1D6141;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="rose">
+      <div class="gal-preview" style="--m-bg:#FBF6F6; --m-side:#F6EDED; --m-fg:#33191F; --m-muted:#EDDCDF; --m-primary:#DD4A62;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>樱屿绯粉</b><span>Rose Isle · 温柔日记感</span>
+        <div class="gal-colors"><i style="background:#DD4A62;"></i><i style="background:#F09B59;"></i><i style="background:#FBF6F6;"></i><i style="background:#B03048;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="violet">
+      <div class="gal-preview" style="--m-bg:#120D1D; --m-side:#0D0916; --m-fg:#EAE2F7; --m-muted:#29203E; --m-primary:#A183F5;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.26;"></i><i style="background:var(--m-fg); opacity:.22;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.22;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>靛夜霓虹</b><span>Violet Night · 深色优先 · 创作模式</span>
+        <div class="gal-colors"><i style="background:#A183F5;"></i><i style="background:#C084FC;"></i><i style="background:#120D1D;"></i><i style="background:#774FD8;"></i></div>
+      </div>
+    </div>
+
+    <div class="gal-card" data-t="graphite">
+      <div class="gal-preview" style="--m-bg:#F6F7F8; --m-side:#EFF1F3; --m-fg:#1F2226; --m-muted:#E2E5E8; --m-primary:#3D4249;">
+        <div class="mini" style="background:var(--m-bg); color:var(--m-fg);">
+          <div class="bar" style="background:var(--m-side);"><i></i><i></i><i></i></div>
+          <div class="cols">
+            <div class="side" style="background:var(--m-side);"><i class="f" style="background:var(--m-primary);"></i><i class="on" style="background:var(--m-primary); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.18;"></i><i style="background:var(--m-fg); opacity:.12;"></i></div>
+            <div class="main"><i class="t" style="background:var(--m-fg);"></i><i style="background:var(--m-fg); opacity:.2;"></i><i style="background:var(--m-muted);"></i><i class="b" style="background:var(--m-primary);"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="gal-meta"><b>墨玉石墨</b><span>Graphite · 中性无彩 · 极简</span>
+        <div class="gal-colors"><i style="background:#3D4249;"></i><i style="background:#A7AFB8;"></i><i style="background:#F6F7F8;"></i><i style="background:#272B30;"></i></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 接入指南 ============ -->
+<section class="sec" id="guide">
+  <div class="sec-head">
+    <span class="kicker">Developer Handoff</span>
+    <h2>接入指南 —— Tailwind v4 + shadcn/ui</h2>
+    <p>主题层即数据：应用只需要维护「主题名 → 变量组」的映射，运行时切换 data-theme / data-mode 两个属性即可全局换肤，组件层零改动。</p>
+  </div>
+  <div class="guide-grid">
+    <div class="panel">
+      <div class="code-block"><span class="c">/* app.css — Tailwind v4 */</span>
+<span class="k">@import</span> <span class="v">"tailwindcss"</span>;
+
+<span class="k">@theme</span> inline {
+  --color-background: <span class="k">var</span>(--background);
+  --color-foreground: <span class="k">var</span>(--foreground);
+  --color-primary:    <span class="k">var</span>(--primary);
+  --color-sidebar:    <span class="k">var</span>(--sidebar);
+  --color-accent:     <span class="k">var</span>(--accent);
+  --radius-lg:        <span class="k">var</span>(--radius-lg);
+  --font-sans: <span class="v">system-ui, "PingFang SC", …</span>;
+}
+
+<span class="c">/* 运行时切肤：两行代码 */</span>
+root.dataset.theme = <span class="v">"sunset"</span>;   <span class="c">// 8 预设</span>
+root.dataset.mode  = <span class="v">"dark"</span>;    <span class="c">// 浅 / 深</span>
+
+<span class="c">/* 组件内直接用工具类 */</span>
+&lt;<span class="k">button</span> class=<span class="v">"bg-primary text-primary-foreground
+  rounded-[10px] h-[38px] px-[18px]"</span>&gt;创建&lt;/<span class="k">button</span>&gt;</div>
+      <div class="note">Tauri 侧把 <b>theme + accent</b> 持久化到工作空间配置；窗口 chrome（tauri.conf.json 的 <b>transparentTitlebar</b>）跟随 data-mode。</div>
+    </div>
+    <div class="panel">
+      <div class="rule-list">
+        <div class="rule ok"><i>✓</i><div>文字一律使用 --foreground / --muted-foreground，禁止出现色板外的灰色<small>深浅模式共用组件时对比度始终由令牌保证</small></div></div>
+        <div class="rule ok"><i>✓</i><div>选中态 = --accent 底 + --accent-foreground 字，主按钮才是 --primary<small>参考稿中侧栏选中项即为该组合</small></div></div>
+        <div class="rule ok"><i>✓</i><div>圆角三档 8 / 12 / 16，窗口与弹窗 16，控件 10<small>icons 用 lucide，线条 1.5px 圆头</small></div></div>
+        <div class="rule ok"><i>✓</i><div>动效统一 var(--ease) 缓动，150–300ms，只动 transform / opacity<small>excalidraw 画布内动画不受此约束</small></div></div>
+        <div class="rule no"><i>✕</i><div>不要为每套主题写组件级颜色覆盖<small>出现「橙色专用的浅蓝」这类补丁即架构警报</small></div></div>
+        <div class="rule no"><i>✕</i><div>不要把品牌色写死在 SVG 里<small>logo 全部用 var(--logo-a/b/c)，换主题自动联动</small></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>星屿 Starris · UI 设计系统 v1.0 — 为 TypeScript + Tauri + Tailwind + shadcn/ui 而作</span>
+  <span>知识如星，聚而成屿 ✦</span>
+</footer>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  var dots = document.querySelectorAll('.tdot');
+  var galCards = document.querySelectorAll('.gal-card');
+  var modeBtn = document.getElementById('modeToggle');
+
+  function setTheme(t){
+    root.setAttribute('data-theme', t);
+    dots.forEach(function(d){ d.classList.toggle('on', d.dataset.t === t); });
+    galCards.forEach(function(c){ c.classList.toggle('on', c.dataset.t === t); });
+  }
+  function setMode(m){
+    root.setAttribute('data-mode', m);
+    modeBtn.textContent = m === 'dark' ? '☾' : '☀';
+  }
+  dots.forEach(function(d){ d.addEventListener('click', function(){ setTheme(d.dataset.t); }); });
+  galCards.forEach(function(c){ c.addEventListener('click', function(){ setTheme(c.dataset.t); }); });
+  modeBtn.addEventListener('click', function(){
+    setMode(root.getAttribute('data-mode') === 'dark' ? 'light' : 'dark');
+  });
+
+  /* 进度条进入视口后播放 */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){ e.target.style.width = e.target.dataset.w; io.unobserve(e.target); }
+    });
+  }, { threshold:.4 });
+  document.querySelectorAll('.progress i[data-w]').forEach(function(p){ io.observe(p); });
+
+  /* 滚动高亮导航 */
+  var links = document.querySelectorAll('#dsNav a');
+  var secs = [].map.call(links, function(a){ return document.querySelector(a.getAttribute('href')); });
+  window.addEventListener('scroll', function(){
+    var y = window.scrollY + 120, idx = 0;
+    secs.forEach(function(s, i){ if(s && s.offsetTop <= y) idx = i; });
+    links.forEach(function(a, i){ a.classList.toggle('on', i === idx); });
+  }, { passive:true });
+})();
+</script>
+
+
+
+</body>
+</html>
+
