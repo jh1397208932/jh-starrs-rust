@@ -1,6 +1,7 @@
 import { ArrowUpRight, Cloud, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { formatTimestamp } from "@/features/workspace/utils/tree";
 
 export interface ShareExportDialogProps {
   open: boolean;
@@ -8,7 +9,8 @@ export interface ShareExportDialogProps {
   title: string;
   kbName: string;
   wordCount: number;
-  updatedAt: string;
+  /** 最近更新时间（Unix 毫秒） */
+  updatedAt: number;
   onMockExport: () => void;
 }
 
@@ -32,7 +34,7 @@ export function ShareExportDialog({
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold">{title}</p>
             <p className="mt-0.5 text-[12px] opacity-80">
-              {kbName} · {wordCount} 字 · 编辑于 {updatedAt}
+              {kbName} · {wordCount} 字 · 编辑于 {formatTimestamp(updatedAt)}
             </p>
           </div>
         </div>

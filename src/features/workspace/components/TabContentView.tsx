@@ -17,6 +17,10 @@ export interface TabContentViewProps {
   onCreateDoc: (title: string) => void;
   /** mock 未实现动作统一提示 */
   onMockAction: (label: string, kbd?: string) => void;
+  /** 文档保存成功后同步树节点元信息 */
+  onDocumentSaved?: (nodeId: string, info: { wordCount: number; updatedAt: number }) => void;
+  /** 编辑器错误提示 */
+  onError?: (message: string) => void;
 }
 
 /**
@@ -30,6 +34,8 @@ export function TabContentView({
   onOpenNode,
   onCreateDoc,
   onMockAction,
+  onDocumentSaved,
+  onError,
 }: TabContentViewProps) {
   if (!activeTab) {
     return (
@@ -51,7 +57,17 @@ export function TabContentView({
     return <StarredList nodes={starredNodes} onOpenNode={onOpenNode} onMockAction={onMockAction} />;
   }
   if (activeTab.kind === "table") {
-    return <EmptyState glyph="⊞" title="表格视图" description="表格编辑器将在后续阶段实现（mock 占位）" />;
+    return <EmptyState glyph="⊞" title="表格视图" description="表格编辑器将在后续阶段实现" />;
   }
-  return <DocEditor node={activeNode} title={activeTab.title} onMockAction={onMockAction} />;
+  if (activeTab.kind === "flow") {
+    return <EmptyState glyph="⌘" title="流程图视图" description="流程图编辑器将在后续阶段实现" />;
+  }
+  return (
+    <DocEditor
+      node={activeNode}
+      title={activeTab.title}
+      onDocumentSaved={onDocumentSaved}
+      onError={onError}
+    />
+  );
 }

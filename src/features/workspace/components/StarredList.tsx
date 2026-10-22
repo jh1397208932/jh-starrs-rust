@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatTimestamp } from "@/features/workspace/utils/tree";
 import type { NodeItem } from "@/types/notebook";
 
 export interface StarredListProps {
@@ -35,7 +36,9 @@ export function StarredList({ nodes, onOpenNode, onMockAction }: StarredListProp
             className="flex w-full cursor-default items-center justify-between rounded-md border border-border bg-card px-4 py-3 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <span className="truncate text-[13.5px] font-medium">{node.title}</span>
-            <span className="ml-3 shrink-0 text-[12px] text-muted-foreground">{node.updatedAt}</span>
+            <span className="ml-3 shrink-0 text-[12px] text-muted-foreground">
+              {formatTimestamp(node.updatedAt)}
+            </span>
           </button>
         </li>
       ))}

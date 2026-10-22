@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { loadMemory, MEMORY_KEYS, saveMemory } from "@/api/memory";
 
 /** 8 套主题预设（data-theme） */
 export const THEME_NAMES = [
@@ -36,6 +37,10 @@ export const THEME_LABELS: Record<ThemeName, string> = {
   violet: "靛夜霓虹",
   graphite: "墨玉石墨",
 };
+
+/** 默认外观；全局库没有记忆时使用 */
+const DEFAULT_THEME: ThemeName = "sunset";
+const DEFAULT_MODE: ThemeMode = "light";
 
 interface ThemeContextValue {
   theme: ThemeName;
@@ -94,10 +99,14 @@ function applyWithCircularReveal(update: () => void, x: number, y: number) {
  * （不支持的平台自动降级为直接切换，行为与旧版一致）。
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeName>("sunset");
-  const [mode, setModeState] = useState<ThemeMode>("light");
+  const [theme, setThemeState] = useState<ThemeName>(DEFAULT_THEME);
+  const [mode, setModeState] = useState<ThemeMode>(DEFAULT_MODE);
   /** 最近一次指针按下位置（视口坐标），作为揭示圆心 */
   const pointerOrigin = useRef({ x: 0, y: 0 });
+  /** 是否已完成记忆读取；完成前不写盘，避免用默认值覆盖用户设置 */
+  const hydrated = useRef(false);
+  /** 最近一次已知落盘值，用于跳过“加载后无变化”的首次保存 */
+  const lastSaved = useRef({ theme: DEFAULT_THEME, mode: DEFAULT_MODE });
 
   useEffect(() => {
     const recordPointer = (e: PointerEvent) => {
@@ -107,6 +116,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("pointerdown", recordPointer);
   }, []);
 
+  // 启动读取：主题与明暗来自统一记忆 API；失败（如浏览器 dev）保留默认值。
+  // 不做“只请求一次 + 卸载取消”的组合：StrictMode 会先清理首个 effect，
+  // 若用 ref 阻止第二次请求，首个请求又因 cancelled 被丢弃，hydrated 永远不会置位。
+  useEffect(() => {
+    void loadMemory()
+      .then((memory) => {
+        const storedTheme = memory[MEMORY_KEYS.theme];
+        const storedMode = memory[MEMORY_KEYS.mode];
+        const nextTheme =
+          storedTheme && (THEME_NAMES as readonly string[]).includes(storedTheme)
+            ? (storedTheme as ThemeName)
+            : DEFAULT_THEME;
+        const nextMode =
+          storedMode && (THEME_MODES as readonly string[]).includes(storedMode)
+            ? (storedMode as ThemeMode)
+            : DEFAULT_MODE;
+        hydrated.current = true;
+        lastSaved.current = { theme: nextTheme, mode: nextMode };
+        setThemeState(nextTheme);
+        setModeState(nextMode);
+      })
+      .catch(() => {
+        // 全局库不可用时不阻断使用：本次以默认外观运行，下一次修改会重新尝试保存。
+        hydrated.current = true;
+      });
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
@@ -114,6 +150,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.mode = mode;
   }, [mode]);
+
+  // 记忆写入：去抖 150ms，合并连续点击；落盘失败不阻断当前换肤。
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (lastSaved.current.theme === theme && lastSaved.current.mode === mode) return;
+    lastSaved.current = { theme, mode };
+    const timer = window.setTimeout(() => {
+      void saveMemory({ [MEMORY_KEYS.theme]: theme, [MEMORY_KEYS.mode]: mode }).catch(() => {
+        // 主题已在内存生效；保存失败时下次修改会再次尝试。
+      });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [theme, mode]);
 
   const setTheme = useCallback((t: ThemeName) => {
     const { x, y } = pointerOrigin.current;

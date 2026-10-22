@@ -1,70 +1,115 @@
-import type { ChainedCommands } from "@tiptap/core";
+import type { Editor } from "@tiptap/react";
 import type { LucideIcon } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { useEffect, useRef } from "react";
 
 export interface SlashCommand {
   id: string;
   label: string;
   group: string;
+  /** 一句话说明，帮助用户区分相近块 */
+  description?: string;
   icon: LucideIcon;
-  /** 是否为 mock 占位（表格等未实现项） */
-  mock?: boolean;
-  apply?: (api: { deleteSlash: () => ChainedCommands }) => void;
+  /** 额外检索词（拼音/英文） */
+  keywords?: string[];
+  run: (editor: Editor) => void;
 }
 
 export interface SlashMenuProps {
   /** 锚定编辑器光标的视口坐标 */
   position: { x: number; y: number };
   commands: SlashCommand[];
+  activeIndex: number;
   onSelect: (command: SlashCommand) => void;
+  onHover: (index: number) => void;
 }
 
-/** 分组 caption 值：组间分隔 */
-function groupLabel(cmd: SlashCommand, index: number, all: SlashCommand[]): string | null {
-  if (index === 0 || all[index - 1].group !== cmd.group) return cmd.group;
+/** 按 label/id/keywords 过滤；空查询返回全部。 */
+export function filterSlashCommands(commands: SlashCommand[], query: string): SlashCommand[] {
+  const keyword = query.trim().toLowerCase();
+  if (!keyword) return commands;
+  return commands.filter((command) => {
+    if (command.label.toLowerCase().includes(keyword)) return true;
+    if (command.id.toLowerCase().includes(keyword)) return true;
+    return command.keywords?.some((word) => word.toLowerCase().includes(keyword)) ?? false;
+  });
+}
+
+function groupLabel(command: SlashCommand, index: number, all: SlashCommand[]): string | null {
+  if (index === 0 || all[index - 1].group !== command.group) return command.group;
   return null;
 }
 
-/** 弹窗 I · Slash 命令菜单：220px 锚定光标浮层，高亮 = bg-accent */
-export function SlashMenu({ position, commands, onSelect }: SlashMenuProps) {
+/** Slash 命令菜单：过滤、↑↓ 选择、Enter 插入。 */
+export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }: SlashMenuProps) {
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    itemRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  const width = 304;
+  const left = Math.max(8, Math.min(position.x, window.innerWidth - width - 8));
+  const top = Math.max(8, Math.min(position.y, Math.max(8, window.innerHeight - 392)));
+
   return (
     <div
       role="menu"
       aria-label="Slash 命令"
-      className="anim-slide-up-in fixed z-50"
-      style={{ left: position.x, top: position.y }}
+      className="editor-float anim-pop-in fixed z-50 w-[304px] overflow-hidden"
+      style={{ left, top }}
       // 按下不抢焦点，保持编辑器选区
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={(event) => event.preventDefault()}
     >
-      <ScrollArea className="max-h-[280px] w-[220px] rounded-md border border-border bg-popover p-1.5 shadow-md">
-        {commands.map((cmd, i) => {
-          const label = groupLabel(cmd, i, commands);
+      <div className="flex items-center justify-between border-b border-border/70 px-3 py-2">
+        <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+          插入内容
+        </span>
+        <kbd className="editor-kbd">/</kbd>
+      </div>
+      <div className="max-h-[320px] overflow-y-auto overscroll-contain p-1.5" role="presentation">
+        {commands.length === 0 && (
+          <div className="px-3 py-8 text-center text-[12.5px] text-muted-foreground">没有匹配的命令</div>
+        )}
+        {commands.map((command, index) => {
+          const label = groupLabel(command, index, commands);
+          const active = index === activeIndex;
           return (
-            <div key={cmd.id}>
-              {label && (
-                <div className="px-2.5 pt-2 pb-1 text-[11.5px] font-medium tracking-[0.3px] text-muted-foreground">
-                  {label}
-                </div>
-              )}
+            <div key={command.id}>
+              {label && <div className="editor-menu-label">{label}</div>}
               <button
+                ref={(element) => {
+                  itemRefs.current[index] = element;
+                }}
                 type="button"
                 role="menuitem"
-                onClick={() => onSelect(cmd)}
-                className={cn(
-                  "flex w-full cursor-default items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-[13px] text-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:outline-none",
-                  cmd.mock && "text-muted-foreground",
-                )}
+                data-active={active}
+                onClick={() => onSelect(command)}
+                onMouseEnter={() => onHover(index)}
+                className="editor-menu-item"
               >
-                <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-secondary">
-                  <cmd.icon className="size-3.5" />
+                <span className="editor-menu-icon">
+                  <command.icon className="size-3.5" />
                 </span>
-                <span className="truncate">{cmd.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] leading-5">{command.label}</span>
+                  {command.description && (
+                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+                      {command.description}
+                    </span>
+                  )}
+                </span>
               </button>
             </div>
           );
         })}
-      </ScrollArea>
+      </div>
+      <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2 text-[10.5px] text-muted-foreground">
+        <span>↑↓ 选择</span>
+        <span aria-hidden="true">·</span>
+        <span>Enter 插入</span>
+        <span aria-hidden="true">·</span>
+        <span>Esc 关闭</span>
+      </div>
     </div>
   );
 }

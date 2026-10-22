@@ -91,3 +91,24 @@ JS 预设唯一来源 `src/lib/motion.ts`（与 tokens.css 同源）；CSS 工�
 
 - 浮窗 264px，悬浮于内容区右上（`top-4 right-5 bottom-5`），圆角 14 + 边框 + `shadow-lg`，淡入动画。
 - 左缘骑缝 28px 透明箭头把手（`bg-popover/70`）：`›` 收起 / `‹` 展开；浮窗不占主布局空间。
+
+## 8. 本地工作区与文件树（2026-10-21）
+
+- **首次引导**：全屏遮罩（`bg-background/95` + `backdrop-blur-sm`）+ 480px 面板；不使用可关闭 Dialog；主 CTA 为主色浅底卡（`border-primary bg-accent`），次 CTA 为 `bg-card`。已有工作区时追加最近列表。
+- **创建/打开工作区**：440px 模态；名称 + 目标文件夹（绝对路径 + 原生目录选择）+ 6 色头像；说明“目录将成为工作区根，自动创建 db/ 与 storage/”。创建中禁止关闭。
+- **工作区/知识库管理**：560px 模态，与既有弹窗同构；当前项 = `bg-accent` + 实心「当前」徽标；操作收进 `Ellipsis` 菜单。
+- **删除工作区**：危险确认弹窗中明确路径与“当前工作区自动切换”；默认不勾选「同时删除本地文件夹」，勾选后主按钮文案变为「删除工作区与文件夹」。
+- **文件树**：行高 32px、层级缩进 14px、类型图标 16px；选中 `bg-sidebar-active` + 600 字重；悬停显示操作菜单；仅文件夹显示「新建子级」。
+- **拖拽反馈**：文件夹中部 = 子级（`bg-accent` + 1px 主色内描边）；上/下缘 = 同级插入（2px `bg-primary` 指示线）；列表底部虚线区 = 根级末尾。
+- **空态**：无知识库 → “当前工作区还没有知识库 / 使用左上角菜单新建知识库”；有知识库无节点 → “还没有内容 / 点击右上角 + 新建”。
+- **多类型图标**：folder=Folder、doc=FileText、board=Presentation、table=Table2、flow=Workflow；标签页的 starred 使用 Star。
+- 颜色全部走语义令牌，未新增硬编码色值；树行具备 `role=treeitem`、`aria-level`、`aria-expanded`、`aria-selected`。
+
+## 9. 文档编辑器（2026-10-22 交互重构）
+
+- **页面骨架**：`.doc-editor-scroll` 负责滚动、`.doc-editor-page` 最大 840px；正文 `.doc-content` 用 `margin-left:-52px; padding-left:52px` 留出手柄走廊并与标题左对齐；手柄绝对定位在 `.doc-editor-body` 左走廊（右侧留 4px 间距），位置由 `useBlockHandle` 按顶层块计算。窄屏（≤720px）页面左右留 48px、走廊 30px、标题降级到 26px。
+- **排版基准**：正文 15.5px/1.78；H1 30px/800、H2 22px/700、H3 17.5px/700；行内代码使用等宽字体 + 5px 圆角 + 低亮底色；引用 2px 主色左线；`caret-color: var(--primary)`，选区使用主色 22% 透明。
+- **块状态**：空段保留行高；占位符由官方 Placeholder 的 `data-placeholder` + `.is-empty` 提供；表格 `border-collapse:separate` + 外框 10px 圆角，`selectedCell` 用主色 11% 覆盖；图片 ResizableNodeView 四角 11px 圆点、边线 5px 胶囊，未 hover 时 `pointer-events:none`。
+- **浮层**：`.editor-float` 统一 12px 圆角、1px `border`、`--shadow-lg`、`backdrop-filter: blur(18px) saturate(1.08)`；`.editor-menu-item` 8px 圆角、9px 间距、26px 图标块；激活态 `bg-accent`；`.editor-kbd` 等宽键帽。
+- **拖拽**：手柄自绘定位，外观点击区「＋/六点」20×22px、默认 55% 不透明度、hover/拖动时 100%；显隐带 180ms 离开缓冲，鼠标移向左走廊时保持当前块。块拖拽使用 PointerEvent：源块以 42% 不透明度淡化，落点线为 3px 主色全宽圆角线（两端圆点），光标旁显示块类型胶囊标签；官方 Dropcursor 仅用于图片/文件原生拖放。
+- **响应式**：窄屏只压缩页边距、手柄走廊与标题字号；浮层宽度固定 260–304px，靠视口钳制定位；所有控件尺寸 ≥20px，菜单项命中区 ≥28px。

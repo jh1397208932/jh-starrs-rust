@@ -3,12 +3,15 @@ import { MagicCard } from "@/components/common/motion/MagicCard";
 import { NumberTicker } from "@/components/common/motion/NumberTicker";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import type { KnowledgeBase, NodeItem, RelatedItem } from "@/types/notebook";
 
 export interface InfoPanelProps {
   node: NodeItem | null;
   kb: KnowledgeBase | null;
+  /** 当前工作区根目录，用于展示文档真实存储位置 */
+  workspacePath: string;
   related: RelatedItem[];
   onBackToInfo: () => void;
 }
@@ -32,7 +35,7 @@ interface FieldRow {
  * 背景 bg-card；激活段 = bg-card + shadow-sm + 650 字重（原型 .seg）；
  * 字数用 NumberTicker 弹簧滚动；「相关」项为 MagicCard 渐变边卡片（悬浮聚光）。
  */
-export function InfoPanel({ node, kb, related, onBackToInfo }: InfoPanelProps) {
+export function InfoPanel({ node, kb, workspacePath, related, onBackToInfo }: InfoPanelProps) {
   const [tab, setTab] = useState<InfoTab>("info");
 
   const wordTicker = (
@@ -42,10 +45,10 @@ export function InfoPanel({ node, kb, related, onBackToInfo }: InfoPanelProps) {
   const fields: FieldRow[] = node
     ? [
         { label: "字数", value: wordTicker },
-        { label: "创建时间", value: "2026-10-12 09:30" },
-        { label: "最近更新", value: node.updatedAt },
+        { label: "创建时间", value: formatTimestamp(node.createdAt) },
+        { label: "最近更新", value: formatTimestamp(node.updatedAt) },
         { label: "所在知识库", value: kb?.name ?? "—" },
-        { label: "存储位置", value: `~/Starris/星屿工作区/${kb?.name ?? ""}` },
+        { label: "存储位置", value: `${workspacePath}/${kb?.name ?? ""}` },
         { label: "引用关系", value: "0 条反链" },
       ]
     : [
@@ -53,7 +56,7 @@ export function InfoPanel({ node, kb, related, onBackToInfo }: InfoPanelProps) {
         { label: "创建时间", value: "刚刚" },
         { label: "最近更新", value: "刚刚" },
         { label: "所在知识库", value: kb?.name ?? "—" },
-        { label: "存储位置", value: `~/Starris/星屿工作区/${kb?.name ?? ""}` },
+        { label: "存储位置", value: `${workspacePath}/${kb?.name ?? ""}` },
         { label: "引用关系", value: "0 条反链" },
       ];
 

@@ -8,11 +8,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { jumpToOutline, useEditorOutline } from "@/features/editor/editorOutline";
 import { CAPTION_CLS, cn } from "@/lib/utils";
-import { MOCK_OUTLINE } from "@/mocks/workspace";
+import type { OpenableKind } from "@/types/notebook";
 
 export interface ToolbarProps {
-  kind: "doc" | "board" | "table" | "starred";
+  kind: OpenableKind | "starred";
   title: string;
   /** 面包屑上级（文档所在知识库名）；收藏列表等虚拟页 / 无所属时传 null */
   kbName: string | null;
@@ -47,10 +48,19 @@ export function Toolbar({
   onPrint,
   onOpenKb,
 }: ToolbarProps) {
+  const { items: outline } = useEditorOutline();
   return (
     <div className="flex h-[var(--doctoolbar-h)] shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5">
       <Badge variant={kind === "doc" || kind === "starred" ? "doc" : "board"}>
-        {kind === "board" ? "画板" : kind === "table" ? "表格" : kind === "starred" ? "收藏" : "文档"}
+        {kind === "board"
+          ? "画板"
+          : kind === "table"
+            ? "表格"
+            : kind === "flow"
+              ? "流程图"
+              : kind === "starred"
+                ? "收藏"
+                : "文档"}
       </Badge>
 
       {/* 面包屑：所在知识库 / 当前文档 */}
@@ -81,7 +91,7 @@ export function Toolbar({
         )}
       >
         <Check className="size-3.5 text-primary" />
-        已自动保存
+        本地自动保存
       </span>
 
       <Tooltip>
@@ -107,17 +117,27 @@ export function Toolbar({
               <List className="size-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[220px]">
+          <DropdownMenuContent align="end" className="w-[240px]">
             <DropdownMenuLabel>大纲</DropdownMenuLabel>
-            {MOCK_OUTLINE.map((h) => (
-              <DropdownMenuItem key={h.id} className={h.level === 2 ? "pl-6" : "font-medium"}>
-                {h.text}
+            {outline.length === 0 && (
+              <DropdownMenuItem disabled className="text-muted-foreground">
+                暂无标题
+              </DropdownMenuItem>
+            )}
+            {outline.map((heading) => (
+              <DropdownMenuItem
+                key={`${heading.id}-${heading.pos}`}
+                onSelect={() => jumpToOutline(heading.pos)}
+                className={cn(
+                  "truncate",
+                  heading.level === 1 && "font-medium",
+                  heading.level === 2 && "pl-6",
+                  heading.level >= 3 && "pl-9 text-muted-foreground",
+                )}
+              >
+                {heading.text || "无标题"}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuItem className="text-muted-foreground">
-              <ChevronRight />
-              打开大纲面板
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}

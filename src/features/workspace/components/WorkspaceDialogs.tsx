@@ -1,80 +1,80 @@
-import type { KnowledgeBase, Workspace } from "@/types/notebook";
+import type { WorkspaceDialogActions } from "../hooks/useWorkspaceDialogActions";
+import type { WorkspaceStore } from "../hooks/useWorkspaceStore";
+import type { WorkspaceDialogKind } from "../types";
 import { CreateWorkspaceWizard } from "./CreateWorkspaceWizard";
+import { KbEditorDialog } from "./KbEditorDialog";
 import { KbManageDialog } from "./KbManageDialog";
-import { NewKbDialog } from "./NewKbDialog";
 import { WsManageDialog } from "./WsManageDialog";
-
-/** 工作区弹窗类型（不含设置/分享：设置归 features/settings，分享归 features/editor） */
-export type WorkspaceDialogKind = "createWorkspace" | "newKb" | "kbManage" | "wsManage";
 
 export interface WorkspaceDialogsProps {
   /** 当前打开的工作区弹窗；null = 全部关闭 */
   open: WorkspaceDialogKind | null;
   /** 打开指定弹窗 / 传 null 关闭 */
   onOpenChange: (kind: WorkspaceDialogKind | null) => void;
-  workspaces: Workspace[];
-  kbs: KnowledgeBase[];
-  currentWorkspaceName: string;
-  onCreateWorkspace: (name: string) => void;
-  onCreateKb: (name: string, description: string) => void;
-  onDeleteKb: (id: string) => void;
-  onDeleteWorkspace: (id: string) => void;
-  /** 删除当前工作空间被拒时的提示（调用方弹 toast） */
-  onDeleteCurrentDenied: () => void;
-  onSwitchWorkspace: (id: string) => void;
-  onSwitchKb: (id: string) => void;
-  onMockAction: (label: string) => void;
+  store: WorkspaceStore;
+  actions: WorkspaceDialogActions;
+  defaultWorkspaceParent: string;
+  onPickDirectory: (defaultPath?: string) => Promise<string | null>;
 }
 
 /**
- * 工作区弹窗群：创建工作空间向导 / 新建知识库 / 知识库管理 / 工作空间管理。
- * 统一收敛 App 组装层的弹窗状态机，内部各自维护受控开合与表单重置。
+ * 工作区弹窗群：创建工作区向导 / 新建知识库 / 知识库管理 / 工作区管理。
+ * 内部 edit / delete 二级弹窗由各自管理组件持有；这里只收敛一级弹窗状态。
  */
 export function WorkspaceDialogs({
   open,
   onOpenChange,
-  workspaces,
-  kbs,
-  currentWorkspaceName,
-  onCreateWorkspace,
-  onCreateKb,
-  onDeleteKb,
-  onDeleteWorkspace,
-  onDeleteCurrentDenied,
-  onSwitchWorkspace,
-  onSwitchKb,
-  onMockAction,
+  store,
+  actions,
+  defaultWorkspaceParent,
+  onPickDirectory,
 }: WorkspaceDialogsProps) {
   return (
     <>
       <CreateWorkspaceWizard
         open={open === "createWorkspace"}
         onOpenChange={(next) => onOpenChange(next ? "createWorkspace" : null)}
-        onCreated={onCreateWorkspace}
-        onMockAction={onMockAction}
+        defaultParent={defaultWorkspaceParent}
+        onPickDirectory={onPickDirectory}
+        onCreate={async (params) => {
+          await actions.createWorkspace(params);
+        }}
       />
-      <NewKbDialog
+      <KbEditorDialog
         open={open === "newKb"}
         onOpenChange={(next) => onOpenChange(next ? "newKb" : null)}
-        onCreated={onCreateKb}
+        mode="create"
+        onSubmit={async (name, description) => {
+          await actions.createKb(name, description);
+        }}
       />
       <KbManageDialog
         open={open === "kbManage"}
         onOpenChange={(next) => onOpenChange(next ? "kbManage" : null)}
-        workspaceName={currentWorkspaceName}
-        kbs={kbs}
+        workspaceName={store.currentWorkspace?.name ?? ""}
+        kbs={store.kbs}
+        currentKbId={store.currentKb?.id ?? null}
         onOpenNewKb={() => onOpenChange("newKb")}
-        onSwitchKb={onSwitchKb}
-        onDeleteKb={onDeleteKb}
-        onMockAction={onMockAction}
+        onSwitchKb={actions.switchKb}
+        onUpdateKb={async (id, params) => {
+          await actions.updateKb(id, params);
+        }}
+        onDeleteKb={async (id) => {
+          await actions.deleteKb(id);
+        }}
       />
       <WsManageDialog
         open={open === "wsManage"}
         onOpenChange={(next) => onOpenChange(next ? "wsManage" : null)}
-        workspaces={workspaces}
-        onSwitchWorkspace={onSwitchWorkspace}
-        onDeleteWorkspace={onDeleteWorkspace}
-        onDeleteCurrentDenied={onDeleteCurrentDenied}
+        workspaces={store.workspaces}
+        currentWorkspaceId={store.currentWorkspace?.id ?? null}
+        onSwitch={async (id) => {
+          await actions.switchWorkspace(id);
+        }}
+        onRename={actions.renameWorkspace}
+        onDelete={async (id, deleteFolder) => {
+          await actions.deleteWorkspace(id, deleteFolder);
+        }}
       />
     </>
   );

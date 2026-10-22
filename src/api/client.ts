@@ -1,37 +1,52 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /**
- * IPC 调用统一错误：携带命令名与原始错误，供统一 toast / 日志转换使用。
+ * IPC 调用统一错误：优先使用 Rust 返回的中文消息，便于直接 toast。
  */
 export class ApiError extends Error {
   constructor(
     public readonly command: string,
     public readonly cause: unknown,
   ) {
-    super(`命令 ${command} 调用失败`);
+    super(resolveMessage(command, cause));
     this.name = "ApiError";
   }
 }
 
 /**
- * Tauri IPC 唯一出入口（AGENTS.md §3.3）：所有 Rust 命令调用必须经此封装，
- * 组件禁止直接 import @tauri-apps/api。统一错误转换与日志挂载点。
+ * 从任意错误中提取可展示文案；未知错误回退为通用提示。
+ * @param error 捕获到的异常
+ * @returns 面向用户的一行中文消息
+ * @example toErrorMessage(new ApiError("kb_list", "知识库不存在")) // "知识库不存在"
+ */
+export function toErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return "操作失败，请稍后重试";
+}
+
+/**
+ * Tauri IPC 唯一出入口（AGENTS.md §3.3）：所有 Rust 命令必须经此封装，
+ * 组件禁止直接 import @tauri-apps/api。
  *
- * mock 阶段尚无 Rust 命令接入，本文件作为唯一出入口预留；首个命令落地时：
- * ①在 `api/<业务域>.ts` 新增封装函数（中文 JSDoc 注明入参/出参/示例）；
- * ②函数体调用 invokeCommand，返回 @/types/notebook 中的领域类型；
- * ③组件改调 api 函数——切换数据源时组件零改动。
- *
- * @param command Rust 命令名，与 src-tauri/src/commands/ 定义一一对应
+ * @param command Rust 命令名，与 src-tauri/src/commands/ 一一对应
  * @param args 命令参数对象（可选）
- * @returns 命令返回值，泛型由调用方约束为领域类型
- * @throws ApiError 命令执行失败时抛出（含命令名与原始错误）
+ * @returns 命令返回值；领域类型由调用方泛型约束
+ * @throws ApiError 命令执行失败时抛出（消息已转为可展示中文）
+ * @example await invokeCommand<Workspace[]>("workspace_list")
  */
 export async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(command, args);
   } catch (error) {
-    // TODO(IPC): 接入日志系统后按模块名记录失败（见 AGENTS.md §10）
     throw new ApiError(command, error);
   }
+}
+
+/** 从 Rust 错误载荷解析消息：字符串直接使用，其他回退通用文案。 */
+function resolveMessage(command: string, cause: unknown): string {
+  if (typeof cause === "string" && cause.trim()) return cause;
+  if (cause instanceof Error && cause.message.trim()) return cause.message;
+  return `命令 ${command} 调用失败`;
 }

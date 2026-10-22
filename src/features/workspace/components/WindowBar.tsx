@@ -1,11 +1,11 @@
 import { Minus, Plus, Search, Settings, Square, X } from "lucide-react";
-import { NODE_KIND_LABELS, NodeKindIcon } from "@/components/common/NodeKindIcon";
+import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { Kbd } from "@/components/ui/empty-state";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { runWindowAction, windowActions } from "@/lib/window";
-import type { TabItem } from "@/types/notebook";
+import { NODE_KIND_LABELS, type TabItem } from "@/types/notebook";
 
 export interface WindowBarProps {
   tabs: TabItem[];
@@ -64,12 +64,13 @@ export function WindowBar({
       <div role="tablist" aria-label="标签页" className="flex min-w-0 items-end self-end gap-0.5 pl-2">
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
+          const kindLabel = tab.kind === "starred" ? "收藏" : NODE_KIND_LABELS[tab.kind];
           return (
             <div
               key={tab.id}
               role="tab"
               aria-selected={active}
-              aria-label={`${NODE_KIND_LABELS[tab.kind]} · ${tab.title}`}
+              aria-label={`${kindLabel} · ${tab.title}`}
               tabIndex={-1}
               className={cn(
                 "group -mb-px flex h-[34px] min-w-0 items-center gap-1 rounded-t-[10px] border border-b-0 px-2 transition-colors duration-150 ease-[var(--ease)]",

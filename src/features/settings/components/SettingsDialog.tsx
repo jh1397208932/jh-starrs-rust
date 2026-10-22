@@ -1,27 +1,14 @@
-import {
-  Check,
-  Cloud,
-  Database,
-  FolderOpen,
-  Info,
-  Keyboard,
-  Palette,
-  Settings2,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { Check, Cloud, Database, Info, Keyboard, Palette, Settings2, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/empty-state";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { THEME_LABELS, THEME_NAMES, type ThemeMode, type ThemeName, useTheme } from "@/lib/theme";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import { SHORTCUTS } from "@/mocks/shortcuts";
-import { STORAGE_STATS, STORAGE_TOTAL } from "@/mocks/workspace";
 
 type SettingsTab = "general" | "appearance" | "shortcuts" | "storage" | "cloud" | "about";
 
@@ -37,7 +24,8 @@ const NAV: { id: SettingsTab; label: string; icon: typeof Info }[] = [
 export interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onMockAction: (label: string) => void;
+  /** 当前工作区根目录；空串表示未连接 */
+  workspacePath: string;
 }
 
 /** 主题预览卡内的示意条 */
@@ -142,34 +130,19 @@ function ShortcutsSection() {
   );
 }
 
-function StorageSection({ onMockAction }: { onMockAction: (label: string) => void }) {
-  const max = Math.max(...STORAGE_STATS.map((s) => s.value));
+function StorageSection({ workspacePath }: { workspacePath: string }) {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">存储</h3>
       <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>
-        共占用 {(STORAGE_TOTAL / 1024).toFixed(2)} GB（模拟数据）
+        当前工作区的数据全部保存在你选择的本地文件夹。
       </p>
-      <ul className="mt-4 flex flex-col gap-3">
-        {STORAGE_STATS.map((s) => (
-          <li key={s.label}>
-            <div className="mb-1 flex justify-between text-[12.5px]">
-              <span className="text-muted-foreground">{s.label}</span>
-              <span className="font-mono">{s.value} MB</span>
-            </div>
-            <Progress value={(s.value / max) * 100} />
-          </li>
-        ))}
-      </ul>
-      <div className="mt-5 flex gap-2">
-        <Button size="sm" variant="outline" onClick={() => onMockAction("清理缓存")}>
-          <Trash2 className="size-3.5" />
-          清理缓存
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => onMockAction("打开存储目录")}>
-          <FolderOpen className="size-3.5" />
-          打开存储目录
-        </Button>
+      <div className="mt-4 rounded-md border border-border bg-muted/60 p-4">
+        <p className="text-[12px] text-muted-foreground">工作区根目录</p>
+        <code className="mt-1 block break-all font-mono text-[12px]">{workspacePath || "未连接工作区"}</code>
+        <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+          数据库：db/workspace.sqlite3；附件目录：storage/。附件容量统计将在附件功能上线后提供。
+        </p>
       </div>
     </div>
   );
@@ -197,7 +170,7 @@ function GeneralSection() {
         </Select>
       </div>
       <p className={`${CAPTION_CLS} mt-4 text-muted-foreground`}>
-        启动时自动恢复上次的工作空间与标签页（即将支持）。
+        启动时自动恢复上次工作区与外观设置；标签页会话尚未持久化。
       </p>
     </div>
   );
@@ -225,10 +198,10 @@ function AboutSection() {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">关于星屿</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>Starris · Phase2 前端 Mock</p>
+      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>Starris · 本地工作区版</p>
       <dl className="mt-4 max-w-[320px]">
         {[
-          ["版本", "0.1.0 (mock)"],
+          ["版本", "0.1.0"],
           ["引擎", "Tauri 2 + React 19"],
           ["设计系统", "v1.0 · sunset"],
         ].map(([k, v]) => (
@@ -246,7 +219,7 @@ function AboutSection() {
 }
 
 /** 弹窗 C · 设置：720×480 模态，左导航 160px + 右内容区 */
-export function SettingsDialog({ open, onOpenChange, onMockAction }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDialogProps) {
   const [tab, setTab] = useState<SettingsTab>("appearance");
 
   return (
@@ -287,7 +260,7 @@ export function SettingsDialog({ open, onOpenChange, onMockAction }: SettingsDia
             {tab === "general" && <GeneralSection />}
             {tab === "appearance" && <AppearanceSection />}
             {tab === "shortcuts" && <ShortcutsSection />}
-            {tab === "storage" && <StorageSection onMockAction={onMockAction} />}
+            {tab === "storage" && <StorageSection workspacePath={workspacePath} />}
             {tab === "cloud" && <CloudSection />}
             {tab === "about" && <AboutSection />}
 
