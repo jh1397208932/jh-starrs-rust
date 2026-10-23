@@ -24,7 +24,7 @@ export function AppToast({ toast }: AppToastProps) {
           animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
           exit={{ opacity: 0, y: 8, scale: 0.98, x: "-50%" }}
           transition={SPRING_TOAST}
-          className="fixed bottom-6 left-1/2 z-[70] flex items-center gap-2.5 rounded-[12px] border border-border bg-popover px-4 py-[11px] shadow-lg"
+          className="fixed bottom-6 left-1/2 z-[70] flex items-center gap-2.5 rounded-[14px] border border-border/70 bg-popover/88 px-4 py-[11px] shadow-lg backdrop-blur-2xl"
         >
           <span
             aria-hidden="true"
@@ -32,7 +32,7 @@ export function AppToast({ toast }: AppToastProps) {
               "grid size-5 shrink-0 place-items-center rounded-full text-[11px]",
               toast.kind === "destructive"
                 ? "bg-destructive text-destructive-foreground"
-                : "bg-primary text-primary-foreground",
+                : "bg-accent text-accent-foreground",
             )}
           >
             ✓

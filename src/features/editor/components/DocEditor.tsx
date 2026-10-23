@@ -14,6 +14,7 @@ import {
   ListOrdered,
   Loader2,
   Minus,
+  Paperclip,
   Pilcrow,
   Quote,
   Smile,
@@ -23,6 +24,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { loadDocument } from "@/api/document";
+import { onNativeFileDrop } from "@/api/dragDrop";
+import { pickAttachmentFiles } from "@/api/fileDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
@@ -35,7 +38,12 @@ import { useBlockHandle } from "../hooks/useBlockHandle";
 import { useBlockPointerDrag } from "../hooks/useBlockPointerDrag";
 import { useDocumentPersistence } from "../hooks/useDocumentPersistence";
 import type { SaveStatus } from "../types";
-import { insertImageFiles } from "../utils/image";
+import {
+  currentInsertPos,
+  resolveDropInsertPos,
+  uploadFilesAndInsert,
+  uploadPathsAndInsert,
+} from "../utils/attachmentUpload";
 import { BlockHandle } from "./BlockHandle";
 import { EditorBubbleMenu } from "./EditorBubbleMenu";
 import { EditorContextMenu } from "./EditorContextMenu";
@@ -115,10 +123,11 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
+  const [uploadingCount, setUploadingCount] = useState(0);
 
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const fileDropRef = useRef<(current: Editor, files: File[], pos?: number) => void>(() => undefined);
   const slashRef = useRef<SlashState | null>(null);
   const suppressRef = useRef(false);
   const docSeqRef = useRef(0);
@@ -132,6 +141,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       createEditorExtensions({
         onOutline: (items) => publishOutline(outlineOwnerRef.current, items),
         onImageError: (message) => onErrorRef.current?.(message),
+        onFilesDropped: (current, files, pos) => fileDropRef.current(current, files, pos),
       }),
     [],
   );
@@ -215,9 +225,102 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
     [closeSlash],
   );
 
-  const imagePicker = useCallback(() => {
-    imageInputRef.current?.click();
-  }, []);
+  const beginUpload = useCallback(() => setUploadingCount((value) => value + 1), []);
+  const endUpload = useCallback(() => setUploadingCount((value) => Math.max(0, value - 1)), []);
+
+  const pickAndInsert = useCallback(
+    async (kind: "images" | "attachments", pos?: number) => {
+      const target = persistence.editorRef.current ?? editor;
+      if (!target) return;
+      try {
+        const paths = await pickAttachmentFiles({ imagesOnly: kind === "images" });
+        if (paths.length === 0) return;
+        const sequence = docSeqRef.current;
+        await uploadPathsAndInsert(target, paths, {
+          kind,
+          pos,
+          onError: (message) => onErrorRef.current?.(message),
+          onStart: beginUpload,
+          onEnd: endUpload,
+          isCancelled: () => docSeqRef.current !== sequence,
+        });
+      } catch (error) {
+        onErrorRef.current?.(toErrorMessage(error));
+      }
+    },
+    [beginUpload, editor, endUpload, persistence.editorRef],
+  );
+
+  const pickImages = useCallback(
+    (pos?: number) => {
+      void pickAndInsert("images", pos);
+    },
+    [pickAndInsert],
+  );
+  const pickAttachments = useCallback(
+    (pos?: number) => {
+      void pickAndInsert("attachments", pos);
+    },
+    [pickAndInsert],
+  );
+  const insertImagesAtSelection = useCallback(() => {
+    const target = persistence.editorRef.current ?? editor;
+    if (target) pickImages(currentInsertPos(target));
+  }, [editor, persistence.editorRef, pickImages]);
+  const insertAttachmentsAtSelection = useCallback(() => {
+    const target = persistence.editorRef.current ?? editor;
+    if (target) pickAttachments(currentInsertPos(target));
+  }, [editor, persistence.editorRef, pickAttachments]);
+
+  const handleFilesDropped = useCallback(
+    (target: Editor, files: File[], pos?: number) => {
+      const sequence = docSeqRef.current;
+      void uploadFilesAndInsert(target, files, {
+        kind: "auto",
+        pos,
+        onError: (message) => onErrorRef.current?.(message),
+        onStart: beginUpload,
+        onEnd: endUpload,
+        isCancelled: () => docSeqRef.current !== sequence,
+      });
+    },
+    [beginUpload, endUpload],
+  );
+  fileDropRef.current = handleFilesDropped;
+
+  /**
+   * 从访达拖入文件：Tauri 默认在原生层接管拖放，网页拿不到 HTML5 drop，
+   * 因此订阅 webview 事件并按绝对路径流式上传；落点坐标解析不到块时插到文档末尾。
+   */
+  useEffect(() => {
+    if (!node?.id) return;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void onNativeFileDrop((drop) => {
+      const target = persistence.editorRef.current ?? editor;
+      if (!target || disposed) return;
+      const pos = resolveDropInsertPos(target, drop.clientX, drop.clientY, containerRef.current);
+      if (pos === null) return;
+      const sequence = docSeqRef.current;
+      void uploadPathsAndInsert(target, drop.paths, {
+        kind: "auto",
+        pos,
+        onError: (message) => onErrorRef.current?.(message),
+        onStart: beginUpload,
+        onEnd: endUpload,
+        isCancelled: () => docSeqRef.current !== sequence,
+      });
+    })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch((error: unknown) => onErrorRef.current?.(toErrorMessage(error)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [beginUpload, editor, endUpload, node?.id, persistence.editorRef]);
 
   const {
     anchor: blockAnchor,
@@ -380,10 +483,19 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "image",
         label: "图片",
         group: "插入",
-        description: "插入本地图片（≤2MB）",
+        description: "上传本地图片并插入图片块",
         icon: ImagePlus,
         keywords: ["image", "photo", "picture"],
-        run: () => imagePicker(),
+        run: (current) => pickImages(currentInsertPos(current)),
+      },
+      {
+        id: "attachment",
+        label: "附件",
+        group: "插入",
+        description: "上传任意文件并插入附件块",
+        icon: Paperclip,
+        keywords: ["file", "attachment", "attach"],
+        run: (current) => pickAttachments(currentInsertPos(current)),
       },
       {
         id: "emoji",
@@ -395,7 +507,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         run: (current) => current.chain().focus().setEmoji("sparkles").run(),
       },
     ],
-    [imagePicker],
+    [pickAttachments, pickImages],
   );
 
   const slashItems = slash ? filterSlashCommands(slashCommands, slash.query) : [];
@@ -609,7 +721,13 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
               <span>创建 {node ? formatTimestamp(node.createdAt) : "刚刚"}</span>
               <span aria-hidden="true">·</span>
               <span>最近编辑 {displayUpdatedAt ? formatTimestamp(displayUpdatedAt) : "刚刚"}</span>
-              <span className="ml-auto">
+              <span className="ml-auto inline-flex items-center gap-3">
+                {uploadingCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground" aria-live="polite">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    正在上传附件…
+                  </span>
+                )}
                 <SaveIndicator status={persistence.status} onRetry={() => void persistence.retry()} />
               </span>
             </div>
@@ -678,25 +796,11 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
           editor={editor}
           position={contextMenu}
           onClose={() => setContextMenu(null)}
-          onInsertImage={imagePicker}
+          onInsertImage={insertImagesAtSelection}
+          onInsertAttachment={insertAttachmentsAtSelection}
           onError={reportError}
         />
       )}
-
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
-        multiple
-        hidden
-        onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          event.target.value = "";
-          if (files.length > 0) {
-            void insertImageFiles(editor, files, { onError: reportError });
-          }
-        }}
-      />
     </div>
   );
 }

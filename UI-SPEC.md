@@ -1,12 +1,14 @@
 # 星屿 Starris · UI 设计规范（UI-SPEC）
 
-> 本文件是全项目 UI 开发的唯一权威规范入口。详细令牌定义见 `src/styles/tokens.css`，交互规格见 `docs/UX_SPEC.md`，令牌使用规则见 `docs/DESIGN_TOKENS.md`，视觉基准原型见 `docs/设计/starris-design-system.html`。
+> 本文件是全项目 UI 开发的唯一权威规范入口。详细令牌定义见 `src/styles/tokens.css`，交互规格见 `docs/ui设计规范/UX_SPEC.md`，令牌使用规则见 `docs/DESIGN_TOKENS.md`。视觉基准原型 `docs/设计/starris-design-system.html` 是第五轮历史基线；**第十一轮「雾光笺」以 `tokens.css` + `app.css` 与本文件为准**。
 
 ## 1. 主题体系
 
-- 8 套预设主题：暖屿橙 sunset（默认）/ 晴空蓝白 azure / 午夜星河 midnight / 暮岩金 amber / 青屿森语 forest / 樱屿绯粉 rose / 靛夜霓虹 violet / 墨玉石墨 graphite。
+- **9 套预设主题**：雾光青 `mist`（默认）/ 晴空蓝 `azure` / 星澜紫 `midnight` / 暖砂金 `amber` / 苔屿绿 `forest` / 樱雾粉 `rose` / 暮霭紫 `violet` / 石墨灰 `graphite` / 晨光橙 `sunset`。
 - 每套主题含浅色与深色两组变量；运行时切肤只修改 `<html>` 的 `data-theme` / `data-mode` 两个属性，组件层零改动。
-- 品牌三色：`--logo-a`（主岛）/ `--logo-b`（伴屿，primary 加深 25% 派生）/ `--logo-c`（星），logo SVG 禁止写死色值。
+- 品牌三色：`--logo-a`（主岛）/ `--logo-b`（伴屿，accent-fg 深一档）/ `--logo-c`（星，低饱和金），logo SVG 禁止写死色值。
+- **第十一轮雾光笺**：所有 light 主题统一「高明度、低饱和、中对比」；文字共用中性墨色（`#1D201F / #626663`，tint ≤ 4）；主题个性只由 `primary / accent / sidebar / wash-1..3` 承担。
+- **主题升级**：`appearance.designVersion = 2`；仅在「无版本号且已存主题为旧默认 `sunset`」时一次性迁移到 `mist`，用户选过的其它主题不动。Rust `THEME_NAMES` 必须与前端 `THEME_NAMES` 同为一个 9 项白名单（新增主题要同步改 Rust 常量与单测）。
 
 ## 2. 颜色使用规则
 
@@ -14,28 +16,38 @@
 |---|---|---|
 | 正文 / 标题 | `--foreground` | 色板外的灰色 |
 | 辅助文字（≥12px） | `--muted-foreground` | 更浅的自定灰 |
-| 选中态 | `--accent` 底 + `--accent-foreground` 字（侧栏用 `--sidebar-active` 组） | 发明第二套高亮 |
-| 主按钮 | `--primary` + `--primary-foreground` | 对次要按钮用 primary |
+| 侧栏选中 / hover | `--sidebar-active` 底 + `--sidebar-active-fg` 字 | 侧栏行铺白卡 |
+| 主区选中 / 浅调强调 | `--accent` 底 + `--accent-foreground` 字 | 发明第二套高亮 |
+| 主按钮（第十一轮扁平浅调） | `--accent` 浅调底 + `--accent-foreground` 字 + `ring-1 ring-primary/20`，hover `primary/15` | 浅色主题 primary 填充白字；内高光/渐变/重投影 |
 | 危险操作 | `--destructive` | — |
-| macOS 红绿灯底座 | `bg-accent/70` 胶囊 | 硬编码色值 |
+| 结构线 | `--border` 66%~90% 混透明 | 用 24% 以上的线画普通分隔 |
+| 纹理 | `--texture-grain` + `--wash-1/2/3` | 大面积纯色或第二套渐变 |
+
+- **琥珀/主题色不做正文色**：`--primary` 对浅调底的对比不足以承载正文，主色退到图标、描边、指示位；浅调底上的文字一律用 `--accent-foreground`。
+- **一屏一个视觉焦点**：主按钮最多一个；空态 CTA 用浅调 + 深字，主色只给图标与描边。
+- **工作区入口是透明品牌行**：不允许白底、不允许边框；hover / 展开只用 `--sidebar-active` 55%。
+- **快捷入口图标底片**承担主题色（32px，圆角 10，1px `currentColor 16%`），不再画三张白卡。
 
 ## 3. 字体与字号
 
-- 字体栈：`system-ui, -apple-system, "PingFang SC", …`（tokens.css `--font-ui`）；代码 `--font-mono`。
-- 字号阶梯（tokens.css 语义变量）：display 30px/800 · h1 24px/800 · h2 18px/700 · body 15px/400 · caption 12.5px/500。
-- 标题 letter-spacing -0.3px；slogan 类短句 2–4px；正文行高 1.7。
+- 字体栈：`system-ui, -apple-system, "PingFang SC", …`（`--font-ui`）；代码/键帽/数字 `--font-mono`；**空态大标题与品牌字标**用宋体编辑感 `--font-display`（`Songti SC / STSong / Noto Serif SC`）。
+- 字号阶梯（tokens.css 语义变量）：display 32px/700 · h1 24px/700 · h2 18px/650 · body 15px/400 · caption 12.5px/500；编辑器正文 15.5px/1.78。
+- 标题负字距（display -0.4px / h1 -0.3px / h2 -0.2px）；空态眉标用 mono 9.5px + `0.24em` 正字距；正文行高 1.7。
 
 ## 4. 空间与形状
 
 - 间距 4px 基数（`--space-1` ~ `--space-8`）。
-- 圆角三档：窗口/弹窗 16（`--radius-lg`）· 控件 10（`--radius`）· 徽标/小件 8（`--radius-sm`）；pill 999。
-- 关键尺寸：侧栏 232px · 信息浮窗 264px · 窗口栏高 `--winbar-h:44px` · 按钮 31/38/44 三档 · 图标 14/16/18。
+- 圆角三档：纸面/弹窗 18（`--radius-lg`）· 控件 10（`--radius`）· 徽标/小件 8（`--radius-sm`）；pill 999 仅输入/胶囊类。交互控件一律 10px，禁止同一界面混排多档圆角。
+- 关键尺寸：侧栏 244px · 信息浮窗 264px · 顶栏/拖拽带高 `--winbar-h:44px` · 按钮 31/38/44 三档 · 图标 14/16/18 · 工作区品牌行高 44 · 快捷图标底片 32。
+- **内容纸面**：`app-sheet` 18px 圆角 + 66% 发丝边 + `--shadow-sheet`，四周留 8px 画框；纸面与侧栏之间不画分隔线。
+- **顶栏（单行制）**：标签页 / 所在位置 / 文档操作 / 搜索 / 设置同排；顶栏透明，激活标签 = `bg-card/80` + 发丝 ring + 轻阴影，非激活 hover `bg-card/40`；不再用“无边框药丸”或第二条工具栏。
+- **工作区入口**：透明两行品牌行（logo 26 + 14px 名 + 10.5px 知识库名），hover/展开用 `--sidebar-active` 55%，右侧 chevron 仅 hover/focus 显现。
 
 ## 5. 动效
 
 - 统一缓动 `--ease: cubic-bezier(.25,1,.5,1)`，微回弹 `--ease-pop: cubic-bezier(.3,1.36,.5,1)`（小元素 pop：下拉/Toast/弹窗内容），时长 150/300/500ms（`--dur-1/2/3`）。组件内禁止私定时长/缓动，一律引用令牌。
 - 只动 `transform / opacity / filter`；禁止 transition width/height/left/top（侧栏树展开的 height 由 motion 合成处理，限 ≤10 节点小列表）。
-- JS 动画引擎唯一：`motion`（v14，`motion/react` 导入）。禁止引入 GSAP / react-spring / auto-animate 等第二体系。高级感组件优先取 Magic UI（MIT）免费部分，复制至 `src/components/common/motion/` 并令牌化适配（NumberTicker / BlurFade / ShimmerButton / MagicCard 已落地）。
+- JS 动画引擎唯一：`motion`（v14，`motion/react` 导入）。禁止引入 GSAP / react-spring / auto-animate 等第二体系。高级感组件优先取 Magic UI（MIT）免费部分，复制至 `src/components/common/motion/` 并令牌化适配（NumberTicker / BlurFade / MagicCard 已落地；ShimmerButton 扫光已随扁平化移除）。
 - 入退场弹簧参数基准：浮窗/面板 stiffness 260 · damping 26；Toast stiffness 400 · damping 30；数字滚动 damping 60 · stiffness 100。
 - 标签/视图切换：AnimatePresence mode="wait"，退场 140ms 内，入场位移 8-12px、模糊 ≤6px；同屏 stagger 元素 ≤12、间隔 30-50ms。
 - 主题切换：View Transitions API 自点击位置圆形揭示 500ms（`document.startViewTransition` 特性检测；不支持或 reduced-motion 直接切换）。
@@ -56,7 +68,6 @@ JS 预设唯一来源 `src/lib/motion.ts`（与 tokens.css 同源）；CSS 工�
 | 侧栏树/折叠展开 | `TRANSITION_COLLAPSE` + AnimatePresence | 220ms height |
 | 数字滚动 | `SPRING_TICKER`（NumberTicker 组件） | spring 60/100 |
 | 内容模糊淡入 | `BlurFade`（`TRANSITION_REVEAL`） | 400ms + blur 6px |
-| CTA 扫光 | `ShimmerButton` | --speed 2.6~3s |
 | 主题切换 | View Transitions 圆形揭示（theme.tsx 内置） | 500ms，特性检测降级 |
 
 ### 5.2 新组件接入动画三步
@@ -65,25 +76,29 @@ JS 预设唯一来源 `src/lib/motion.ts`（与 tokens.css 同源）；CSS 工�
 2. **守约束**：只动 transform / opacity / filter；退场必须配 AnimatePresence；同屏动画元素 ≤12；正文编辑区文字不动画。
 3. **过降级**：motion 组件用 useReducedMotion 呈现终态；CSS 由 app.css 的 reduced-motion 全局兜底；新浏览器 API（如 View Transitions）必须特性检测。
 
-## 5A. 配色明亮清新度与对比度准则（2026-10-21 第五轮全主题改造）
+## 5A. 雾光笺配色与材质准则（第十一轮 2026-10-23 现行）
 
-- **白底黑字鲜主色三角（第五轮核心）**：light `--background` 8 主题统一纯白 `#FFFFFF`（编辑器/tab/卡片全白）；文字组 8 主题 light 共用一套中性碳黑（见下）；主色高饱和深色（S≥70%，graphite 中性除外）。主题个性只由 sidebar/secondary/accent 极浅倾向（L*≥96.5）+ 主色/激活色承担，正文与底色不"泛主题色"。
-- **统一中性文字组（8 主题 light 共用，RGB max-min ≤ 4）**：foreground/card-fg/popover-fg `#191A1C`；secondary-fg `#454649`；muted-fg 与 sidebar-muted `#6C6D70`；sidebar-fg `#343537`。跨主题切换正文观感恒定，禁再引入 tinted 灰（第四轮的"轻倾向灰"已废弃——实测 tint 24~43 即用户感知的"字体偏向主题色"）。
-- **对比度阶梯（8 主题 light 实测达标，脚本 `scripts/check-contrast.mjs --check`）**：
-  - 正文 foreground vs background = 17.4:1（≥12）；
-  - muted-foreground vs background/secondary ≥ 4.5:1（取严）；
-  - sidebar-muted vs sidebar ≥ 4.5:1；边线 border vs background ≥ 1.30:1；
-  - accent-fg、sidebar-active-fg ≥ 4.5:1；
-  - **主按钮白字 vs primary ≥ 4.5:1（第五轮提标：普通字号 AA，取代旧 3:1 大字号线）**；
-  - primary vs background ≥ 3.0（色块/图形辨识）。
-- **主色鲜明化点位（2026-10-21 第五轮校准）**：sunset `#C55008` / azure `#0B76D0` / midnight `#4F5BE0` / amber `#9A6A08` / forest `#12834E` / rose `#D0344F` / violet `#6D4FE3` / graphite `#4A5058`。规律：主色"鲜明 = 高饱和 + 适度加深"，提亮到白字 3:1 边缘反而发虚（第四轮教训）；加深至白字 ≥4.5 后按钮文字与图标同时受益。logo-a/glow-a/ring 跟随 primary，logo-b 取深一档。
-- **destructive 统一**：`#CE3535` + 纯白字（5.05:1）；旧 `#D64545`/`#FFF5F5`（4.19）不达标已废弃。
-- **dark 模式**维持 2026-10-21 第四轮校准值未动（按钮字 6.2~11 全达标）。
-- **改动令牌必须复验**：任何配色调整跑 `node scripts/check-contrast.mjs --check`（解析 tokens.css 全主题输出 lum/ratio 矩阵 + PASS/FAIL），禁止只凭观感。
+- **高明度低饱和**：light 主题背景为带主题倾向的近白（不等于纯白），`card` 纯白只作纸面；`primary` 压到中低饱和，只做图形/描边/图标，vs `background` ≥3:1。
+- **中性墨色文字**：9 主题共用 `foreground #1D201F` / `muted #626663`（tint ≤4）；禁止再引入 tinted 灰。`fg/bg` ≥14、`muted/fg` ≥5.5（脚本实测）。
+- **浅调按钮**：主按钮 = `accent` 浅底 + `accent-foreground` 深字 + `ring-primary/20`；浅色主题禁止 primary 填充白字。destructive 保持实底白字。
+- **淡底只提亮，不上色**：空态 CTA、选中底、快捷图标底只用 5–16% 的主题混色；文字必须用 `accent-foreground` / `sidebar-active-fg` 这类深一档颜色。
+- **材质**：画框 = 三色 wash + 5% 颗粒；纸面 = 顶部 12%/7% wash + 66% 发丝边；空态 = 560px 同心圆 + 4.5% 外环。禁止大面积纯色、禁止第二套渐变、禁止无限装饰动效。
+- **验收**：`node scripts/check-contrast.mjs --check` 必须 9 主题全 PASS；任何令牌调整后重跑。深色模式继续用公共 dark 中性层 + 9 套强调色，由同一脚本核。
+
+### 5A.1 历史准则（已退役）
+
+第五/六轮曾使用「纯白底 + 高饱和主色」「中性灰 chrome + 主题色点睛」；第十一轮改为「主题浅调画框 + 近白纸面 + 中性墨色」，旧值不再作为验收依据。
+
+## 5B. 空态与工作区入口（第十一轮 · 终态）
+
+- **空态 hero**：中心线稿 86px 圆角 28 的浅调底片（`accent 58% + card`）+ 42px 星屿线稿；眉标 mono 9.5/0.24em；宋体标题 34/600、行高 1.32；说明 13/1.75、最宽 460、`text-wrap: balance`；CTA 高 42、圆角 12、`accent 84% + card` 底 + `currentColor 18%` 边、hover 混入 12% primary；底部提示 11.5px。
+- **快捷入口**：三列，项高 58；图标底片 32px/圆角 10/1px `currentColor 16%`；收藏 = `logo-c 16%`、小记 = `accent 78%`、新建 = `wash-2 52%`；hover 时底片混入 10% primary。标签 11.5px，默认 `sidebar-muted`。
+- **工作区入口**：透明品牌行，logo 26px（32px 命中盒）+ 两行文字；hover / `data-state=open` 时背景 `sidebar-active 55%`；右侧 `ChevronsUpDown` 只在 hover/focus 出现。禁止白底、边框、阴影或大圆角卡片。
+- **红绿灯**：`TrafficLightSlot` 只保留 76px 拖拽注入区，**不再画胶囊底座**；左上角不出现任何孤立浅色块。
 
 ## 6. 窗口层规范（macOS/Windows 差异）
 
-- macOS：`titleBarStyle:"Overlay"` 保留系统红绿灯，`trafficLightPosition {x:12, y:16}`（44px 拖拽带内垂直居中）；红绿灯槽位统一使用 `TrafficLightSlot` 组件（76px 宽 + `bg-accent/70` 胶囊底座，失焦灰点时有视觉承托）。
+- macOS：`titleBarStyle:"Overlay"` 保留系统红绿灯，`trafficLightPosition {x:12, y:16}`（44px 拖拽带内垂直居中）；红绿灯槽位统一使用 `TrafficLightSlot` 组件（76px 宽拖拽注入区，**不画胶囊底座**——浅色纸面上会形成孤立白块）。
 - Windows：Rust 侧 `set_decorations(false)` 无边框，右上角自绘最小化/最大化/关闭（lucide 图标，关闭 hover 红）。
 - 拖拽：`data-tauri-drag-region`；红绿灯槽位与窗口栏弹性区均可拖拽。
 
@@ -112,3 +127,47 @@ JS 预设唯一来源 `src/lib/motion.ts`（与 tokens.css 同源）；CSS 工�
 - **浮层**：`.editor-float` 统一 12px 圆角、1px `border`、`--shadow-lg`、`backdrop-filter: blur(18px) saturate(1.08)`；`.editor-menu-item` 8px 圆角、9px 间距、26px 图标块；激活态 `bg-accent`；`.editor-kbd` 等宽键帽。
 - **拖拽**：手柄自绘定位，外观点击区「＋/六点」20×22px、默认 55% 不透明度、hover/拖动时 100%；显隐带 180ms 离开缓冲，鼠标移向左走廊时保持当前块。块拖拽使用 PointerEvent：源块以 42% 不透明度淡化，落点线为 3px 主色全宽圆角线（两端圆点），光标旁显示块类型胶囊标签；官方 Dropcursor 仅用于图片/文件原生拖放。
 - **响应式**：窄屏只压缩页边距、手柄走廊与标题字号；浮层宽度固定 260–304px，靠视口钳制定位；所有控件尺寸 ≥20px，菜单项命中区 ≥28px。
+
+## 10. 设置 · 附件对象存储（2026-10-22）
+
+- **位置**：设置弹窗 → 存储；工作区路径卡下方，宽度跟随设置内容区（720px 模态扣除 160px 导航）。
+- **统计**：四格 2×2 / 4 列网格（活跃附件、逻辑大小、物理占用、唯一对象）；下方一行 caption 展示 big / pack 对象、pack 文件、死字节、已删除数。
+- **工具条**：逻辑目录输入（`h-31`，占位“逻辑目录（可选）”）、主按钮「选择文件上传」、「含已删除」筛选（`aria-pressed`）、刷新图标按钮。
+- **列表**：`max-height: 230px` 内部滚动；行高约 44px；文件名 12.5px 500、元信息 10.5px muted（目录 · MIME · 哈希前 12 位 · 创建时间）；行尾为大小与 26px 图标按钮（校验/导出/删除）。
+- **删除**：行内二次确认，第一次点击变为「确认」+「取消」，不弹新窗口；已删除行 opacity 0.6，无操作按钮，显示「已删除」徽标。
+- **状态**：加载「正在读取附件…」、空态「还没有附件 / 选择文件后按内容哈希存入工作区 storage/」、错误条 `role=alert`（可关闭）、成功/提示 `role=status`；操作期间 `aria-busy=true`，按钮禁用。
+- **语义**：`section aria-label="附件管理"`、`ul aria-label="附件列表"`、图标按钮均有包含文件名的 aria-label；输入框有可见/隐藏 label。
+
+## 11. 文档图片块与附件块（2026-10-22）
+
+### 11.1 文件类型图标
+
+- **造型**：56×68（卡片）/ 36×44（长条）折角页面；1.5px 描边、右上折角、底部 4px 类型色条、扩展名标签（≤4 字符）。图标由 `FileTypeIcon` 自绘 SVG，不引入图标包。
+- **类型色**（全部走语义令牌）：PDF `--destructive`；图片 `--logo-c`；文档/表格/视频 `--primary`；演示/代码/JSON `--accent-foreground`；压缩 `--logo-c`；音频 `--glow-b`；Markdown `--logo-c`；文本/通用 `--muted-foreground`。
+- **页面底**：`color-mix(in srgb, 类型色 9%, var(--card))`；描边 = 类型色 42% 混 `--border`；扩展名文字使用 `--font-mono`、weight 650。
+- **标签**：PNG/JPG→原扩展名（≤4）、Markdown→MD、Shell→SH、JSON→JSON、未知→FILE；无扩展名按类型回退 IMG/PDF/DOC/XLS/PPT/ZIP/MP3/MP4/CODE/MD/JSON/TXT/FILE。
+- **两种尺寸共享颜色与标签**；长条图标字号 10px，卡片 13px。
+
+### 11.2 图片块
+
+- 块级 atom；左/中/右对齐；显示宽度 120px–正文宽度，高度按纵横比自动。
+- 选中：2px 主色描边（`box-shadow` 环），左右各一枚 10×32 主色胶囊缩放柄（hover/选中显现），工具栏浮条 27px 按钮，位于图片上方 42px。
+- 工具栏：左/中/右对齐（激活 = 主色底 + 白图标）+ 下载原图；选中态才挂载，避免隐藏按钮进入 Tab 顺序。
+- 预览加载：`--muted` 底 + 220×150 占位 + 旋转图标；失败/超大：`ImageOff` + 可读文案 + 下载原图链接。
+- 图片本身 `draggable=false`；排序使用既有块手柄；选中时隐藏文字 BubbleMenu。
+
+### 11.3 附件块
+
+- atom 容器，items 1..N；卡片网格 / 长条列表两种形态；组级左/中/右对齐。
+- 卡片：210px 宽、最小高 174px、16px 内边距；图标居中、名称最多两行（12.5/600）、大小 10.5px；hover 边框趋向主色、阴影 `--shadow-md`；选中卡片 2px 主色环。
+- 长条：100% 宽、8px/10px 内边距、图标在左、名称/大小在中间、下载/移除在右；图标 36×44。
+- 操作：下载/移除按钮 24×24；卡片形态在 hover/focus/选中时出现（opacity + pointer-events），长条形态常显；移除最后一项删除整块。
+- 工具条：3 个对齐 + 分隔 + 卡片/长条切换，按钮 27×27、激活主色底；选中才挂载。
+- 浮条定位基准：浮条横向中心必须落在**该块实际内容**（图片本体 / 卡片组）的中心，而不是正文行中心。因此对齐由块元素本身承担（flex + `justify-content`），卡片形态下外壳 `width: fit-content` 收缩到卡片组宽度，长条形态保持 `width: 100%`；浮条统一 `top: -42px`，允许跨压在上一块边缘（`z-index` 高于块选中态）。
+- 上传中：编辑器头部 meta 行显示「正在上传附件…」+ 旋转图标（`aria-live=polite`）；失败走编辑器错误通道。
+
+### 11.4 可访问性
+
+- 图片块 `fieldset.attachment-image-frame` 作为容器；缩放柄有方向性 aria-label；工具栏 `role=toolbar`。
+- 附件卡片选择区是原生 `<button>`；下载/移除为独立按钮并带文件名 aria-label；长条操作常显。
+- 选中态、hover 态、focus-within 均可见；不改原生按钮焦点环。

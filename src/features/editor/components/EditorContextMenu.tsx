@@ -23,6 +23,7 @@ import {
   ListOrdered,
   Minus,
   Palette,
+  Paperclip,
   Pilcrow,
   Quote,
   Rows3,
@@ -47,6 +48,7 @@ export interface EditorContextMenuProps {
   position: { x: number; y: number };
   onClose: () => void;
   onInsertImage: () => void;
+  onInsertAttachment: () => void;
   onError: (message: string) => void;
 }
 
@@ -112,6 +114,7 @@ export function EditorContextMenu({
   position,
   onClose,
   onInsertImage,
+  onInsertAttachment,
   onError,
 }: EditorContextMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -300,10 +303,18 @@ export function EditorContextMenu({
         <SectionLabel>插入</SectionLabel>
         <Action
           icon={ImagePlus}
-          label="图片（≤2MB）"
+          label="图片"
           onClick={() => {
             onClose();
             onInsertImage();
+          }}
+        />
+        <Action
+          icon={Paperclip}
+          label="附件"
+          onClick={() => {
+            onClose();
+            onInsertAttachment();
           }}
         />
         <Action
@@ -343,7 +354,7 @@ export function EditorContextMenu({
             />
             <button
               type="submit"
-              className="h-7 cursor-default rounded-sm bg-primary px-2.5 text-[12px] font-medium text-primary-foreground hover:opacity-90"
+              className="h-7 cursor-default rounded-sm bg-accent px-2.5 text-[12px] font-medium text-accent-foreground ring-1 ring-primary/25 ring-inset transition-colors duration-150 ease-[var(--ease)] hover:bg-accent-foreground/15"
             >
               应用
             </button>

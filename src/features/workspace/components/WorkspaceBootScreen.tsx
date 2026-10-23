@@ -12,7 +12,7 @@ export interface WorkspaceBootScreenProps {
 /** 启动加载 / 启动失败页：全局库打开失败时应用无法进入主界面 */
 export function WorkspaceBootScreen({ mode, message, onRetry }: WorkspaceBootScreenProps) {
   return (
-    <div className="grid h-full place-items-center bg-background px-6" aria-live="polite">
+    <div className="app-shell grid h-full place-items-center px-6" aria-live="polite">
       <div className="flex w-full max-w-[420px] flex-col items-center text-center">
         <BrandLogo size={40} />
         {mode === "loading" ? (

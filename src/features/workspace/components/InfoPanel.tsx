@@ -61,13 +61,13 @@ export function InfoPanel({ node, kb, workspacePath, related, onBackToInfo }: In
       ];
 
   return (
-    <div className="flex h-full flex-col bg-card text-card-foreground">
+    <div className="flex h-full flex-col bg-transparent text-card-foreground">
       {/* 分段控件 */}
       <div className="p-3 pb-2">
         <div
           role="tablist"
           aria-label="信息面板"
-          className="grid grid-cols-3 gap-1 rounded-full bg-muted p-1"
+          className="grid grid-cols-3 gap-1 rounded-full bg-foreground/[0.045] p-1"
         >
           {TABS.map(({ id, label }) => (
             <button
@@ -95,7 +95,7 @@ export function InfoPanel({ node, kb, workspacePath, related, onBackToInfo }: In
             {fields.map(({ label, value }) => (
               <div
                 key={label}
-                className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2.5 last:border-b-0"
+                className="flex items-baseline justify-between gap-3 border-b border-border/50 py-2.5 last:border-b-0"
               >
                 <dt className={cn(CAPTION_CLS, "shrink-0 text-muted-foreground")}>{label}</dt>
                 <dd className="min-w-0 truncate text-right text-[13px] text-foreground">{value}</dd>
@@ -139,7 +139,7 @@ export function InfoPanel({ node, kb, workspacePath, related, onBackToInfo }: In
       </ScrollArea>
 
       {/* 底部统计 */}
-      <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+      <div className="flex items-center gap-2 border-t border-border/50 px-4 py-3">
         <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
         <span className={cn(CAPTION_CLS, "truncate text-muted-foreground")}>
           {kb?.name ?? "未命名知识库"} ·{" "}

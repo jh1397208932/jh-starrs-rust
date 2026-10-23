@@ -58,15 +58,17 @@ export function WorkspaceOnboarding({
   };
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-background/95 p-6 backdrop-blur-sm">
+    <div className="app-shell fixed inset-0 z-40 grid place-items-center overflow-y-auto p-6">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-onboarding-title"
-        className="w-[480px] max-w-full rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
+        className="w-[520px] max-w-full rounded-[22px] border border-border/60 bg-card/88 p-6 text-popover-foreground shadow-lg backdrop-blur-2xl"
       >
         <div className="flex items-center gap-3">
-          <BrandLogo size={36} />
+          <span className="sidebar-mark size-11 rounded-[14px]">
+            <BrandLogo size={26} />
+          </span>
           <div className="min-w-0">
             <h1
               id="workspace-onboarding-title"
@@ -83,7 +85,7 @@ export function WorkspaceOnboarding({
             type="button"
             disabled={busy !== null}
             onClick={onCreateWorkspace}
-            className="flex cursor-default flex-col items-start gap-2 rounded-md border border-primary bg-accent p-4 text-left text-accent-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-primary/25 bg-accent/60 p-4 text-left text-accent-foreground shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           >
             <Plus className="size-5" />
             <span className="text-[14px] font-semibold">新建工作区</span>
@@ -93,7 +95,7 @@ export function WorkspaceOnboarding({
             type="button"
             disabled={busy !== null}
             onClick={() => void handleOpen()}
-            className="flex cursor-default flex-col items-start gap-2 rounded-md border border-border bg-card p-4 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-border/70 bg-card/70 p-4 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           >
             <FolderOpen className="size-5" />
             <span className="text-[14px] font-semibold">{busy === "open" ? "正在打开…" : "打开工作区"}</span>
@@ -107,14 +109,14 @@ export function WorkspaceOnboarding({
               <HardDrive className="size-3.5" />
               最近的工作区
             </p>
-            <ul className="max-h-[180px] overflow-y-auto rounded-md border border-border">
+            <ul className="max-h-[180px] overflow-y-auto rounded-[12px] border border-border/60 bg-card/40">
               {workspaces.map((workspace) => (
-                <li key={workspace.id} className="border-b border-border/60 last:border-b-0">
+                <li key={workspace.id} className="border-b border-border/50 last:border-b-0">
                   <button
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void handleSwitch(workspace.id)}
-                    className="flex w-full cursor-default items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                    className="flex w-full cursor-default items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/35 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                   >
                     <span
                       aria-hidden="true"

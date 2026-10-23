@@ -90,9 +90,10 @@ export function FileTree({
   };
 
   return (
-    <div className="mx-2 mt-3 flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between px-2 pb-1">
-        <span className="truncate text-[11px] font-medium tracking-wide text-sidebar-muted">
+    <div className="mx-2 mt-2 flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between px-2.5 pt-1 pb-1.5">
+        <span className="flex min-w-0 items-center gap-1.5 truncate text-[10.5px] font-semibold tracking-[0.14em] text-sidebar-muted uppercase">
+          <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-primary/70" />
           {currentKbName ?? "文件"}
         </span>
         <Tooltip>
@@ -102,7 +103,7 @@ export function FileTree({
               aria-label="新建节点"
               disabled={!currentKbName}
               onClick={onCreateRoot}
-              className="grid size-6 cursor-default place-items-center rounded-sm text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
+              className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Plus className="size-4" />
             </button>
@@ -152,7 +153,7 @@ export function FileTree({
           onDragOver={drag.handleRootDragOver}
           onDrop={drag.handleRootDrop}
           className={cn(
-            "mt-auto min-h-8 shrink-0 rounded-sm",
+            "mt-auto min-h-8 shrink-0 rounded-[10px]",
             drag.draggedId && "border border-dashed border-primary/40",
             drag.dropHint?.position === "root" && "bg-accent",
           )}

@@ -1,7 +1,6 @@
-import { Ellipsis, Plus, Star, StickyNote } from "lucide-react";
+import { ChevronsUpDown, Ellipsis, Plus, Star, StickyNote } from "lucide-react";
 import { BrandLogo } from "@/components/common/BrandLogo";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
-import { Kbd } from "@/components/ui/empty-state";
 import type { KnowledgeBase, NodeItem, TreeNode, Workspace } from "@/types/notebook";
 import { FileTree } from "./FileTree";
 import { MoreMenu } from "./MoreMenu";
@@ -51,7 +50,7 @@ const QUICK_ACTIONS = [
  */
 export function Sidebar(props: SidebarProps) {
   return (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+    <div className="flex h-full flex-col text-sidebar-foreground">
       <TrafficLightSlot className="h-[44px]" />
 
       <WorkspaceSwitchPopover
@@ -69,34 +68,40 @@ export function Sidebar(props: SidebarProps) {
         <button
           type="button"
           aria-label="切换工作区"
-          className="mx-3 mt-3 flex h-10 cursor-default items-center gap-2 rounded-md px-2 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="workspace-brand group mx-3 mt-2 flex h-11 cursor-default items-center gap-2.5 px-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          <BrandLogo size={20} />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-[15px] font-bold leading-tight">
+          <span className="grid size-8 shrink-0 place-items-center">
+            <BrandLogo size={26} />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-[14px] font-semibold leading-tight tracking-[-0.01em]">
               {props.currentWorkspace.name}
             </span>
-            <span className="truncate text-[11px] leading-tight text-sidebar-muted">
+            <span className="truncate text-[10.5px] leading-tight text-sidebar-muted">
               {props.currentKb?.name ?? "未选择知识库"}
             </span>
           </span>
+          <ChevronsUpDown className="size-3.5 shrink-0 text-sidebar-muted opacity-0 transition-opacity duration-150 ease-[var(--ease)] group-hover:opacity-100 group-focus-visible:opacity-100" />
         </button>
       </WorkspaceSwitchPopover>
 
-      <div className="mx-3 mt-3 grid grid-cols-3 gap-1">
+      <div className="mx-3 mt-2 grid grid-cols-3 gap-1">
         {QUICK_ACTIONS.map(({ id, icon: Icon, label }) => (
           <button
             key={id}
             type="button"
+            data-kind={id}
             onClick={() => {
               if (id === "starred") props.onShowStarred();
               else if (id === "note") props.onCreateNote();
               else props.onCreateDoc();
             }}
-            className="flex h-[52px] cursor-default flex-col items-center justify-center gap-1 rounded-md text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="quick-action cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <Icon className="size-[18px]" />
-            <span className="text-[11.5px] leading-none">{label}</span>
+            <span className="quick-action__icon">
+              <Icon className="size-4" strokeWidth={1.8} />
+            </span>
+            <span>{label}</span>
           </button>
         ))}
       </div>
@@ -115,7 +120,7 @@ export function Sidebar(props: SidebarProps) {
         onError={props.onError}
       />
 
-      <div className="mx-3 mb-3 border-t border-dashed border-border pt-2">
+      <div className="mx-3 mb-3 pt-1">
         <MoreMenu
           open={props.moreMenuOpen}
           onOpenChange={props.onMoreMenuOpenChange}
@@ -124,11 +129,11 @@ export function Sidebar(props: SidebarProps) {
         >
           <button
             type="button"
-            className="flex h-9 w-full cursor-default items-center gap-2 rounded-md px-2 text-[13px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="sidebar-row flex h-9 w-full cursor-default items-center gap-2 px-2 text-[13px] text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
-            <Ellipsis className="size-4" />
+            <Ellipsis className="size-4 text-sidebar-muted" />
             更多
-            <Kbd className="ml-auto">⌘J</Kbd>
+            <span className="ml-auto font-mono text-[11px] text-sidebar-muted">⌘J</span>
           </button>
         </MoreMenu>
       </div>

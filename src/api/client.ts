@@ -44,6 +44,28 @@ export async function invokeCommand<T>(command: string, args?: Record<string, un
   }
 }
 
+/**
+ * 发送 raw IPC 请求（Uint8Array body + ASCII headers），用于二进制上传/预览。
+ *
+ * @param command Rust 命令名（必须声明 `tauri::ipc::Request` 参数）
+ * @param payload 原始字节；避免 JSON 数组/base64 放大
+ * @param headers ASCII 元数据头（如 hex 编码的文件名）
+ * @returns 命令返回值；raw Response 命令会得到 ArrayBuffer
+ * @throws ApiError 命令执行失败时抛出
+ * @example await invokeRawCommand<Attachment>("attachment_upload_bytes", bytes, headers)
+ */
+export async function invokeRawCommand<T>(
+  command: string,
+  payload: Uint8Array,
+  headers: Record<string, string>,
+): Promise<T> {
+  try {
+    return await invoke<T>(command, payload, { headers });
+  } catch (error) {
+    throw new ApiError(command, error);
+  }
+}
+
 /** 从 Rust 错误载荷解析消息：字符串直接使用，其他回退通用文案。 */
 function resolveMessage(command: string, cause: unknown): string {
   if (typeof cause === "string" && cause.trim()) return cause;

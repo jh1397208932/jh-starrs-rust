@@ -15,6 +15,8 @@ use crate::models::WorkspaceRecord;
 /// 当前已连接的工作区会话；drop 即释放 SQLite 连接。
 pub struct WorkspaceSession {
     pub workspace_id: String,
+    /// 工作区根目录；附件 storage/ 与相对路径解析使用。
+    pub root_path: PathBuf,
     /// 工作区库文件绝对路径；异步元数据写入使用独立连接打开它。
     pub db_path: PathBuf,
     pub connection: Connection,
@@ -31,6 +33,7 @@ impl WorkspaceSession {
         let connection = db::workspace::open(&db_path)?;
         Ok(Self {
             workspace_id: record.id.clone(),
+            root_path: root,
             db_path,
             connection,
         })

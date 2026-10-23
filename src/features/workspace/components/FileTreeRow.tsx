@@ -36,9 +36,10 @@ export function FileTreeRow(props: FileTreeRowProps) {
   return (
     <div>
       <div
+        data-selected={selected}
         className={cn(
-          "group relative flex h-8 items-center rounded-sm",
-          selected ? "bg-sidebar-active text-sidebar-active-fg" : "hover:bg-secondary",
+          "tree-row group relative mb-0.5 flex h-8 items-center",
+          selected && "bg-sidebar-active text-sidebar-active-fg",
           drag.draggedId === node.id && "opacity-50",
           hint === "inside" && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
         )}
@@ -67,7 +68,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
             if (isFolder) props.onToggleFolder(node.id);
             else props.onOpenNode(node);
           }}
-          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-sm pr-1 text-left text-[13px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-[10px] pr-1 text-left text-[13px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           {isFolder ? (
@@ -75,8 +76,15 @@ export function FileTreeRow(props: FileTreeRowProps) {
           ) : (
             <span className="size-3.5 shrink-0" />
           )}
-          <NodeKindIcon kind={node.kind} className="size-4 shrink-0" />
-          <span className={cn("truncate", selected && "font-semibold")}>{node.title}</span>
+          {/* 图标只在选中时点亮；常态保持中性，避免整列文件图标都在抢注意力 */}
+          <NodeKindIcon
+            kind={node.kind}
+            className={cn(
+              "size-4 shrink-0 transition-colors duration-150 ease-[var(--ease)]",
+              selected ? "text-primary" : "text-muted-foreground/80 group-hover:text-sidebar-foreground",
+            )}
+          />
+          <span className={cn("truncate", selected && "font-medium")}>{node.title}</span>
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -85,7 +93,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
               aria-label={`${node.title} 操作`}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
-              className="mr-1 grid size-6 shrink-0 cursor-default place-items-center rounded-sm text-sidebar-muted opacity-0 transition-opacity duration-150 ease-[var(--ease)] group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+              className="mr-1 grid size-6 shrink-0 cursor-default place-items-center rounded-[8px] text-sidebar-muted opacity-0 transition-[opacity,background-color] duration-150 ease-[var(--ease)] hover:bg-card/60 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
             >
               <Ellipsis className="size-4" />
             </button>

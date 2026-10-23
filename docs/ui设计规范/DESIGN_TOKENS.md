@@ -1,4 +1,6 @@
-# 星屿 Starris · 设计令牌与视觉规范
+# 星屿 Starris · 设计令牌与视觉规范（历史副本）
+
+> **现行版本：`docs/DESIGN_TOKENS.md`（v2.0 雾光笺）。本文件仅作历史参考，数值可能过期。**
 
 > 版本 v1.0 · 视觉事实来源：`../设计/starris-design-system.html`
 > 令牌实现：`src/styles/tokens.css`
@@ -10,8 +12,8 @@
 
 星屿采用 **「主题预设 × 明暗模式」** 二维切肤模型：
 
-- **8 套主题预设**（`data-theme`）：`sunset` 暖屿橙（默认）、`azure` 晴空蓝白、`midnight` 午夜星河、`amber` 暮岩金、`forest` 青屿森语、`rose` 樱屿绯粉、`violet` 靛夜霓虹、`graphite` 墨玉石墨。
-- **2 种明暗模式**（`data-mode`）：`light`（默认，缺省即浅色）/ `dark`，共 16 组变量组合。
+- **9 套主题预设**（`data-theme`）：`mist` 雾光青（默认）、`azure` 晴空蓝、`midnight` 星澜紫、`amber` 暖砂金、`forest` 苔屿绿、`rose` 樱雾粉、`violet` 暮霭紫、`graphite` 石墨灰、`sunset` 晨光橙。
+- **2 种明暗模式**（`data-mode`）：`light`（默认，缺省即浅色）/ `dark`，共 18 组变量组合。
 
 ### 切肤机制（唯一正确方式）
 

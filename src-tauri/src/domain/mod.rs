@@ -4,6 +4,7 @@
 
 use crate::errors::{AppError, AppResult};
 
+pub mod attachment;
 pub mod block_plan;
 pub mod document;
 pub mod fractional_index;
@@ -143,9 +144,9 @@ pub fn validate_memory_key(key: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// 允许的主题名，与前端 tokens.css 的 8 套主题保持一致。
-pub const THEME_NAMES: [&str; 8] = [
-    "sunset", "azure", "midnight", "amber", "forest", "rose", "violet", "graphite",
+/// 允许的主题名，与前端 tokens.css 的 9 套主题保持一致。
+pub const THEME_NAMES: [&str; 9] = [
+    "mist", "sunset", "azure", "midnight", "amber", "forest", "rose", "violet", "graphite",
 ];
 
 /// 校验主题名。
@@ -223,5 +224,14 @@ mod tests {
         assert_eq!(replace_path_prefix("a/b/c", "a/b", "x"), "x/c");
         assert_eq!(replace_path_prefix("a/bc", "a/b", "x"), "a/bc");
         assert_eq!(replace_path_prefix("a/b", "a/b", "x"), "x");
+    }
+
+    #[test]
+    fn theme_names_accept_all_presets_and_reject_unknown() {
+        for name in THEME_NAMES {
+            assert!(validate_theme_name(name).is_ok(), "预设主题 {name} 应被接受");
+        }
+        assert!(validate_theme_name("mist").is_ok());
+        assert!(validate_theme_name("neon").is_err());
     }
 }

@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -13,15 +14,23 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::db;
+use crate::domain::attachment::StoragePolicy;
 use crate::errors::AppError;
+use crate::models::attachment::{
+    AttachmentDto, AttachmentListQuery, DownloadAttachmentInput, UpdateAttachmentInput,
+    UploadAttachmentInput,
+};
 use crate::models::{
     CreateKbInput, CreateNodeInput, CreateWorkspaceInput, DeleteWorkspaceInput, DocSaveResult,
     MoveNodeInput, NodeDto, RenameWorkspaceInput, SaveDocumentInput, UpdateKbInput,
     UpdateNodeInput, WorkspaceDto,
 };
+use crate::repositories::attachment_repository;
 use crate::repositories::document_repository;
+use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::{
-    document_service, knowledge_base_service, memory_service, node_service, workspace_service,
+    attachment_store, document_service, knowledge_base_service, memory_service, node_service,
+    workspace_service,
 };
 use crate::state::AppState;
 
@@ -873,4 +882,931 @@ fn document_load_repairs_legacy_emoji_and_null_attrs() {
     env.save_doc(&doc.id, loaded.document);
     let reloaded = document_service::load(&env.state, &doc.id).expect("再次加载");
     assert!(!reloaded.normalized, "修复落库后再次加载不应重复标记");
+}
+
+// ---------------------------------------------------------------------------
+// 附件对象存储
+// ---------------------------------------------------------------------------
+
+fn attachment_context(env: &TestEnv) -> AttachmentContext {
+    AttachmentContext::from_state(&env.state).expect("附件上下文")
+}
+
+fn workspace_db_path(workspace: &WorkspaceDto) -> PathBuf {
+    PathBuf::from(&workspace.path).join("db/workspace.sqlite3")
+}
+
+fn workspace_storage_path(workspace: &WorkspaceDto) -> PathBuf {
+    PathBuf::from(&workspace.path).join("storage")
+}
+
+fn write_source(env: &TestEnv, name: &str, bytes: &[u8]) -> PathBuf {
+    let path = env.dir.path().join(name);
+    fs::write(&path, bytes).expect("写测试源文件");
+    path
+}
+
+fn upload_file(
+    context: &AttachmentContext,
+    name: &str,
+    source: &Path,
+    logical_path: &str,
+) -> AttachmentDto {
+    attachment_service::upload(
+        context,
+        UploadAttachmentInput {
+            source_path: source.to_string_lossy().into_owned(),
+            logical_path: logical_path.to_string(),
+            name: Some(name.to_string()),
+            mime: None,
+        },
+    )
+    .expect("上传附件")
+}
+
+fn upload_file_with_policy(
+    context: &AttachmentContext,
+    name: &str,
+    source: &Path,
+    logical_path: &str,
+    policy: StoragePolicy,
+) -> AttachmentDto {
+    attachment_service::upload_with_policy(
+        context,
+        UploadAttachmentInput {
+            source_path: source.to_string_lossy().into_owned(),
+            logical_path: logical_path.to_string(),
+            name: Some(name.to_string()),
+            mime: None,
+        },
+        policy,
+    )
+    .expect("上传附件")
+}
+
+#[test]
+fn attachment_big_is_deduped_and_refcount_drives_physical_delete() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-big", "附件大文件");
+    let context = attachment_context(&env);
+    let content = vec![0x5A_u8; 300 * 1024];
+    let source = write_source(&env, "big-source.bin", &content);
+
+    let first = upload_file(&context, "原件.bin", &source, "");
+    // 同内容重复上传（名字和目录都换）：两条逻辑记录，一份真实文件。
+    let second = upload_file(&context, "副本.bin", &source, "archive");
+    let expected_hash = blake3::hash(&content).to_hex().to_string();
+    assert_eq!(first.content_hash, expected_hash);
+    assert_eq!(second.content_hash, expected_hash);
+    assert_ne!(first.id, second.id, "重复上传必须各自成一条记录");
+    assert_eq!(second.name, "副本.bin");
+    assert_eq!(second.logical_path, "archive");
+    assert_eq!(first.size, content.len() as i64);
+
+    let stats_after_dup = attachment_service::stats(&context).expect("重传后统计");
+    assert_eq!(stats_after_dup.active_count, 2);
+    assert_eq!(stats_after_dup.unique_objects, 1, "真实文件只有一份");
+    assert_eq!(stats_after_dup.physical_bytes, content.len() as i64);
+
+    let big_path = workspace_storage_path(&workspace)
+        .join("objects/big")
+        .join(&expected_hash[0..2])
+        .join(&expected_hash[2..4])
+        .join(&expected_hash);
+    assert!(big_path.is_file(), "big 对象必须落在两级分桶路径");
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let blob = attachment_repository::find_blob(&connection, &expected_hash)
+        .expect("查询 blob")
+        .expect("blob 存在");
+    assert_eq!(blob.storage_kind, "big");
+    assert_eq!(
+        attachment_repository::count_active_references(&connection, &expected_hash)
+            .expect("活跃引用数"),
+        2,
+        "两条记录共享一个对象"
+    );
+
+    let deleted_first = attachment_service::delete(&context, &first.id).expect("删除第一个引用");
+    assert_eq!(deleted_first.remaining_references, 1);
+    assert!(!deleted_first.physical_deleted);
+    assert!(big_path.is_file(), "仍有引用时不得删除物理文件");
+
+    let stats_after_first = attachment_service::stats(&context).expect("统计");
+    assert_eq!(stats_after_first.active_count, 1);
+    assert_eq!(stats_after_first.deleted_count, 1);
+    assert_eq!(stats_after_first.unique_objects, 1);
+
+    let deleted_second =
+        attachment_service::delete(&context, &second.id).expect("删除最后一个引用");
+    assert_eq!(deleted_second.remaining_references, 0);
+    assert!(deleted_second.physical_deleted);
+    assert!(!big_path.exists(), "引用归零后 big 文件必须被删除");
+    assert!(
+        attachment_repository::find_blob(&connection, &expected_hash)
+            .expect("再次查询 blob")
+            .is_none(),
+        "引用归零后 blob 行必须删除"
+    );
+
+    let stats = attachment_service::stats(&context).expect("最终统计");
+    assert_eq!(stats.active_count, 0);
+    assert_eq!(stats.deleted_count, 2);
+    assert_eq!(stats.logical_bytes, 0);
+    assert_eq!(stats.unique_objects, 0);
+    assert_eq!(stats.physical_bytes, 0);
+
+    // 引用归零后重新上传：物理对象与逻辑记录都重建，并拿到新的 id。
+    let revived = upload_file(&context, "原件.bin", &source, "");
+    assert_ne!(revived.id, first.id, "对象已删除后重传应新建记录");
+    assert_eq!(revived.content_hash, expected_hash);
+    assert!(big_path.is_file(), "重传必须重新发布物理对象");
+}
+
+#[test]
+fn attachment_small_uses_pack_and_recovers_unindexed_tail() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-pack", "附件小文件");
+    let context = attachment_context(&env);
+    let first_content = vec![0x11_u8; 4096];
+    let first_source = write_source(&env, "small-a.bin", &first_content);
+    let first = upload_file(&context, "a.bin", &first_source, "");
+    let first_hash = blake3::hash(&first_content).to_hex().to_string();
+    assert_eq!(first.content_hash, first_hash);
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let blob = attachment_repository::find_blob(&connection, &first_hash)
+        .expect("查询 blob")
+        .expect("blob 存在");
+    assert_eq!(blob.storage_kind, "pack");
+    let pack_id = blob.pack_id.clone().expect("pack id");
+    let pack_path = workspace_storage_path(&workspace)
+        .join("objects/small/packs")
+        .join(format!("{pack_id}.pack"));
+    assert!(pack_path.is_file(), "小对象必须进入 pack");
+    let first_end = fs::metadata(&pack_path).expect("pack 元数据").len();
+
+    // 模拟崩溃遗留的未索引尾部：下一次 append 应截断后再写。
+    {
+        let mut pack = fs::OpenOptions::new()
+            .append(true)
+            .open(&pack_path)
+            .expect("追加垃圾");
+        pack.write_all(&[0xFF; 13]).expect("写入未索引尾部");
+        pack.sync_all().expect("同步垃圾尾部");
+    }
+    let second_content = vec![0x22_u8; 2048];
+    let second_source = write_source(&env, "small-b.bin", &second_content);
+    let second = upload_file(&context, "b.bin", &second_source, "");
+    let second_blob = attachment_repository::find_blob(&connection, &second.content_hash)
+        .expect("查询第二个 blob")
+        .expect("第二个 blob 存在");
+    assert_eq!(second_blob.storage_kind, "pack");
+    assert_eq!(second_blob.pack_offset, Some(first_end as i64));
+    assert_eq!(
+        fs::metadata(&pack_path).expect("pack 元数据").len(),
+        first_end + second_content.len() as u64,
+        "未索引尾部必须被截断"
+    );
+
+    let download_path = env.dir.path().join("small-roundtrip.bin");
+    let downloaded = attachment_service::download(
+        &context,
+        DownloadAttachmentInput {
+            id: first.id.clone(),
+            dest_path: download_path.to_string_lossy().into_owned(),
+            overwrite: true,
+        },
+    )
+    .expect("下载 small");
+    assert_eq!(downloaded.size, first_content.len() as i64);
+    assert_eq!(fs::read(&download_path).expect("读下载文件"), first_content);
+    assert!(
+        attachment_service::verify(&context, &first.id)
+            .expect("校验 small")
+            .valid
+    );
+
+    // 空文件也进入 pack，读取 0 字节并校验 BLAKE3 空串。
+    let empty_source = write_source(&env, "empty.bin", &[]);
+    let empty = upload_file(&context, "empty.bin", &empty_source, "");
+    assert_eq!(empty.size, 0);
+    let empty_dest = env.dir.path().join("empty-roundtrip.bin");
+    attachment_service::download(
+        &context,
+        DownloadAttachmentInput {
+            id: empty.id.clone(),
+            dest_path: empty_dest.to_string_lossy().into_owned(),
+            overwrite: true,
+        },
+    )
+    .expect("下载空文件");
+    assert_eq!(fs::read(&empty_dest).expect("读空文件"), Vec::<u8>::new());
+    assert!(
+        attachment_service::verify(&context, &empty.id)
+            .expect("校验空文件")
+            .valid
+    );
+}
+
+#[test]
+fn attachment_soft_delete_list_and_path_reuse() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-delete", "附件删除");
+    let context = attachment_context(&env);
+    let content = vec![0x33_u8; 1024];
+    let source = write_source(&env, "soft-delete.bin", &content);
+    let first = upload_file(&context, "note.txt", &source, "docs");
+
+    let deleted = attachment_service::delete(&context, &first.id).expect("软删除");
+    assert_eq!(deleted.remaining_references, 0);
+    let active =
+        attachment_service::list(&context, &AttachmentListQuery::default()).expect("活跃列表");
+    assert!(active.is_empty(), "软删除后默认列表不可见");
+    let all = attachment_service::list(
+        &context,
+        &AttachmentListQuery {
+            logical_path: None,
+            include_deleted: true,
+        },
+    )
+    .expect("全部列表");
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].status, "deleted");
+    assert!(attachment_service::get(&context, &first.id).is_err());
+    assert!(
+        attachment_service::download(
+            &context,
+            DownloadAttachmentInput {
+                id: first.id.clone(),
+                dest_path: env
+                    .dir
+                    .path()
+                    .join("deleted.bin")
+                    .to_string_lossy()
+                    .into_owned(),
+                overwrite: true,
+            }
+        )
+        .is_err(),
+        "删除后的附件不能下载"
+    );
+
+    let second = upload_file(&context, "note.txt", &source, "docs");
+    assert_ne!(first.id, second.id);
+    let active = attachment_service::list(&context, &AttachmentListQuery::default())
+        .expect("重新上传后的列表");
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, second.id);
+}
+
+#[test]
+fn attachment_rename_and_move_only_change_metadata() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-rename", "附件重命名");
+    let context = attachment_context(&env);
+    let content = vec![0x44_u8; 2048];
+    let source = write_source(&env, "rename-source.bin", &content);
+    let first = upload_file(&context, "a.txt", &source, "docs");
+    let first_hash = first.content_hash.clone();
+
+    let moved = attachment_service::update(
+        &context,
+        UpdateAttachmentInput {
+            id: first.id.clone(),
+            name: Some("b.txt".to_string()),
+            logical_path: Some("docs/2026".to_string()),
+        },
+    )
+    .expect("重命名并移动");
+    assert_eq!(moved.name, "b.txt");
+    assert_eq!(moved.logical_path, "docs/2026");
+    assert_eq!(moved.content_hash, first_hash);
+    assert_eq!(moved.size, first.size);
+
+    let other_source = write_source(&env, "rename-other.bin", &[0x45_u8; 128]);
+    let duplicate = upload_file(&context, "b.txt", &other_source, "docs/2026");
+    assert_ne!(duplicate.id, moved.id, "同名上传必须各自返回附件 id");
+    assert_eq!(duplicate.name, "b.txt");
+
+    let restored = attachment_service::update(
+        &context,
+        UpdateAttachmentInput {
+            id: first.id.clone(),
+            name: Some("a.txt".to_string()),
+            logical_path: Some("docs".to_string()),
+        },
+    )
+    .expect("移回原路径");
+    assert_eq!(restored.name, "a.txt");
+    assert_eq!(restored.logical_path, "docs");
+    assert!(
+        attachment_service::update(
+            &context,
+            UpdateAttachmentInput {
+                id: first.id,
+                name: None,
+                logical_path: None,
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn attachment_allows_duplicate_names_and_returns_distinct_ids() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-dup-name", "同名附件");
+    let context = attachment_context(&env);
+    let first_source = write_source(&env, "dup-a.bin", &[0x51_u8; 512]);
+    let second_source = write_source(&env, "dup-b.bin", &[0x52_u8; 700]);
+
+    // 同一目录、同一文件名、不同内容：两次上传都要成功。
+    let first = upload_file(&context, "image.png", &first_source, "docs");
+    let second = upload_file(&context, "image.png", &second_source, "docs");
+    assert_ne!(first.id, second.id);
+    assert_eq!(first.name, "image.png");
+    assert_eq!(second.name, "image.png");
+    assert_ne!(first.content_hash, second.content_hash);
+
+    let active =
+        attachment_service::list(&context, &AttachmentListQuery::default()).expect("活跃列表");
+    assert_eq!(active.len(), 2, "同名附件都要出现在列表里");
+
+    // 同名且同内容：仍各自成一条记录，但指向同一份真实文件。
+    let third = upload_file(&context, "image.png", &first_source, "docs");
+    assert_ne!(third.id, first.id, "重复上传必须新建记录");
+    assert_eq!(third.content_hash, first.content_hash);
+    let stats = attachment_service::stats(&context).expect("统计");
+    assert_eq!(stats.active_count, 3);
+    assert_eq!(stats.unique_objects, 2, "同内容只保留一个物理对象");
+
+    // 换目录重传同内容：新记录、同一对象；目录不参与去重。
+    let other_dir = upload_file(&context, "image.png", &first_source, "");
+    assert_ne!(other_dir.id, third.id);
+    assert_eq!(other_dir.content_hash, first.content_hash);
+    let filtered = attachment_service::list(
+        &context,
+        &AttachmentListQuery {
+            logical_path: Some("docs".to_string()),
+            include_deleted: false,
+        },
+    )
+    .expect("按目录列出");
+    assert_eq!(filtered.len(), 3);
+
+    // 用户实际动作：连续粘贴两张同名剪贴板图片走的是字节上传通道。
+    let pasted_first = attachment_service::upload_bytes(
+        &context,
+        "image.png".to_string(),
+        "docs".to_string(),
+        Some("image/png".to_string()),
+        vec![0x61_u8; 96],
+    )
+    .expect("第一次粘贴 image.png");
+    let pasted_second = attachment_service::upload_bytes(
+        &context,
+        "image.png".to_string(),
+        "docs".to_string(),
+        Some("image/png".to_string()),
+        vec![0x62_u8; 96],
+    )
+    .expect("第二次粘贴 image.png 也必须成功");
+    assert_ne!(pasted_first.id, pasted_second.id);
+    assert_eq!(pasted_first.name, "image.png");
+    assert_eq!(pasted_second.name, "image.png");
+    assert_ne!(pasted_first.content_hash, pasted_second.content_hash);
+    for id in [&pasted_first.id, &pasted_second.id] {
+        let fetched = attachment_service::get(&context, id).expect("按 id 回读");
+        assert_eq!(fetched.name, "image.png");
+    }
+
+    // 连续粘贴同一张图片（字节完全一致）：新记录，但共享同一份真实文件。
+    let pasted_again = attachment_service::upload_bytes(
+        &context,
+        "image.png".to_string(),
+        "docs".to_string(),
+        Some("image/png".to_string()),
+        vec![0x61_u8; 96],
+    )
+    .expect("重复粘贴同一图片");
+    assert_ne!(pasted_again.id, pasted_first.id, "重复粘贴也各自成一条记录");
+    assert_eq!(
+        pasted_again.content_hash, pasted_first.content_hash,
+        "重复粘贴指向同一份真实文件"
+    );
+}
+
+#[test]
+fn attachment_staging_names_temp_file_by_blake3() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-stage-name", "暂存命名");
+    let storage_root = workspace_storage_path(&workspace);
+    let content = "星屿暂存命名测试".as_bytes().to_vec();
+    let hash = blake3::hash(&content).to_hex().to_string();
+
+    let staged = attachment_store::stage_bytes(&content, &storage_root).expect("暂存字节");
+    assert_eq!(staged.hash, hash);
+    assert_eq!(staged.size, content.len() as u64);
+    assert_eq!(
+        staged.path.file_name().and_then(|value| value.to_str()),
+        Some(format!("{hash}.part").as_str()),
+        "临时文件必须以 BLAKE3 命名，不能出现真实文件名"
+    );
+    assert!(staged.path.is_file());
+
+    let entries: Vec<String> = fs::read_dir(storage_root.join("tmp"))
+        .expect("读暂存目录")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        entries,
+        vec![format!("{hash}.part")],
+        "暂存区只留哈希名文件，不得残留写入期的临时名"
+    );
+
+    // 同内容再暂存一次：复用同一个哈希名，不产生第二个文件。
+    let again = attachment_store::stage_bytes(&content, &storage_root).expect("再次暂存");
+    assert_eq!(again.path, staged.path);
+    attachment_store::cleanup_staged(&staged.path);
+    assert!(!staged.path.exists(), "清理后不得残留暂存文件");
+}
+
+#[test]
+fn attachment_rejects_invalid_paths_and_names() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-validate", "附件校验");
+    let context = attachment_context(&env);
+    let source = write_source(&env, "validate-source.bin", &[1, 2, 3]);
+
+    for (logical_path, name) in [("../escape", "x.bin"), ("ok", "bad/name.bin")] {
+        let error = attachment_service::upload(
+            &context,
+            UploadAttachmentInput {
+                source_path: source.to_string_lossy().into_owned(),
+                logical_path: logical_path.to_string(),
+                name: Some(name.to_string()),
+                mime: None,
+            },
+        )
+        .expect_err("非法路径/名称必须失败");
+        assert!(matches!(error, AppError::Validation(_)));
+    }
+    let directory = env.dir.path().join("not-a-file");
+    fs::create_dir_all(&directory).expect("建目录");
+    assert!(
+        attachment_service::upload(
+            &context,
+            UploadAttachmentInput {
+                source_path: directory.to_string_lossy().into_owned(),
+                logical_path: String::new(),
+                name: Some("dir".to_string()),
+                mime: None,
+            }
+        )
+        .is_err(),
+        "目录不能作为源文件"
+    );
+    assert!(
+        attachment_service::list(&context, &AttachmentListQuery::default())
+            .expect("列表")
+            .is_empty()
+    );
+}
+
+#[test]
+fn attachment_pack_compaction_keeps_live_objects_readable() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-compact", "附件压缩");
+    let context = attachment_context(&env);
+    let policy = StoragePolicy {
+        small_object_threshold: 128 * 1024,
+        pack_roll_bytes: 1024 * 1024 * 1024,
+        compaction_dead_ratio: 0.3,
+        compaction_min_dead_bytes: 0,
+    };
+    let no_schedule = StoragePolicy {
+        compaction_min_dead_bytes: u64::MAX,
+        ..policy
+    };
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let mut uploads = Vec::new();
+    for index in 0..8 {
+        let content = vec![index as u8 + 1; 8192];
+        let source = write_source(&env, &format!("compact-{index}.bin"), &content);
+        let uploaded = upload_file_with_policy(
+            &context,
+            &format!("n{index}.bin"),
+            &source,
+            "compact",
+            policy,
+        );
+        uploads.push((uploaded, content));
+    }
+    let active_pack = attachment_repository::find_active_pack(&connection)
+        .expect("查活跃 pack")
+        .expect("活跃 pack 存在");
+    for (uploaded, _) in uploads.iter().take(6) {
+        let result = attachment_service::delete_with_policy(&context, &uploaded.id, no_schedule)
+            .expect("删除小对象");
+        assert!(!result.compaction_scheduled);
+    }
+
+    attachment_service::compact_for_test(&context, &active_pack.id, policy)
+        .expect("执行 compaction");
+    assert!(
+        attachment_repository::find_pack(&connection, &active_pack.id)
+            .expect("查旧 pack")
+            .is_none(),
+        "旧 pack 元数据应在无引用后删除"
+    );
+    let old_pack_path = workspace_storage_path(&workspace)
+        .join("objects/small/packs")
+        .join(format!("{}.pack", active_pack.id));
+    assert!(!old_pack_path.exists(), "旧 pack 文件应删除");
+
+    for (uploaded, content) in uploads.iter().skip(6) {
+        let blob = attachment_repository::find_blob(&connection, &uploaded.content_hash)
+            .expect("查存活 blob")
+            .expect("存活 blob 存在");
+        assert_ne!(blob.pack_id.as_deref(), Some(active_pack.id.as_str()));
+        let dest = env
+            .dir
+            .path()
+            .join(format!("compact-out-{}.bin", uploaded.id));
+        attachment_service::download(
+            &context,
+            DownloadAttachmentInput {
+                id: uploaded.id.clone(),
+                dest_path: dest.to_string_lossy().into_owned(),
+                overwrite: true,
+            },
+        )
+        .expect("压缩后仍可下载");
+        assert_eq!(fs::read(dest).expect("读下载文件"), *content);
+        assert!(
+            attachment_service::verify(&context, &uploaded.id)
+                .expect("校验")
+                .valid
+        );
+    }
+    let stats = attachment_service::stats(&context).expect("压缩后统计");
+    assert_eq!(stats.dead_pack_bytes, 0, "压缩后不应残留死字节");
+
+    // 压缩期间会创建新的 active pack；后续上传必须落到它并保持可读。
+    let extra_content = vec![0xAA_u8; 1024];
+    let extra_source = write_source(&env, "compact-extra.bin", &extra_content);
+    let extra = upload_file_with_policy(&context, "extra.bin", &extra_source, "compact", policy);
+    let active_after = attachment_repository::find_active_pack(&connection)
+        .expect("查新活跃 pack")
+        .expect("新活跃 pack 存在");
+    let extra_blob = attachment_repository::find_blob(&connection, &extra.content_hash)
+        .expect("查新 blob")
+        .expect("新 blob 存在");
+    assert_eq!(
+        extra_blob.pack_id.as_deref(),
+        Some(active_after.id.as_str())
+    );
+    assert!(
+        attachment_service::verify(&context, &extra.id)
+            .expect("校验新附件")
+            .valid
+    );
+}
+
+#[test]
+fn attachment_compaction_removes_pack_without_live_objects() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-empty-pack", "附件空包");
+    let context = attachment_context(&env);
+    let policy = StoragePolicy {
+        small_object_threshold: 128 * 1024,
+        pack_roll_bytes: 1024 * 1024 * 1024,
+        compaction_dead_ratio: 0.3,
+        compaction_min_dead_bytes: 0,
+    };
+    let no_schedule = StoragePolicy {
+        compaction_min_dead_bytes: u64::MAX,
+        ..policy
+    };
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let mut ids = Vec::new();
+    for index in 0..2 {
+        let content = vec![index as u8 + 0x30; 4096];
+        let source = write_source(&env, &format!("empty-pack-{index}.bin"), &content);
+        ids.push(
+            upload_file_with_policy(
+                &context,
+                &format!("empty-pack-{index}.bin"),
+                &source,
+                "empty",
+                policy,
+            )
+            .id,
+        );
+    }
+    let active_pack = attachment_repository::find_active_pack(&connection)
+        .expect("查活跃 pack")
+        .expect("活跃 pack 存在");
+    for id in &ids {
+        attachment_service::delete_with_policy(&context, id, no_schedule).expect("删除");
+    }
+    attachment_service::compact_for_test(&context, &active_pack.id, policy).expect("清理空 pack");
+    assert!(
+        attachment_repository::find_pack(&connection, &active_pack.id)
+            .expect("查旧 pack")
+            .is_none()
+    );
+    let old_pack = workspace_storage_path(&workspace)
+        .join("objects/small/packs")
+        .join(format!("{}.pack", active_pack.id));
+    assert!(!old_pack.exists(), "无活跃对象的 pack 文件应删除");
+}
+
+#[test]
+fn attachment_concurrent_same_hash_has_one_physical_object() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-concurrent", "附件并发");
+    let context = attachment_context(&env);
+    let content = vec![0x77_u8; 1024 * 1024];
+    let source = write_source(&env, "concurrent.bin", &content);
+    let names: Vec<String> = (0..4)
+        .map(|index| format!("concurrent-{index}.bin"))
+        .collect();
+
+    let uploaded = std::thread::scope(|scope| {
+        let handles: Vec<_> = names
+            .iter()
+            .map(|name| {
+                let context = context.clone();
+                let source = source.clone();
+                let name = name.clone();
+                scope.spawn(move || upload_file(&context, &name, &source, "concurrent"))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().expect("并发上传线程"))
+            .collect::<Vec<_>>()
+    });
+
+    let expected_hash = blake3::hash(&content).to_hex().to_string();
+    assert!(
+        uploaded
+            .iter()
+            .all(|item| item.content_hash == expected_hash)
+    );
+    assert_eq!(
+        uploaded
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        4,
+        "并发上传同内容也要各自成一条记录"
+    );
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let blob = attachment_repository::find_blob(&connection, &expected_hash)
+        .expect("查询 blob")
+        .expect("blob 存在");
+    assert_eq!(
+        attachment_repository::count_active_references(&connection, &expected_hash)
+            .expect("活跃引用数"),
+        4,
+        "四条记录共享一个对象"
+    );
+    assert_eq!(blob.storage_kind, "big");
+    let big_path = workspace_storage_path(&workspace)
+        .join("objects/big")
+        .join(&expected_hash[0..2])
+        .join(&expected_hash[2..4])
+        .join(&expected_hash);
+    assert!(big_path.is_file());
+    assert_eq!(
+        fs::read(&big_path).expect("读 big 对象").len(),
+        content.len(),
+        "并发下发布的对象字节必须完整"
+    );
+    let stats = attachment_service::stats(&context).expect("并发统计");
+    assert_eq!(stats.active_count, 4);
+    assert_eq!(stats.unique_objects, 1, "并发同内容只产生一份真实文件");
+    assert_eq!(stats.physical_bytes, content.len() as i64);
+    // 暂存区不得留下哈希名文件或写入期临时名。
+    let staged_left: Vec<_> = fs::read_dir(workspace_storage_path(&workspace).join("tmp"))
+        .expect("读暂存目录")
+        .filter_map(|entry| entry.ok())
+        .collect();
+    assert!(staged_left.is_empty(), "并发上传后暂存区必须清空");
+}
+
+#[test]
+fn attachment_verify_detects_corruption_and_download_overwrite() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-verify", "附件校验");
+    let context = attachment_context(&env);
+    let content = vec![0x88_u8; 200 * 1024];
+    let source = write_source(&env, "verify-big.bin", &content);
+    let big = upload_file(&context, "verify.bin", &source, "");
+    assert!(
+        attachment_service::verify(&context, &big.id)
+            .expect("校验")
+            .valid
+    );
+
+    let dest = env.dir.path().join("verify-out.bin");
+    attachment_service::download(
+        &context,
+        DownloadAttachmentInput {
+            id: big.id.clone(),
+            dest_path: dest.to_string_lossy().into_owned(),
+            overwrite: false,
+        },
+    )
+    .expect("首次下载");
+    assert_eq!(fs::read(&dest).expect("读下载文件"), content);
+    let inside_storage = workspace_storage_path(&workspace).join("must-not-write.bin");
+    let guarded = attachment_service::download(
+        &context,
+        DownloadAttachmentInput {
+            id: big.id.clone(),
+            dest_path: inside_storage.to_string_lossy().into_owned(),
+            overwrite: true,
+        },
+    )
+    .expect_err("下载目标不能落在附件存储目录");
+    assert!(matches!(guarded, AppError::Validation(_)));
+    assert!(
+        attachment_service::download(
+            &context,
+            DownloadAttachmentInput {
+                id: big.id.clone(),
+                dest_path: dest.to_string_lossy().into_owned(),
+                overwrite: false,
+            }
+        )
+        .is_err(),
+        "目标存在且未允许覆盖时必须失败"
+    );
+    attachment_service::download(
+        &context,
+        DownloadAttachmentInput {
+            id: big.id.clone(),
+            dest_path: dest.to_string_lossy().into_owned(),
+            overwrite: true,
+        },
+    )
+    .expect("允许覆盖时下载");
+    assert_eq!(fs::read(&dest).expect("读覆盖文件"), content);
+
+    let hash = big.content_hash.clone();
+    let big_path = workspace_storage_path(&workspace)
+        .join("objects/big")
+        .join(&hash[0..2])
+        .join(&hash[2..4])
+        .join(&hash);
+    {
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&big_path)
+            .expect("打开 big");
+        file.write_all(&[0xEE]).expect("追加损坏字节");
+        file.sync_all().expect("同步损坏字节");
+    }
+    let verify = attachment_service::verify(&context, &big.id).expect("校验损坏 big");
+    assert!(!verify.valid);
+    assert!(verify.message.is_some());
+
+    let small_content = vec![0x99_u8; 4096];
+    let small_source = write_source(&env, "verify-small.bin", &small_content);
+    let small = upload_file(&context, "verify-small.bin", &small_source, "small");
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let small_blob = attachment_repository::find_blob(&connection, &small.content_hash)
+        .expect("查询 small blob")
+        .expect("small blob 存在");
+    let pack_path = workspace_storage_path(&workspace)
+        .join("objects/small/packs")
+        .join(format!("{}.pack", small_blob.pack_id.expect("pack id")));
+    let offset = small_blob.pack_offset.expect("offset") as u64;
+    {
+        let mut pack = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&pack_path)
+            .expect("打开 pack");
+        pack.seek(SeekFrom::Start(offset)).expect("定位 pack 条目");
+        let mut byte = [0_u8; 1];
+        std::io::Read::read_exact(&mut pack, &mut byte).expect("读 pack 字节");
+        byte[0] ^= 0xFF;
+        pack.seek(SeekFrom::Start(offset)).expect("回到 pack 条目");
+        pack.write_all(&byte).expect("写损坏字节");
+        pack.sync_all().expect("同步损坏字节");
+    }
+    let verify = attachment_service::verify(&context, &small.id).expect("校验损坏 pack");
+    assert!(!verify.valid);
+}
+
+#[test]
+fn attachment_bytes_upload_and_image_preview_roundtrip() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-bytes", "附件字节上传");
+    let context = attachment_context(&env);
+    let bytes = vec![0x89_u8, 0x50, 0x4E, 0x47, 1, 2, 3, 4];
+    let uploaded = attachment_service::upload_bytes(
+        &context,
+        "pixel.png".to_string(),
+        "images".to_string(),
+        Some("image/png".to_string()),
+        bytes.clone(),
+    )
+    .expect("字节上传");
+    assert_eq!(uploaded.name, "pixel.png");
+    assert_eq!(uploaded.mime, "image/png");
+    assert_eq!(uploaded.size, bytes.len() as i64);
+    assert_eq!(
+        attachment_service::read_bytes(&context, &uploaded.id).expect("读取预览"),
+        bytes
+    );
+
+    let text = attachment_service::upload_bytes(
+        &context,
+        "note.txt".to_string(),
+        String::new(),
+        Some("text/plain".to_string()),
+        b"hello".to_vec(),
+    )
+    .expect("文本附件");
+    assert!(
+        attachment_service::read_bytes(&context, &text.id).is_err(),
+        "非图片附件不得作为图片预览读取"
+    );
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let blob = attachment_repository::find_blob(&connection, &uploaded.content_hash)
+        .expect("查询 blob")
+        .expect("blob 存在");
+    assert_eq!(blob.storage_kind, "pack", "小图片应进入 pack");
+    assert_eq!(
+        attachment_repository::count_active_references(&connection, &uploaded.content_hash)
+            .expect("活跃引用数"),
+        1
+    );
+}
+
+#[test]
+fn document_attachment_nodes_roundtrip_and_derive_markdown() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attachment-nodes", "附件块文档");
+    let kb_id = env.first_kb_id();
+    let node = env.create_node(&kb_id, None, DOC, "附件块文档");
+    let value = document(vec![
+        json!({
+            "type": "attachmentImage",
+            "attrs": {
+                "attachmentId": "img-1",
+                "name": "封面.png",
+                "size": 1024,
+                "mime": "image/png",
+                "alt": "封面",
+                "width": 360,
+                "align": "center"
+            }
+        }),
+        json!({
+            "type": "attachmentBlock",
+            "attrs": {
+                "variant": "grid",
+                "align": "left",
+                "items": [
+                    {"uid": "u1", "attachmentId": "att-1", "name": "报告.pdf", "size": 10, "mime": "application/pdf"},
+                    {"uid": "u2", "attachmentId": "att-2", "name": "数据.json", "size": 20, "mime": "application/json"}
+                ]
+            }
+        }),
+    ]);
+    let saved = env.save_doc(&node.id, value.clone());
+    assert_eq!(saved.tree.len(), 2, "两个顶层附件块都必须入块树");
+
+    let loaded = document_service::load(&env.state, &node.id).expect("重新加载附件块文档");
+    assert_eq!(loaded.document["content"][0]["type"], "attachmentImage");
+    assert_eq!(loaded.document["content"][0]["attrs"]["align"], "center");
+    assert_eq!(
+        loaded.document["content"][1]["attrs"]["items"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+
+    let (markdown, prop) = wait_for_meta(&workspace_db_path(&workspace), &node.id);
+    assert!(
+        markdown.contains("![封面](attachment://img-1)"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("- [报告.pdf](attachment://att-1)"),
+        "{markdown}"
+    );
+    let prop: Value = serde_json::from_str(&prop).expect("prop JSON");
+    assert_eq!(prop["imageCount"], 1);
+    assert_eq!(prop["attachmentCount"], 2);
 }

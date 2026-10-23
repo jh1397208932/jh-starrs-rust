@@ -8,6 +8,8 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   codeBlock: "代码块",
   table: "表格",
   image: "图片",
+  attachmentImage: "图片",
+  attachmentBlock: "附件",
   details: "折叠块",
   horizontalRule: "分隔线",
 };

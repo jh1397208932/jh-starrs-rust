@@ -3,18 +3,17 @@
  * 星屿 Starris · 配色对比度校验脚本
  * 用法: node scripts/check-contrast.mjs [--check]
  *   默认: 打印全部主题关键对比矩阵 + 基线数据
- *   --check: 按第五轮「明亮清新」验收线输出 PASS/FAIL，不达标退出码 1
+ *   --check: 按「雾光笺」验收线输出 PASS/FAIL，不达标退出码 1
  *
- * 验收线（2026-10-21 第五轮，UI-SPEC §5A）:
+ * 验收线（2026-10-23 第十一轮「雾光笺」，UI-SPEC §5B）:
  *   - light: foreground vs background        >= 12
  *   - light: muted-fg vs background/secondary >= 4.5（取严）
  *   - light: sidebar-muted vs sidebar         >= 4.5
  *   - light: secondary-fg vs secondary        >= 4.5
  *   - light: border/input vs background       >= 1.30
- *   - light: accent-fg vs accent              >= 4.5
+ *   - light: accent-fg vs accent/background   >= 4.5（取严；浅调描边白心按钮的深字）
  *   - light: sidebar-active-fg vs sidebar-active >= 4.5
- *   - light: primary-fg vs primary            >= 4.5（主按钮文字普通字号 AA）
- *   - light: primary vs background            >= 3.0（色块/图形辨识）
+ *   - light: primary vs background            >= 3.0（高明度主题色图形/描边辨识；白字填充主按钮已在第六轮退役）
  *   - dark 模式仅打印基线，不参与 --check（本轮未改动）
  * 附: 文字组 RGB max-min（tint 度，目标 <= 4）、primary HSL 饱和度（鲜亮度参考）
  */
@@ -56,7 +55,7 @@ const r2 = (x) => Math.round(x * 100) / 100;
 const r1 = (x) => Math.round(x * 10) / 10;
 
 /* ---------- 解析 tokens.css ---------- */
-const THEMES = ["sunset", "azure", "midnight", "amber", "forest", "rose", "violet", "graphite"];
+const THEMES = ["mist", "azure", "midnight", "amber", "forest", "rose", "violet", "graphite", "sunset"];
 const blocks = new Map(); // key: `${theme}|${mode}` -> vars
 const parseBlock = (selector, body) => {
   const vars = {};
@@ -66,11 +65,14 @@ const parseBlock = (selector, body) => {
 // :root 默认块
 const rootMatch = css.match(/^:root \{([\s\S]*?)\n\}/m);
 if (rootMatch) parseBlock("root|light", rootMatch[1]);
+// 公共 dark 中性层：与各主题 dark 强调层合并，dark 矩阵才有完整读数
+const commonDarkMatch = css.match(/^\[data-mode="dark"\] \{([\s\S]*?)\n\}/m);
+const commonDark = commonDarkMatch ? commonDarkMatch[1] : "";
 for (const t of THEMES) {
   const light = css.match(new RegExp(`\\[data-theme="${t}"\\] \\{([\\s\\S]*?)\\n\\}`, "m"));
   const dark = css.match(new RegExp(`\\[data-theme="${t}"\\]\\[data-mode="dark"\\] \\{([\\s\\S]*?)\\n\\}`, "m"));
   if (light) parseBlock(`${t}|light`, light[1]);
-  if (dark) parseBlock(`${t}|dark`, dark[1]);
+  if (dark) parseBlock(`${t}|dark`, commonDark + dark[1]);
 }
 
 /* ---------- 关键对比对 ---------- */
@@ -84,6 +86,7 @@ const PAIRS = [
   ["primary", "background"],
   ["primary-foreground", "primary"],
   ["accent-foreground", "accent"],
+  ["accent-foreground", "background"],
   ["sidebar-muted", "sidebar"],
   ["sidebar-foreground", "sidebar"],
   ["sidebar-active-fg", "sidebar-active"],
@@ -137,15 +140,14 @@ const CHECKS = [
   { name: "sec-fg >= 4.5", pair: "secondary-foreground/secondary", min: 4.5 },
   { name: "border >= 1.30", pair: "border/background", min: 1.3 },
   { name: "input >= 1.30", pair: "input/background", min: 1.3 },
-  { name: "btn字 >= 4.5", pair: "primary-foreground/primary", min: 4.5 },
   { name: "primary色块 >= 3.0", pair: "primary/background", min: 3.0 },
-  { name: "acc-fg >= 4.5", pair: "accent-foreground/accent", min: 4.5 },
+  { name: "acc-fg >= 4.5 (对 accent/白心 取严)", pairs: ["accent-foreground/accent", "accent-foreground/background"], min: 4.5 },
   { name: "sb-muted >= 4.5", pair: "sidebar-muted/sidebar", min: 4.5 },
   { name: "act-fg >= 4.5", pair: "sidebar-active-fg/sidebar-active", min: 4.5 },
 ];
 let fail = 0;
 if (process.argv.includes("--check")) {
-  console.log("\n===== --check 验收（light · 第五轮明亮清新线）=====");
+  console.log("\n===== --check 验收（light · 第十一轮雾光笺线）=====");
   for (const t of THEMES) {
     const e = rows.find((x) => x.theme === t && x.mode === "light");
     const bad = [];
@@ -159,6 +161,6 @@ if (process.argv.includes("--check")) {
     if (bad.length) { fail++; console.log(`  FAIL  ${pad(t, 10)} ${bad.join("；")}`); }
     else console.log(`  PASS  ${t}`);
   }
-  console.log(fail === 0 ? "\n全部主题通过第五轮验收 ✓" : `\n${fail} 个主题未达标 ✗`);
+  console.log(fail === 0 ? "\n全部主题通过第十一轮雾光笺验收 ✓" : `\n${fail} 个主题未达标 ✗`);
   process.exit(fail === 0 ? 0 : 1);
 }

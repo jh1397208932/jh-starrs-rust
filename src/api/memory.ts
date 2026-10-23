@@ -9,6 +9,8 @@ import { invokeCommand } from "@/api/client";
 export const MEMORY_KEYS = {
   theme: "appearance.theme",
   mode: "appearance.mode",
+  /** 设计语言版本：用于把旧默认主题一次性迁移到雾光笺 */
+  designVersion: "appearance.designVersion",
   currentWorkspace: "current_workspace_id",
 } as const;
 

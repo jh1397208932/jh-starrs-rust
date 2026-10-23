@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod attachment;
 pub mod document;
 
 pub use document::{DocLoadResult, DocSaveResult, SaveDocumentInput};

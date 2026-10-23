@@ -262,6 +262,7 @@ pub fn document_props(document: &Value) -> Value {
         "tableCount": stats.table_count,
         "codeBlockCount": stats.code_block_count,
         "imageCount": stats.image_count,
+        "attachmentCount": stats.attachment_count,
     })
 }
 
@@ -273,6 +274,7 @@ struct DocumentStats {
     table_count: usize,
     code_block_count: usize,
     image_count: usize,
+    attachment_count: usize,
 }
 
 fn collect_stats(value: &Value, stats: &mut DocumentStats) {
@@ -283,6 +285,14 @@ fn collect_stats(value: &Value, stats: &mut DocumentStats) {
                 Some("table") => stats.table_count += 1,
                 Some("codeBlock") => stats.code_block_count += 1,
                 Some("image") => stats.image_count += 1,
+                Some("attachmentImage") => stats.image_count += 1,
+                Some("attachmentBlock") => {
+                    stats.attachment_count += object
+                        .get("attrs")
+                        .and_then(|attrs| attrs.get("items"))
+                        .and_then(Value::as_array)
+                        .map_or(0, Vec::len);
+                }
                 Some("bulletList" | "orderedList" | "taskList") => stats.list_count += 1,
                 _ => {}
             }
@@ -402,12 +412,17 @@ fn render_block(node: &Value, indent: usize, out: &mut String) {
             out.push_str(&render_image(node));
             out.push_str("\n\n");
         }
+        "attachmentImage" => {
+            out.push_str(&render_attachment_image(node));
+            out.push_str("\n\n");
+        }
+        "attachmentBlock" => render_attachment_block(node, out),
         "table" => render_table(node, out),
         "details" => {
             let summary = children(node)
                 .iter()
                 .find(|child| child.get("type").and_then(Value::as_str) == Some("detailsSummary"))
-                .map(|child| render_inline(child))
+                .map(render_inline)
                 .unwrap_or_default();
             out.push_str("<details>\n<summary>");
             out.push_str(&summary);
@@ -574,6 +589,7 @@ fn render_inline(node: &Value) -> String {
             .map(|name| format!(":{name}:"))
             .unwrap_or_default(),
         "image" => render_image(node),
+        "attachmentImage" => render_attachment_image(node),
         _ => {
             let mut result = String::new();
             for child in children(node) {
@@ -599,6 +615,42 @@ fn render_image(node: &Value) -> String {
         return format!("![{}]()", escape_inline(alt));
     }
     format!("![{}]({})", escape_inline(alt), src)
+}
+
+fn render_attachment_image(node: &Value) -> String {
+    let attrs = node.get("attrs");
+    let id = attrs
+        .and_then(|attrs| attrs.get("attachmentId"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let name = attrs
+        .and_then(|attrs| attrs.get("alt"))
+        .or_else(|| attrs.and_then(|attrs| attrs.get("name")))
+        .and_then(Value::as_str)
+        .unwrap_or("图片");
+    format!("![{}](attachment://{})", escape_inline(name), id)
+}
+
+fn render_attachment_block(node: &Value, out: &mut String) {
+    let items = node
+        .get("attrs")
+        .and_then(|attrs| attrs.get("items"))
+        .and_then(Value::as_array);
+    if let Some(items) = items {
+        for item in items {
+            let id = item
+                .get("attachmentId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let name = item.get("name").and_then(Value::as_str).unwrap_or("附件");
+            out.push_str("- [");
+            out.push_str(&escape_inline(name));
+            out.push_str("](attachment://");
+            out.push_str(id);
+            out.push_str(")\n");
+        }
+    }
+    out.push('\n');
 }
 
 fn apply_marks(text: &str, marks: Option<&Vec<Value>>) -> String {
@@ -856,6 +908,34 @@ mod tests {
         assert!(markdown.contains("```rust\nfn main() {}\n```"));
         assert!(markdown.contains("| H"), "markdown={markdown}");
         assert!(markdown.contains("| C"), "markdown={markdown}");
+    }
+
+    #[test]
+    fn attachment_nodes_are_counted_and_rendered_in_markdown() {
+        let document = json!({"type":"doc","content":[
+            {"type":"attachmentImage","attrs":{"attachmentId":"img-1","name":"封面.png","alt":"封面","mime":"image/png"}},
+            {"type":"attachmentBlock","attrs":{"variant":"grid","align":"left","items":[
+                {"attachmentId":"att-1","name":"报告.pdf","size":10,"mime":"application/pdf"},
+                {"attachmentId":"att-2","name":"数据.json","size":20,"mime":"application/json"}
+            ]}}
+        ]});
+        let props = document_props(&document);
+        assert_eq!(props["imageCount"], 1);
+        assert_eq!(props["attachmentCount"], 2);
+        assert_eq!(props["blockCount"], 2);
+        let markdown = to_markdown(&document);
+        assert!(
+            markdown.contains("![封面](attachment://img-1)"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("- [报告.pdf](attachment://att-1)"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("- [数据.json](attachment://att-2)"),
+            "{markdown}"
+        );
     }
 
     #[test]

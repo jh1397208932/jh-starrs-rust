@@ -1,5 +1,4 @@
 import { Plus } from "lucide-react";
-import { ShimmerButton } from "@/components/common/motion/ShimmerButton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BoardView } from "@/features/board/components/BoardView";
 import { DocEditor } from "@/features/editor/components/DocEditor";
@@ -39,16 +38,18 @@ export function TabContentView({
 }: TabContentViewProps) {
   if (!activeTab) {
     return (
-      <EmptyState glyph="✦" title="从一个想法开始" description="输入 / 唤起命令，或拖入 Markdown 文件">
-        <ShimmerButton
-          type="button"
-          className="px-4 py-2 text-[13px]"
-          shimmerDuration="2.6s"
-          onClick={() => onCreateDoc("未命名文档")}
-        >
-          <Plus className="size-3.5" />
+      <EmptyState
+        variant="hero"
+        glyph="✦"
+        eyebrow="Starris · Local Workspace"
+        title="从一个想法开始"
+        description="输入 / 唤起命令，或把 Markdown 文件拖进这片纸面。所有内容只保存在本地。"
+      >
+        <button type="button" onClick={() => onCreateDoc("未命名文档")} className="empty-cta">
+          <Plus className="size-4" />
           新建文档
-        </ShimmerButton>
+          <span className="empty-cta__kbd">⌘N</span>
+        </button>
       </EmptyState>
     );
   }
@@ -62,6 +63,7 @@ export function TabContentView({
   if (activeTab.kind === "flow") {
     return <EmptyState glyph="⌘" title="流程图视图" description="流程图编辑器将在后续阶段实现" />;
   }
+
   return (
     <DocEditor
       node={activeNode}

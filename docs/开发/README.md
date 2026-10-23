@@ -9,9 +9,11 @@
 - 全局库 `~/.starris/rust/db/starris.db`：工作区注册表 + 记忆配置；日志在 `~/.starris/rust/logs/starris.log`。
 - 每个本地工作区独立目录：`db/workspace.sqlite3` + `storage/`。
 - 首次启动引导、工作区/知识库管理、任意层级文件树、5 类节点、拖拽换层/排序、主题/当前工作区/当前知识库记忆均已接入。
-- 文档正文按顶层块内容寻址：`doc_block_hash` + `doc_block_tree`（工作区库 v3）；编辑后 1s 防抖保存，前端单飞互斥 + Rust 工作区互斥/事务；返回 `add/rm/order/tree` 差量。
-- 编辑器接入 Tiptap 3.32 MIT 扩展：气泡菜单、右键浮层、Slash 菜单、颜色/高亮、对齐、表格、图片（≤2MB data URL）、任务列表、折叠块、Emoji、代码高亮、TOC、拖拽手柄。
-- 画板/表格/流程图编辑器数据仍为后续范围；图片附件后端未接入。
+- 文档正文按顶层块内容寻址：`doc_block_hash` + `doc_block_tree`（工作区库 v5）；编辑后 1s 防抖保存，前端单飞互斥 + Rust 工作区互斥/事务；返回 `add/rm/order/tree` 差量；`doc_block_meta` 异步派生 Markdown/prop。
+- 附件对象存储：工作区库 v5 的 `attachment/attachment_blob/attachment_pack`；BLAKE3 内容寻址、big 原子发布、small pack、去重/引用计数/软删除/后台 compaction；设置 → 存储页可上传、导出、校验、删除。
+- 文档图片/附件块：`attachmentImage`（预览、左/中/右对齐、宽度缩放、下载）与 `attachmentBlock`（卡片/长条、文件类型图标、逐项下载/移除）；Slash/右键选文件与访达拖入走路径流式上传，剪贴板粘贴走 raw 字节上传，统一进入附件对象模块，文档 JSON 不写 base64。注意 `dragDropEnabled` 默认为 true，外部文件拖放不经过网页 `drop`，由 `src/api/dragDrop.ts` 订阅 webview 事件。
+- 编辑器接入 Tiptap 3.32 MIT 扩展：气泡菜单、右键浮层、Slash 菜单、颜色/高亮、对齐、表格、图片（≤2MB data URL）、任务列表、折叠块、Emoji、代码高亮、TOC；块手柄与拖拽为自绘实现（不依赖官方 DragHandle）。
+- 画板/表格/流程图编辑器数据仍为后续范围；编辑器内图片仍使用 data URL，尚未改为附件引用。
 
 ## 快速上手
 
@@ -47,7 +49,7 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | SQL 与表访问 | `src-tauri/src/repositories/*.rs` |
 | 数据库迁移 | `src-tauri/src/db/{global,workspace}.rs` |
 | 全局目录/路径安全 | `src-tauri/src/db/paths.rs` |
-| 前端 IPC 封装 | `src/api/{workspace,knowledgeBase,node,memory,directory,document}.ts` |
+| 前端 IPC 封装 | `src/api/{workspace,knowledgeBase,node,memory,document,attachment,directory,fileDialog}.ts` |
 | 文档加载/1s 防抖互斥保存 | `src/features/editor/hooks/useDocumentPersistence.ts` |
 | 编辑器扩展与菜单 | `src/features/editor/extensions/editorExtensions.ts`、`components/{DocEditor,EditorBubbleMenu,EditorContextMenu,SlashMenu}.tsx` |
 | 工作区/知识库/树状态 | `src/features/workspace/hooks/useWorkspaceStore.ts` |
@@ -56,7 +58,13 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | 编辑器与持久化 | `features/editor/components/DocEditor.tsx`、`hooks/useDocumentPersistence.ts` |
 | 编辑器扩展 | `features/editor/extensions/editorExtensions.ts`、`clearMarksOnEnter.ts` |
 | 文档元数据 | `src-tauri/src/services/document_meta_service.rs` + `doc_block_meta` |
-| 颜色/主题/字号/圆角/动效 | `src/styles/tokens.css`（8 主题 × 深浅） |
+| 附件对象存储（哈希/pack/压缩） | `src-tauri/src/services/{attachment_service,attachment_store}.rs` |
+| 附件表/引用计数/统计 SQL | `src-tauri/src/repositories/attachment_repository.rs` |
+| 附件设置页 | `src/features/attachments/**` + `src/api/{attachment,fileDialog}.ts` |
+| 文档图片/附件块 | `src/features/editor/extensions/{attachmentImage,attachmentBlock}.ts` + `components/nodes/*`；上传与落点 `utils/attachmentUpload.ts`；外部拖放 `src/api/dragDrop.ts` |
+| 文件类型图标 | `src/features/attachments/components/FileTypeIcon.tsx` + `utils/fileKind.ts` |
+| 编辑器上传/插入 | `src/features/editor/utils/attachmentUpload.ts` |
+| 颜色/主题/字号/圆角/动效 | `src/styles/tokens.css`（9 主题 × 深浅） |
 | 主题记忆 | `src/lib/theme.tsx` + `src/api/memory.ts` |
 | 窗口红绿灯/无边框策略 | `src-tauri/tauri.conf.json` + `src-tauri/src/lib.rs` + `components/common/TrafficLightSlot.tsx` |
 | 快捷键 | `features/workspace/hooks/useWorkspaceShortcuts.ts` |

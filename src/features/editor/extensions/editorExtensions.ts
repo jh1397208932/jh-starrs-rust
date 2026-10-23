@@ -21,11 +21,12 @@ import TaskList from "@tiptap/extension-task-list";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { CharacterCount, Placeholder } from "@tiptap/extensions";
-import type { Extensions } from "@tiptap/react";
+import type { Editor, Extensions } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
 import type { OutlineItem } from "../types";
-import { insertImageFiles } from "../utils/image";
+import { AttachmentBlock } from "./attachmentBlock";
+import { AttachmentImage } from "./attachmentImage";
 import { BlockDragHighlight } from "./blockDragHighlight";
 import { ClearMarksOnEnter } from "./clearMarksOnEnter";
 
@@ -67,10 +68,16 @@ export const EDITOR_EMOJIS: EmojiItem[] = [
 export interface EditorExtensionOptions {
   onOutline: (items: OutlineItem[]) => void;
   onImageError: (message: string) => void;
+  /** 粘贴/拖放的文件；由 DocEditor 上传到附件对象模块后插入图片/附件块。 */
+  onFilesDropped: (editor: Editor, files: File[], pos?: number) => void;
 }
 
 /** 创建编辑器扩展；每次编辑器实例创建时调用一次。 */
-export function createEditorExtensions({ onOutline, onImageError }: EditorExtensionOptions): Extensions {
+export function createEditorExtensions({
+  onOutline,
+  onImageError,
+  onFilesDropped,
+}: EditorExtensionOptions): Extensions {
   return [
     StarterKit.configure({
       codeBlock: false,
@@ -98,6 +105,8 @@ export function createEditorExtensions({ onOutline, onImageError }: EditorExtens
       allowBase64: true,
       resize: { enabled: true, minWidth: 120, minHeight: 80 },
     }),
+    AttachmentImage.configure({ onError: onImageError }),
+    AttachmentBlock.configure({ onError: onImageError }),
     CodeBlockLowlight.configure({ lowlight }),
     SafeEmoji.configure({ emojis: EDITOR_EMOJIS }),
     Details.configure({ persist: true }),
@@ -122,13 +131,12 @@ export function createEditorExtensions({ onOutline, onImageError }: EditorExtens
       textCounter: (text) => text.replace(/\s/g, "").length,
     }),
     FileHandler.configure({
-      allowedMimeTypes: ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"],
       consumePasteEvent: true,
       onPaste: (editor, files) => {
-        void insertImageFiles(editor, files, { onError: onImageError });
+        if (files.length > 0) onFilesDropped(editor, files);
       },
       onDrop: (editor, files, pos) => {
-        void insertImageFiles(editor, files, { pos, onError: onImageError });
+        if (files.length > 0) onFilesDropped(editor, files, pos);
       },
     }),
   ];

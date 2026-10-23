@@ -61,6 +61,16 @@ pub fn run() {
             commands::memory::memory_save,
             commands::document::doc_load,
             commands::document::doc_save,
+            commands::attachment::attachment_upload,
+            commands::attachment::attachment_list,
+            commands::attachment::attachment_get,
+            commands::attachment::attachment_update,
+            commands::attachment::attachment_delete,
+            commands::attachment::attachment_download,
+            commands::attachment::attachment_verify,
+            commands::attachment::attachment_stats,
+            commands::attachment::attachment_upload_bytes,
+            commands::attachment::attachment_read_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -7,14 +7,13 @@ import { InfoPanel } from "./InfoPanel";
 import { Sidebar } from "./Sidebar";
 import { SidebarColumn } from "./SidebarColumn";
 import { TabContentView } from "./TabContentView";
-import { Toolbar } from "./Toolbar";
 import { WindowBar } from "./WindowBar";
 
 export interface WorkspaceLayoutProps {
   controller: WorkspaceMainController;
 }
 
-/** 主界面布局：左列侧栏 + 右列窗口栏/文档工具栏/内容/信息浮窗。 */
+/** 主界面布局：左列侧栏 + 右列单行顶栏/内容/信息浮窗（原窗口栏与文档工具栏已并为一行）。 */
 export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
   const {
     store,
@@ -44,7 +43,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
   if (!currentWorkspace) return null;
 
   return (
-    <div className="flex h-full">
+    <div className="app-shell flex h-full">
       <SidebarColumn open={sidebarOpen}>
         <Sidebar
           workspaces={store.workspaces}
@@ -78,31 +77,28 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
         />
       </SidebarColumn>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <WindowBar
           tabs={tabSession.tabs}
           activeTabId={tabSession.activeTabId}
           onSelect={tabSession.setActiveTabId}
           onClose={tabSession.closeTab}
-          onNew={createDoc}
           onSearch={() => showMockToast("全局搜索", "⌘⇧F")}
           onOpenSettings={() => onDialogChange({ type: "settings" })}
+          kind={activeTab?.kind ?? "doc"}
+          title={activeTab?.title ?? ""}
+          kbName={activeKbName}
+          starred={activeNode?.starred ?? false}
+          infoOpen={infoVisible}
+          onToggleStar={toggleStar}
+          onToggleInfo={() => setInfoOpen((value) => !value)}
+          onShare={() => onDialogChange({ type: "share" })}
+          onPrint={() => showToast("已触发打印")}
+          onOpenKb={() => onDialogChange({ type: "kbManage" })}
           trafficInset={!sidebarOpen}
           onWindowFallback={(label) => showMockToast(label)}
         />
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-          <Toolbar
-            kind={activeTab?.kind ?? "doc"}
-            title={activeTab?.title ?? ""}
-            kbName={activeKbName}
-            starred={activeNode?.starred ?? false}
-            infoOpen={infoVisible}
-            onToggleStar={toggleStar}
-            onToggleInfo={() => setInfoOpen((value) => !value)}
-            onShare={() => onDialogChange({ type: "share" })}
-            onPrint={() => showToast("已触发打印")}
-            onOpenKb={() => onDialogChange({ type: "kbManage" })}
-          />
+        <main className="app-sheet m-2 mt-1 flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div

@@ -12,8 +12,8 @@ const badgeVariants = cva(
         doc: "bg-accent text-accent-foreground",
         /** 画板/表格徽标 badge-board */
         board: "border border-border bg-secondary text-secondary-foreground",
-        /** 主色实底 badge-solid */
-        solid: "bg-primary text-primary-foreground",
+        /** 主色实底 badge-solid（第六轮浅调：primary 15% 调 + 深字，深浅模式通用） */
+        solid: "bg-primary/15 text-accent-foreground",
       },
       /** 主色圆点前缀 badge-dot */
       dot: {

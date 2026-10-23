@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AttachmentManager } from "@/features/attachments/components/AttachmentManager";
 import { THEME_LABELS, THEME_NAMES, type ThemeMode, type ThemeName, useTheme } from "@/lib/theme";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import { SHORTCUTS } from "@/mocks/shortcuts";
@@ -38,15 +39,15 @@ function ModeCard({ target, label }: { target: ThemeMode; label: string }) {
       aria-pressed={active}
       onClick={() => setMode(target)}
       className={cn(
-        "flex cursor-default items-center gap-3 rounded-md border p-3 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        active ? "border-primary" : "border-border hover:bg-secondary",
+        "flex cursor-default items-center gap-3 rounded-[12px] border p-3 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        active ? "border-primary/35 bg-accent/45 shadow-sm" : "border-border/70 hover:bg-accent/30",
       )}
     >
       {/* mini 预览：底色 + 侧栏条 + 文字行 */}
       <span
         data-mode={target}
-        data-theme="sunset"
-        className="relative h-12 w-20 shrink-0 overflow-hidden rounded-sm border border-border bg-background"
+        data-theme="mist"
+        className="relative h-12 w-20 shrink-0 overflow-hidden rounded-[7px] border border-border/60 bg-background"
       >
         <span className="absolute inset-y-0 left-0 w-4 bg-sidebar" />
         <span className="absolute top-2 left-6 h-1.5 w-10 rounded-full bg-foreground/60" />
@@ -72,7 +73,7 @@ function AppearanceSection() {
       </div>
 
       <h4 className="mt-6 text-[13px] font-semibold">主题预设</h4>
-      <div className="mt-2 grid grid-cols-4 gap-2">
+      <div className="mt-2 grid grid-cols-3 gap-2">
         {THEME_NAMES.map((t) => {
           const active = theme === t;
           return (
@@ -82,8 +83,10 @@ function AppearanceSection() {
               aria-pressed={active}
               onClick={() => setTheme(t as ThemeName)}
               className={cn(
-                "flex cursor-default flex-col gap-2 rounded-md border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                active ? "border-primary" : "border-border hover:bg-secondary",
+                "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                active
+                  ? "border-primary/40 bg-accent/40 shadow-sm ring-1 ring-primary/15"
+                  : "border-border/70 hover:bg-accent/30",
               )}
             >
               {/* data-theme 作用于子树 → 预览点用该主题的 logo 变量 */}
@@ -141,9 +144,10 @@ function StorageSection({ workspacePath }: { workspacePath: string }) {
         <p className="text-[12px] text-muted-foreground">工作区根目录</p>
         <code className="mt-1 block break-all font-mono text-[12px]">{workspacePath || "未连接工作区"}</code>
         <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-          数据库：db/workspace.sqlite3；附件目录：storage/。附件容量统计将在附件功能上线后提供。
+          数据库：db/workspace.sqlite3；附件目录：storage/。附件按 BLAKE3 内容寻址，相同内容只占一份物理空间。
         </p>
       </div>
+      <AttachmentManager key={workspacePath} />
     </div>
   );
 }
@@ -203,7 +207,7 @@ function AboutSection() {
         {[
           ["版本", "0.1.0"],
           ["引擎", "Tauri 2 + React 19"],
-          ["设计系统", "v1.0 · sunset"],
+          ["设计系统", "v2.0 · 雾光笺"],
         ].map(([k, v]) => (
           <div
             key={k}
@@ -224,12 +228,12 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[480px] w-[720px] p-0" aria-describedby={undefined}>
+      <DialogContent className="h-[540px] w-[760px] p-0" aria-describedby={undefined}>
         <div className="flex h-full min-h-0">
           {/* 左导航 */}
           <nav
             aria-label="设置"
-            className="flex w-40 shrink-0 flex-col gap-0.5 border-r border-border bg-sidebar p-2 text-sidebar-foreground"
+            className="flex w-40 shrink-0 flex-col gap-0.5 border-r border-border/60 bg-sidebar/55 p-2 text-sidebar-foreground"
           >
             <div className="flex items-center gap-2 px-2 py-2">
               <Settings2 className="size-4" />
@@ -245,8 +249,8 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
                 className={cn(
                   "flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
                   tab === id
-                    ? "bg-accent font-semibold text-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-secondary",
+                    ? "bg-accent/80 font-semibold text-accent-foreground shadow-sm"
+                    : "text-sidebar-foreground hover:bg-accent/35",
                 )}
               >
                 <Icon className="size-3.5" />

@@ -222,13 +222,13 @@ mod tests {
     #[test]
     fn key_between_covers_head_middle_and_tail() {
         let head = assert_between(None, Some("a"));
-        assert!(head < "a".to_string());
+        assert!(head.as_str() < "a");
         let middle = assert_between(Some("a"), Some("b"));
-        assert!(middle > "a".to_string());
+        assert!(middle.as_str() > "a");
         let wide = assert_between(Some("ab"), Some("ac"));
         assert_eq!(wide.len(), 3);
         let tail = assert_between(Some("z"), None);
-        assert!(tail > "z".to_string());
+        assert!(tail.as_str() > "z");
     }
 
     #[test]

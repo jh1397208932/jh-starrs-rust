@@ -114,7 +114,9 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       updateDelay={80}
       options={{ placement: "top", offset: 10 }}
       shouldShow={({ editor: current, state: editorState }) =>
-        !editorState.selection.empty && !current.isActive("codeBlock")
+        !editorState.selection.empty &&
+        editorState.selection.$from.parent.inlineContent &&
+        !current.isActive("codeBlock")
       }
       className="editor-bubble anim-pop-in relative z-50"
     >
@@ -243,7 +245,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
           />
           <button
             type="submit"
-            className="h-8 shrink-0 rounded-md bg-primary px-3 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            className="h-8 shrink-0 cursor-default rounded-md bg-accent px-3 text-[12px] font-medium text-accent-foreground ring-1 ring-primary/25 ring-inset transition-colors duration-150 ease-[var(--ease)] hover:bg-accent-foreground/15"
           >
             应用
           </button>

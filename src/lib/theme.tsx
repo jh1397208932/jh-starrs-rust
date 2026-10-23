@@ -10,9 +10,9 @@ import {
 } from "react";
 import { loadMemory, MEMORY_KEYS, saveMemory } from "@/api/memory";
 
-/** 8 套主题预设（data-theme） */
+/** 9 套主题预设（data-theme）：mist 为第十一轮「雾光笺」默认主题 */
 export const THEME_NAMES = [
-  "sunset",
+  "mist",
   "azure",
   "midnight",
   "amber",
@@ -20,6 +20,7 @@ export const THEME_NAMES = [
   "rose",
   "violet",
   "graphite",
+  "sunset",
 ] as const;
 export type ThemeName = (typeof THEME_NAMES)[number];
 
@@ -28,19 +29,25 @@ export const THEME_MODES = ["light", "dark"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
 export const THEME_LABELS: Record<ThemeName, string> = {
-  sunset: "暖屿橙",
-  azure: "晴空蓝白",
-  midnight: "午夜星河",
-  amber: "暮岩金",
-  forest: "青屿森语",
-  rose: "樱屿绯粉",
-  violet: "靛夜霓虹",
-  graphite: "墨玉石墨",
+  mist: "雾光青",
+  azure: "晴空蓝",
+  midnight: "星澜紫",
+  amber: "暖砂金",
+  forest: "苔屿绿",
+  rose: "樱雾粉",
+  violet: "暮霭紫",
+  graphite: "石墨灰",
+  sunset: "晨光橙",
 };
 
 /** 默认外观；全局库没有记忆时使用 */
-const DEFAULT_THEME: ThemeName = "sunset";
+const DEFAULT_THEME: ThemeName = "mist";
 const DEFAULT_MODE: ThemeMode = "light";
+
+/** 第十一轮「雾光笺」设计语言版本；旧默认主题 sunset 无版本号时一次性升级到 mist */
+const DESIGN_VERSION = "2";
+/** 上一版默认主题（用户未主动改主题时曾自动写入该值） */
+const LEGACY_DEFAULT_THEME: ThemeName = "sunset";
 
 interface ThemeContextValue {
   theme: ThemeName;
@@ -124,8 +131,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .then((memory) => {
         const storedTheme = memory[MEMORY_KEYS.theme];
         const storedMode = memory[MEMORY_KEYS.mode];
-        const nextTheme =
-          storedTheme && (THEME_NAMES as readonly string[]).includes(storedTheme)
+        const hasDesignVersion = Boolean(memory[MEMORY_KEYS.designVersion]);
+        // 旧版默认主题 sunset 从未被主动选择过：随设计语言版本一次性升级到 mist。
+        const migrateLegacyDefault = !hasDesignVersion && storedTheme === LEGACY_DEFAULT_THEME;
+        const nextTheme = migrateLegacyDefault
+          ? DEFAULT_THEME
+          : storedTheme && (THEME_NAMES as readonly string[]).includes(storedTheme)
             ? (storedTheme as ThemeName)
             : DEFAULT_THEME;
         const nextMode =
@@ -136,6 +147,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         lastSaved.current = { theme: nextTheme, mode: nextMode };
         setThemeState(nextTheme);
         setModeState(nextMode);
+        if (migrateLegacyDefault) {
+          void saveMemory({
+            [MEMORY_KEYS.theme]: nextTheme,
+            [MEMORY_KEYS.mode]: nextMode,
+            [MEMORY_KEYS.designVersion]: DESIGN_VERSION,
+          }).catch(() => {
+            // 迁移写入失败不阻断本次显示；下次启动会再次尝试。
+          });
+        }
       })
       .catch(() => {
         // 全局库不可用时不阻断使用：本次以默认外观运行，下一次修改会重新尝试保存。
@@ -157,7 +177,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (lastSaved.current.theme === theme && lastSaved.current.mode === mode) return;
     lastSaved.current = { theme, mode };
     const timer = window.setTimeout(() => {
-      void saveMemory({ [MEMORY_KEYS.theme]: theme, [MEMORY_KEYS.mode]: mode }).catch(() => {
+      void saveMemory({
+        [MEMORY_KEYS.theme]: theme,
+        [MEMORY_KEYS.mode]: mode,
+        [MEMORY_KEYS.designVersion]: DESIGN_VERSION,
+      }).catch(() => {
         // 主题已在内存生效；保存失败时下次修改会再次尝试。
       });
     }, 150);

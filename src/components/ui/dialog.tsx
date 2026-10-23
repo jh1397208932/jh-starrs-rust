@@ -21,7 +21,7 @@ export function DialogOverlay({ className, ...props }: ComponentProps<typeof Dia
   return (
     <DialogPrimitive.Overlay
       className={cn(
-        "anim-fade-in data-[state=closed]:anim-fade-out fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm",
+        "anim-fade-in data-[state=closed]:anim-fade-out fixed inset-0 z-40 bg-foreground/25 backdrop-blur-md",
         className,
       )}
       {...props}
@@ -71,7 +71,7 @@ export function DialogContent({
           onInteractOutside?.(e);
         }}
         className={cn(
-          "anim-dialog-in data-[state=closed]:anim-dialog-out fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg focus:outline-none",
+          "anim-dialog-in data-[state=closed]:anim-dialog-out fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] flex-col overflow-hidden rounded-lg border border-border/70 bg-popover/92 text-popover-foreground shadow-lg backdrop-blur-2xl focus:outline-none",
           className,
         )}
         {...props}
