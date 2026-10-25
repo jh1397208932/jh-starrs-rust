@@ -62,13 +62,11 @@ export function DeleteWorkspaceDialog({
       <DialogContent className="w-[400px] p-5" aria-describedby={undefined}>
         <DialogTitle>删除工作区「{workspace?.name ?? ""}」？</DialogTitle>
         <DialogDescription className="mt-1.5">
-          {isCurrent
-            ? "这是当前工作区，删除后会自动切换到最近使用的其他工作区。"
-            : "删除后该工作区将从列表中移除。"}
+          {isCurrent ? "当前工作区，删除后将自动切换。" : "从列表中移除。"}
         </DialogDescription>
 
         <div className="mt-3 rounded-md border border-border bg-muted/60 px-3 py-2">
-          <p className="text-[11.5px] text-muted-foreground">工作区目录</p>
+          <p className="text-[11.5px] text-muted-foreground">位置</p>
           <code className="mt-0.5 block truncate font-mono text-[11.5px]">{workspace?.path}</code>
         </div>
 
@@ -87,7 +85,7 @@ export function DeleteWorkspaceDialog({
           <span>
             <span className="block font-medium">同时删除本地文件夹</span>
             <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
-              将永久删除 db/、storage/ 与该目录内所有数据，不可恢复。不勾选则只从列表移除，之后仍可重新打开。
+              将永久删除文件夹中的所有内容，不可恢复。
             </span>
           </span>
         </label>
@@ -99,7 +97,7 @@ export function DeleteWorkspaceDialog({
             取消
           </Button>
           <Button variant="destructive" size="sm" disabled={pending} onClick={() => void confirm()}>
-            {pending ? "处理中…" : deleteFolder ? "删除工作区与文件夹" : "移除工作区"}
+            {pending ? "处理中…" : deleteFolder ? "删除文件夹" : "移除"}
           </Button>
         </div>
       </DialogContent>

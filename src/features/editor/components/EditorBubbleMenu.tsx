@@ -97,7 +97,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       return;
     }
     if (!normalized) {
-      onError("链接仅支持 http(s)、mailto、tel、站内路径或 #锚点");
+      onError("请输入有效链接");
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: normalized }).run();
@@ -238,7 +238,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
             ref={linkInputRef}
             value={linkValue}
             onChange={(event) => setLinkValue(event.target.value)}
-            placeholder="粘贴链接或输入 #锚点"
+            placeholder="输入链接"
             aria-label="链接地址"
             onMouseDown={(event) => event.stopPropagation()}
             className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring"

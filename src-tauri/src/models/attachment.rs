@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 
 /// 活跃附件状态。
 pub const STATUS_ACTIVE: &str = "active";
+/// 回收站状态；保留物理对象以便恢复。
+pub const STATUS_DELETED: &str = "deleted";
+/// 存储管理上传、无节点引用也保留。
+pub const SCOPE_LIBRARY: &str = "library";
+/// 由文档/画板/附件节点产生，失去引用后进入孤儿流程。
+pub const SCOPE_NODE: &str = "node";
 /// 大对象存储类型。
 pub const KIND_BIG: &str = "big";
 /// pack 小对象存储类型。
@@ -22,6 +28,10 @@ pub struct AttachmentRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
+    pub scope: String,
+    pub expires_at: Option<i64>,
+    pub orphaned_at: Option<i64>,
+    pub reference_count: i64,
 }
 
 impl AttachmentRow {
@@ -38,6 +48,10 @@ impl AttachmentRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             deleted_at: self.deleted_at,
+            scope: self.scope.clone(),
+            expires_at: self.expires_at,
+            orphaned_at: self.orphaned_at,
+            reference_count: self.reference_count,
         }
     }
 }
@@ -81,6 +95,11 @@ pub struct AttachmentDto {
     pub created_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
+    pub scope: String,
+    pub expires_at: Option<i64>,
+    pub orphaned_at: Option<i64>,
+    /// 当前被多少个节点引用；0 表示未关联。
+    pub reference_count: i64,
 }
 
 /// 上传入参。
@@ -96,6 +115,28 @@ pub struct UploadAttachmentInput {
     #[serde(default)]
     pub name: Option<String>,
     /// 调用方提供的 MIME；缺省按扩展名推断。
+    #[serde(default)]
+    pub mime: Option<String>,
+    /// 来源作用域：library（默认）或 node；由服务端校验。
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// 临时保留时长（秒）；仅对未关联附件生效，None 表示不设 TTL。
+    #[serde(default)]
+    pub ttl_seconds: Option<i64>,
+}
+
+/// 从文件树直接上传附件并创建节点。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadAttachmentNodeInput {
+    pub source_path: String,
+    pub knowledge_base_id: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub logical_path: String,
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub mime: Option<String>,
 }
@@ -121,6 +162,29 @@ pub struct UpdateAttachmentInput {
     pub name: Option<String>,
     #[serde(default)]
     pub logical_path: Option<String>,
+}
+
+/// 设置未关联附件的临时保留时间。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentLifecycleInput {
+    pub id: String,
+    /// None 表示清除 TTL；Some(秒) 表示从现在起保留。
+    #[serde(default)]
+    pub ttl_seconds: Option<i64>,
+}
+
+/// 清理执行结果。
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentMaintenanceResult {
+    pub staged_files: i64,
+    pub orphaned: i64,
+    pub expired: i64,
+    pub purged: i64,
+    pub orphan_blobs: i64,
+    pub compacted_packs: i64,
+    pub reclaimed_bytes: i64,
 }
 
 /// 下载入参。
@@ -186,4 +250,16 @@ pub struct AttachmentStatsDto {
     pub pack_bytes: i64,
     /// pack 文件实际长度 − 活跃条目长度（含崩溃遗留尾部）。
     pub dead_pack_bytes: i64,
+    /// 至少被一个节点引用的活跃附件数。
+    pub linked_count: i64,
+    /// 没有任何节点引用的活跃附件数。
+    pub unlinked_count: i64,
+    /// 回收站附件数。
+    pub trash_count: i64,
+    /// storage 目录中可统计的实际文件字节数。
+    pub disk_bytes: i64,
+    /// 孤儿/回收站/死 pack 的可回收字节估算。
+    pub reclaimable_bytes: i64,
+    /// 最近一次维护时间（Unix 毫秒）。
+    pub last_maintenance_at: Option<i64>,
 }

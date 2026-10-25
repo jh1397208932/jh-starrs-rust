@@ -73,12 +73,9 @@ export function NodeCreateDialog({
       }}
     >
       <DialogContent className="w-[440px] p-5" aria-describedby={undefined}>
-        <DialogHeader
-          title={parent ? `在「${parent.title}」中新建` : "新建到根级"}
-          description={parent ? "只有文件夹可以包含子级" : "根级可以创建任意类型的节点"}
-        />
+        <DialogHeader title={parent ? `在「${parent.title}」中新建` : "新建"} />
 
-        <fieldset aria-label="节点类型" className="mt-4 grid grid-cols-5 gap-1.5">
+        <fieldset aria-label="类型" className="mt-4 grid grid-cols-5 gap-1.5">
           {NODE_KIND_ORDER.map((item) => (
             <button
               key={item}
@@ -108,7 +105,7 @@ export function NodeCreateDialog({
             autoFocus
             value={title}
             maxLength={200}
-            placeholder={`例如：${kind === "folder" ? "设计资料" : `未命名${NODE_KIND_LABELS[kind]}`}`}
+            placeholder="名称"
             aria-invalid={title.length > 0 && titleError !== null}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {

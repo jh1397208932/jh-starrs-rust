@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "星屿附件对象生命周期",
+    "locale": "zh-CN",
+    "output": "object-lifecycle.html",
+    "viewBox": [1030, 630],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "业务引用" },
+    { "id": "recycle", "label": "回收与恢复" },
+    { "id": "terminal", "label": "终态" }
+  ],
+  "states": [
+    {
+      "id": "uploaded",
+      "type": "start",
+      "label": "上传完成",
+      "sublabel": "逻辑附件 + 物理对象",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "入口"
+    },
+    {
+      "id": "linked",
+      "type": "active",
+      "label": "已关联",
+      "sublabel": "至少一个节点引用",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "活跃"
+    },
+    {
+      "id": "orphaned",
+      "type": "waiting",
+      "label": "孤儿宽限",
+      "sublabel": "无引用 · 保留 7 天",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "可撤销"
+    },
+    {
+      "id": "trash",
+      "type": "failure",
+      "label": "回收站",
+      "sublabel": "保留对象 30 天",
+      "lane": "recycle",
+      "col": 1,
+      "step": "04",
+      "tag": "可恢复"
+    },
+    {
+      "id": "purged",
+      "type": "neutral",
+      "label": "已清理",
+      "sublabel": "行 / blob / pack 回收",
+      "lane": "terminal",
+      "col": 2,
+      "step": "05",
+      "tag": "终态"
+    }
+  ],
+  "transitions": [
+    { "id": "link", "from": "uploaded", "to": "linked", "variant": "emphasis" },
+    { "id": "lose-ref", "from": "linked", "to": "orphaned", "variant": "default" },
+    { "id": "grace-end", "from": "orphaned", "to": "trash", "variant": "security" },
+    { "id": "purge", "from": "trash", "to": "purged", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "引用优先",
+      "items": [
+        "node_attachment 是业务引用的唯一权威表",
+        "只有没有任何 attachment 行的 blob 才会物理删除"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "两段恢复窗口",
+      "items": [
+        "孤儿宽限 7 天覆盖编辑器撤销/误删",
+        "回收站 30 天；恢复后转为 library 保留"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "看门狗收尾",
+      "items": [
+        "启动与每 6 小时清理 staging、TTL、孤儿与回收站",
+        "library 附件不会因“无引用”被自动删除"
+      ]
+    }
+  ]
+}

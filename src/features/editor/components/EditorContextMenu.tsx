@@ -165,7 +165,7 @@ export function EditorContextMenu({
       return;
     }
     if (!normalized) {
-      onError("链接仅支持 http(s)、mailto、tel、站内路径或 #锚点");
+      onError("请输入有效链接");
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: normalized }).run();
@@ -267,7 +267,7 @@ export function EditorContextMenu({
 
         <div className="editor-menu-divider" />
 
-        <SectionLabel>块类型</SectionLabel>
+        <SectionLabel>类型</SectionLabel>
         <div className="grid grid-cols-2 gap-0.5">
           {BLOCK_ACTIONS.map((action) => (
             <Action

@@ -13,7 +13,7 @@ import {
 } from "@/types/notebook";
 
 /** Rust `NodeDto` 原始结构 */
-interface NodeDto {
+export interface NodeDto {
   id: string;
   knowledgeBaseId: string;
   parentId: string | null;
@@ -115,10 +115,10 @@ export async function moveNode(id: string, parentId: string | null, index: numbe
 }
 
 /** DTO → 领域类型；未知类型视为协议错误 */
-function mapNode(dto: NodeDto): NodeItem {
+export function mapNode(dto: NodeDto): NodeItem {
   const kind = NODE_KIND_BY_TYPE[dto.type as NodeType];
   if (!kind) {
-    throw new ApiError("node_list", `未知节点类型：${dto.type}`);
+    throw new ApiError("node_list", "此内容类型不受支持");
   }
   return {
     id: dto.id,

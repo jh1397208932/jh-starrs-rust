@@ -118,7 +118,7 @@ export async function uploadPathsAndInsert(
   try {
     for (const sourcePath of paths) {
       try {
-        uploaded = [...uploaded, await uploadAttachment({ sourcePath })];
+        uploaded = [...uploaded, await uploadAttachment({ sourcePath, scope: "node" })];
       } catch (caught) {
         failures.push(toErrorMessage(caught));
       }

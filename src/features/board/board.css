@@ -1,0 +1,148 @@
+/* 画板 · Excalidraw 外观映射到 Starris 令牌。
+   只改 chrome（工具条/菜单/弹窗/侧栏/输入），不碰用户图元颜色。
+   深色画布仍由 Excalidraw 自己的 canvas filter 处理。 */
+
+.board-excalidraw,
+.excalidraw.excalidraw-modal-container {
+  --ui-font: var(--font-ui);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: color-mix(in srgb, var(--primary) 86%, var(--foreground));
+  --color-primary-darker: var(--accent-foreground);
+  --color-primary-light: var(--accent);
+  --color-primary-light-darker: color-mix(in srgb, var(--accent) 72%, var(--primary));
+  --color-on-primary-container: var(--accent-foreground);
+  --color-surface-primary-container: var(--accent);
+  --color-selection: var(--primary);
+
+  --color-surface-lowest: var(--card);
+  --color-surface-low: var(--secondary);
+  --color-surface-mid: var(--muted);
+  --color-surface-high: var(--accent);
+  --island-bg-color: var(--card);
+  --sidebar-bg-color: var(--card);
+  --sidebar-border-color: var(--border);
+  --default-border-color: var(--border);
+
+  --text-primary-color: var(--foreground);
+  --color-on-surface: var(--foreground);
+  --color-muted: var(--muted-foreground);
+  --color-muted-background: var(--muted);
+  --color-muted-background-darker: var(--border);
+
+  --input-bg-color: var(--background);
+  --input-border-color: var(--input);
+  --input-hover-bg-color: var(--secondary);
+  --input-label-color: var(--muted-foreground);
+  --button-hover-bg: var(--accent);
+  --button-active-bg: var(--accent);
+  --button-active-border: var(--primary);
+  --button-destructive-bg-color: color-mix(in srgb, var(--destructive) 12%, var(--card));
+  --button-destructive-color: var(--destructive);
+
+  --color-danger: var(--destructive);
+  --color-danger-dark: color-mix(in srgb, var(--destructive) 82%, var(--foreground));
+  --color-danger-icon-background: color-mix(in srgb, var(--destructive) 14%, var(--card));
+
+  --dialog-border-color: var(--border);
+  --border-radius-lg: var(--radius);
+  --border-radius-md: var(--radius-sm);
+  --shadow-island: var(--shadow-md);
+  --modal-shadow: var(--shadow-lg);
+  --sidebar-shadow: var(--shadow-lg);
+  --overlay-bg-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+  --focus-highlight-color: var(--ring);
+  --select-highlight-color: var(--ring);
+  --scrollbar-thumb: color-mix(in srgb, var(--border) 82%, transparent);
+  --scrollbar-thumb-hover: var(--muted-foreground);
+
+  --default-bg-color: var(--background);
+  --default-button-size: 32px;
+  --lg-button-size: 36px;
+  --default-icon-size: 16px;
+  --lg-icon-size: 18px;
+}
+
+.board-excalidraw .excalidraw {
+  background: var(--background);
+}
+
+/* 浮岛保留 Excalidraw 自身阴影，只补边线与圆角，避免重投影。 */
+.board-excalidraw .Island {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+.board-excalidraw .Modal__overlay {
+  backdrop-filter: blur(10px) saturate(1.05);
+}
+
+.board-excalidraw .Modal,
+.excalidraw.excalidraw-modal-container .Modal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Excalidraw 的 JSON 导出卡片把 lime 写在行内变量里，直接覆盖具体属性统一为系统主色。 */
+.board-excalidraw .ExportDialog--json .Card .Card-icon,
+.excalidraw.excalidraw-modal-container .ExportDialog--json .Card .Card-icon {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.board-excalidraw .ExportDialog--json .Card .Card-button.ToolIcon_type_button,
+.excalidraw.excalidraw-modal-container .ExportDialog--json .Card .Card-button.ToolIcon_type_button {
+  background-color: var(--primary);
+}
+
+.board-excalidraw .ExportDialog--json .Card .Card-button.ToolIcon_type_button:hover,
+.excalidraw.excalidraw-modal-container .ExportDialog--json .Card .Card-button.ToolIcon_type_button:hover {
+  background-color: color-mix(in srgb, var(--primary) 86%, var(--foreground));
+}
+
+.board-excalidraw .ExportDialog--json .Card .Card-button.ToolIcon_type_button:active,
+.excalidraw.excalidraw-modal-container .ExportDialog--json .Card .Card-button.ToolIcon_type_button:active {
+  background-color: color-mix(in srgb, var(--primary) 72%, var(--foreground));
+}
+
+.board-excalidraw .ExportDialog--json .Card .Card-button.ToolIcon_type_button .ToolIcon__label,
+.excalidraw.excalidraw-modal-container
+  .ExportDialog--json
+  .Card
+  .Card-button.ToolIcon_type_button
+  .ToolIcon__label {
+  color: var(--primary-foreground);
+}
+
+.board-excalidraw .sidebar {
+  border-left-color: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.board-excalidraw .sidebar-tabs-root > .sidebar__header {
+  border-bottom-color: color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.board-excalidraw .dropdown-menu,
+.board-excalidraw .popover {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.board-excalidraw .excalidraw input,
+.board-excalidraw .excalidraw textarea {
+  border-radius: var(--radius-sm);
+}
+
+.board-excalidraw .excalidraw :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* 画板页头与画布之间不画厚分隔；只保留页头的发丝线。 */
+.board-excalidraw canvas {
+  display: block;
+}

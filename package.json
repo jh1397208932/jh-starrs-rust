@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "check": "biome check src",
     "check:licenses": "node scripts/check-licenses.mjs",
+    "test": "node test/e2e/run.mjs",
+    "test:e2e": "node test/e2e/run.mjs",
+    "test:backend": "cargo test --manifest-path src-tauri/Cargo.toml",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src"
   },

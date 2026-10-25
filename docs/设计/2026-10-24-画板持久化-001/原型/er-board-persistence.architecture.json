@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "画板持久化与全局 object_id（v8）",
+    "locale": "zh-CN",
+    "output": "docs/设计/2026-10-24-画板持久化-001/原型/er-board-persistence.html",
+    "viewBox": [
+      1120,
+      520
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "entities",
+        "label": "实体关系",
+        "focus": [
+          "kb",
+          "node",
+          "scene",
+          "viewport",
+          "attachment",
+          "object_store"
+        ],
+        "note": "画板只存场景；图片/附件用 object_id 直接引用全局对象库，没有中间映射表。"
+      },
+      {
+        "id": "object-ref",
+        "label": "对象引用",
+        "focus": [
+          "scene",
+          "attachment",
+          "object_store"
+        ],
+        "note": "elements_json 内嵌 object_id；字节仍由 attachment / attachment_blob 统一管理。"
+      },
+      {
+        "id": "lifecycle",
+        "label": "生命周期",
+        "focus": [
+          "node",
+          "scene",
+          "viewport"
+        ],
+        "note": "节点级联两张画板表；全局对象由附件管理器独立管理，画板删除不删对象。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "kb",
+      "type": "database",
+      "label": "knowledge_base",
+      "sublabel": "知识库",
+      "tag": "既有表",
+      "pos": [
+        30,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "node",
+      "type": "database",
+      "label": "node",
+      "sublabel": "type = 3 画板",
+      "tag": "既有表",
+      "pos": [
+        200,
+        240
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "scene",
+      "type": "database",
+      "label": "board_scene",
+      "sublabel": "图元 + object_id",
+      "tag": "1:1",
+      "pos": [
+        380,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "viewport",
+      "type": "database",
+      "label": "board_viewport",
+      "sublabel": "scroll / zoom",
+      "tag": "1:1 小表",
+      "pos": [
+        380,
+        240
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "attachment",
+      "type": "database",
+      "label": "attachment",
+      "sublabel": "全局 object_id",
+      "tag": "既有表",
+      "pos": [
+        640,
+        100
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "object_store",
+      "type": "cloud",
+      "label": "storage/objects",
+      "sublabel": "attachment_blob · big / pack",
+      "tag": "统一对象存储",
+      "pos": [
+        880,
+        100
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "工作区 SQLite（schema v8）",
+      "wraps": [
+        "kb",
+        "node",
+        "scene",
+        "viewport",
+        "attachment"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "现有附件对象存储",
+      "wraps": [
+        "object_store"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "kb-node",
+      "from": "kb",
+      "to": "node",
+      "label": "1:N 包含",
+      "labelAt": [
+        185,
+        220
+      ]
+    },
+    {
+      "id": "node-scene",
+      "from": "node",
+      "to": "scene",
+      "label": "1:1 画板场景"
+    },
+    {
+      "id": "node-viewport",
+      "from": "node",
+      "to": "viewport",
+      "label": "1:1 视口",
+      "labelDy": 16,
+      "labelAt": [
+        370,
+        318
+      ]
+    },
+    {
+      "id": "scene-attachment",
+      "from": "scene",
+      "to": "attachment",
+      "label": "object_id 直引",
+      "variant": "dashed",
+      "labelAt": [
+        595,
+        132
+      ]
+    },
+    {
+      "id": "attachment-object",
+      "from": "attachment",
+      "to": "object_store",
+      "label": "big / pack"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "场景行",
+      "items": [
+        "elements_json 只存未删除图元",
+        "app_state_json 仅背景与网格",
+        "scene_version 做乐观并发"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "无映射",
+      "items": [
+        "图片 fileId = 全局 object_id",
+        "文件卡片 customData.objectId",
+        "没有 board_file / board_object"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "全局对象",
+      "items": [
+        "对象由附件管理器独立管理",
+        "画板删除不删对象",
+        "缺失时返回 missingObjectIds"
+      ]
+    }
+  ]
+}

@@ -12,6 +12,8 @@ export const MEMORY_KEYS = {
   /** 设计语言版本：用于把旧默认主题一次性迁移到雾光笺 */
   designVersion: "appearance.designVersion",
   currentWorkspace: "current_workspace_id",
+  /** 快捷键配置 JSON（全局） */
+  shortcuts: "shortcuts.config",
 } as const;
 
 /**

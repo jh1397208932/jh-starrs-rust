@@ -28,10 +28,11 @@ import { onNativeFileDrop } from "@/api/dragDrop";
 import { pickAttachmentFiles } from "@/api/fileDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { setEditorShortcutHandlers } from "@/features/shortcuts/shortcutRuntime";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import type { NodeItem } from "@/types/notebook";
-import { registerActiveDocument, unregisterActiveDocument } from "../activeDocument";
+import { registerActivePersistence, unregisterActivePersistence } from "../activeDocument";
 import { activateOutline, deactivateOutline, publishOutline } from "../editorOutline";
 import { createEditorExtensions } from "../extensions/editorExtensions";
 import { useBlockHandle } from "../hooks/useBlockHandle";
@@ -45,6 +46,7 @@ import {
   uploadPathsAndInsert,
 } from "../utils/attachmentUpload";
 import { BlockHandle } from "./BlockHandle";
+import { DocPageBar } from "./DocPageBar";
 import { EditorBubbleMenu } from "./EditorBubbleMenu";
 import { EditorContextMenu } from "./EditorContextMenu";
 import { filterSlashCommands, type SlashCommand, SlashMenu } from "./SlashMenu";
@@ -61,9 +63,11 @@ interface SlashState {
 }
 
 function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  const pill =
+    "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap";
   if (status === "saving") {
     return (
-      <span className="inline-flex items-center gap-1 text-muted-foreground" aria-live="polite">
+      <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
         <Loader2 className="size-3.5 animate-spin" />
         正在保存…
       </span>
@@ -71,7 +75,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
   }
   if (status === "saved") {
     return (
-      <span className="inline-flex items-center gap-1 text-primary" aria-live="polite">
+      <span className={cn(pill, "text-primary")} aria-live="polite">
         <CheckCircle2 className="size-3.5" />
         已保存
       </span>
@@ -79,13 +83,13 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
   }
   if (status === "error") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-destructive" aria-live="polite">
+      <span className={cn(pill, "text-destructive")} aria-live="polite">
         <AlertCircle className="size-3.5" />
         保存失败
         <button
           type="button"
           onClick={onRetry}
-          className="cursor-default rounded-sm px-1 text-[11.5px] underline underline-offset-2 hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           重试
         </button>
@@ -94,16 +98,16 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
   }
   if (status === "dirty") {
     return (
-      <span className="inline-flex items-center gap-1 text-muted-foreground" aria-live="polite">
+      <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
         <Circle className="size-3.5" />
-        有未保存更改…
+        未保存
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-muted-foreground" aria-live="polite">
+    <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
       <Circle className="size-3.5" />
-      本地自动保存
+      自动保存
     </span>
   );
 }
@@ -111,12 +115,41 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 export interface DocEditorProps {
   node: NodeItem | null;
   title: string;
+  /** 所在知识库名（页头面包屑上级） */
+  kbName: string | null;
+  /** 当前节点是否已收藏 */
+  starred: boolean;
+  /** 信息浮窗是否展开 */
+  infoOpen: boolean;
+  /** 切换收藏状态 */
+  onToggleStar: () => void;
+  /** 打开 / 收起信息浮窗 */
+  onToggleInfo: () => void;
+  /** 打开分享与导出弹窗 */
+  onShare: () => void;
+  /** 触发打印 */
+  onPrint: () => void;
+  /** 点击面包屑中的知识库 */
+  onOpenKb: () => void;
   onError?: (message: string) => void;
   onDocumentSaved?: (nodeId: string, info: { wordCount: number; updatedAt: number }) => void;
 }
 
 /** 文档编辑器：加载正文、块级自动保存、气泡/右键/Slash 菜单与拖拽手柄。 */
-export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorProps) {
+export function DocEditor({
+  node,
+  title,
+  kbName,
+  starred,
+  infoOpen,
+  onToggleStar,
+  onToggleInfo,
+  onShare,
+  onPrint,
+  onOpenKb,
+  onError,
+  onDocumentSaved,
+}: DocEditorProps) {
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,12 +167,17 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const outlineOwnerRef = useRef(Symbol("doc-outline"));
+  const outlineSourceRef = useRef<Editor | null>(null);
   const docOwnerRef = useRef(Symbol("doc-save"));
 
   const extensions = useMemo(
     () =>
       createEditorExtensions({
-        onOutline: (items) => publishOutline(outlineOwnerRef.current, items),
+        onOutline: (sourceEditor, items) => {
+          // 编辑器可能被 StrictMode / 切换重建；只接受当前实例的大纲，旧实例的延迟回调不得清空目录。
+          if (sourceEditor !== outlineSourceRef.current) return;
+          publishOutline(outlineOwnerRef.current, items);
+        },
         onImageError: (message) => onErrorRef.current?.(message),
         onFilesDropped: (current, files, pos) => fileDropRef.current(current, files, pos),
       }),
@@ -175,6 +213,13 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
     },
     onError: (error) => onErrorRef.current?.(toErrorMessage(error)),
   });
+
+  // 切换文档时回到页头：否则沿用上一篇的滚动位置，面包屑会被藏到视口上方。
+  // editor 进入依赖：首帧 editor 未就绪时滚动容器还没挂载，等它可用后要再归零一次。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: node?.id / editor 仅作为“切换文档/编辑器就绪”触发器
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [node?.id, editor]);
 
   const closeSlash = useCallback(() => {
     slashRef.current = null;
@@ -271,6 +316,30 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
     const target = persistence.editorRef.current ?? editor;
     if (target) pickAttachments(currentInsertPos(target));
   }, [editor, persistence.editorRef, pickAttachments]);
+
+  useEffect(() => {
+    if (!editor) return;
+    setEditorShortcutHandlers({
+      "editor.bold": (current) => current.chain().focus().toggleBold().run(),
+      "editor.italic": (current) => current.chain().focus().toggleItalic().run(),
+      "editor.underline": (current) => current.chain().focus().toggleUnderline().run(),
+      "editor.strike": (current) => current.chain().focus().toggleStrike().run(),
+      "editor.code": (current) => current.chain().focus().toggleCode().run(),
+      "editor.h1": (current) => current.chain().focus().toggleHeading({ level: 1 }).run(),
+      "editor.h2": (current) => current.chain().focus().toggleHeading({ level: 2 }).run(),
+      "editor.h3": (current) => current.chain().focus().toggleHeading({ level: 3 }).run(),
+      "editor.bullet": (current) => current.chain().focus().toggleBulletList().run(),
+      "editor.ordered": (current) => current.chain().focus().toggleOrderedList().run(),
+      "editor.task": (current) => current.chain().focus().toggleTaskList().run(),
+      "editor.quote": (current) => current.chain().focus().toggleBlockquote().run(),
+      "editor.codeBlock": (current) => current.chain().focus().toggleCodeBlock().run(),
+      "editor.undo": (current) => current.chain().focus().undo().run(),
+      "editor.redo": (current) => current.chain().focus().redo().run(),
+      "editor.image": (current) => pickImages(currentInsertPos(current)),
+      "editor.attachment": (current) => pickAttachments(currentInsertPos(current)),
+    });
+    return () => setEditorShortcutHandlers({});
+  }, [editor, pickAttachments, pickImages]);
 
   const handleFilesDropped = useCallback(
     (target: Editor, files: File[], pos?: number) => {
@@ -374,7 +443,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "paragraph",
         label: "正文",
         group: "基础",
-        description: "普通文本段落",
+        description: "普通文本",
         icon: Pilcrow,
         keywords: ["text", "paragraph"],
         run: (current) => current.chain().focus().setParagraph().run(),
@@ -383,7 +452,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "h1",
         label: "标题 H1",
         group: "基础",
-        description: "页面级大标题",
+        description: "大标题",
         icon: Heading1,
         keywords: ["heading", "title"],
         run: (current) => current.chain().focus().toggleHeading({ level: 1 }).run(),
@@ -410,7 +479,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "bullet",
         label: "无序列表",
         group: "列表",
-        description: "以圆点组织要点",
+        description: "圆点列表",
         icon: List,
         keywords: ["bullet", "list"],
         run: (current) => current.chain().focus().toggleBulletList().run(),
@@ -419,7 +488,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "ordered",
         label: "有序列表",
         group: "列表",
-        description: "按编号排列步骤",
+        description: "编号列表",
         icon: ListOrdered,
         keywords: ["ordered", "list"],
         run: (current) => current.chain().focus().toggleOrderedList().run(),
@@ -428,7 +497,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "task",
         label: "任务列表",
         group: "列表",
-        description: "可勾选的待办事项",
+        description: "待办事项",
         icon: ListChecks,
         keywords: ["task", "todo", "check"],
         run: (current) => current.chain().focus().toggleTaskList().run(),
@@ -436,8 +505,8 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       {
         id: "quote",
         label: "引用",
-        group: "块",
-        description: "强调摘录与旁注",
+        group: "内容",
+        description: "摘录",
         icon: Quote,
         keywords: ["quote", "blockquote"],
         run: (current) => current.chain().focus().toggleBlockquote().run(),
@@ -445,8 +514,8 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       {
         id: "code",
         label: "代码块",
-        group: "块",
-        description: "带语法高亮的代码",
+        group: "内容",
+        description: "代码",
         icon: SquareCode,
         keywords: ["code", "pre"],
         run: (current) => current.chain().focus().toggleCodeBlock().run(),
@@ -454,8 +523,8 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       {
         id: "details",
         label: "折叠块",
-        group: "块",
-        description: "收纳次要内容",
+        group: "内容",
+        description: "折叠内容",
         icon: Code2,
         keywords: ["details", "fold", "toggle"],
         run: (current) => current.chain().focus().setDetails().run(),
@@ -463,8 +532,8 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       {
         id: "divider",
         label: "分隔线",
-        group: "块",
-        description: "划分内容层次",
+        group: "内容",
+        description: "分割内容",
         icon: Minus,
         keywords: ["hr", "divider"],
         run: (current) => current.chain().focus().setHorizontalRule().run(),
@@ -473,7 +542,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "table",
         label: "表格 3×3",
         group: "插入",
-        description: "带表头的可调整表格",
+        description: "3×3 表格",
         icon: Table2,
         keywords: ["table", "grid"],
         run: (current) =>
@@ -483,7 +552,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "image",
         label: "图片",
         group: "插入",
-        description: "上传本地图片并插入图片块",
+        description: "本地图片",
         icon: ImagePlus,
         keywords: ["image", "photo", "picture"],
         run: (current) => pickImages(currentInsertPos(current)),
@@ -492,7 +561,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "attachment",
         label: "附件",
         group: "插入",
-        description: "上传任意文件并插入附件块",
+        description: "任意文件",
         icon: Paperclip,
         keywords: ["file", "attachment", "attach"],
         run: (current) => pickAttachments(currentInsertPos(current)),
@@ -501,7 +570,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         id: "emoji",
         label: "表情",
         group: "插入",
-        description: "为正文增添一个表情",
+        description: "符号",
         icon: Smile,
         keywords: ["emoji", "smile"],
         run: (current) => current.chain().focus().setEmoji("sparkles").run(),
@@ -565,6 +634,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
   useEffect(() => {
     if (!editor) return;
     const owner = outlineOwnerRef.current;
+    outlineSourceRef.current = editor;
     activateOutline(owner, editor);
     const publish = () => {
       const content = editor.storage.tableOfContents?.content ?? [];
@@ -579,17 +649,20 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       );
     };
     publish();
-    return () => deactivateOutline(owner);
+    return () => {
+      if (outlineSourceRef.current === editor) outlineSourceRef.current = null;
+      deactivateOutline(owner);
+    };
   }, [editor]);
 
   // 切换标签/工作区前由控制器 flush；卸载时再兜底一次。
   useEffect(() => {
     if (!editor) return;
     const owner = docOwnerRef.current;
-    registerActiveDocument(owner, persistence.flush);
+    registerActivePersistence(owner, persistence.flush);
     return () => {
       void persistence.flush();
-      unregisterActiveDocument(owner);
+      unregisterActivePersistence(owner);
     };
   }, [editor, persistence.flush]);
 
@@ -609,7 +682,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       const flushed = await persistence.flush();
       if (cancelled || sequence !== docSeqRef.current) return;
       if (!flushed) {
-        setLoadError("上一份文档尚未保存成功，请重试保存后再切换");
+        setLoadError("上一份文档尚未保存，请重试");
         setLoading(false);
         return;
       }
@@ -619,10 +692,14 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         suppressRef.current = true;
         editor.commands.setContent(EMPTY_DOC, { emitUpdate: false });
         suppressRef.current = false;
+        editor.commands.updateTableOfContents();
         persistence.beginDocument(null);
         persistence.setBaseline(0, 0);
         setLiveCount(0);
         setLoading(false);
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = 0;
+        });
         return;
       }
 
@@ -630,7 +707,7 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         const loaded = await loadDocument(nodeId);
         if (cancelled || sequence !== docSeqRef.current) return;
         if (loaded.document.type !== "doc" || !Array.isArray(loaded.document.content)) {
-          throw new Error("文档数据格式异常：根节点必须是 doc 且包含 content 数组");
+          throw new Error("文档内容无法读取");
         }
         const hasContent = loaded.document.content.length > 0;
         suppressRef.current = true;
@@ -643,6 +720,11 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
         setLiveCount(loaded.wordCount);
         editor.setEditable(true, false);
         setLoading(false);
+        requestAnimationFrame(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = 0;
+        });
+        // setContent 走 emitUpdate:false，TOC 不会自行刷新；显式发布一次，页头目录在首次打开时即可用。
+        editor.commands.updateTableOfContents();
         // 后端修复了历史 `:null:`/null attrs：自动补一次保存，让块树与正文同步。
         if (loaded.normalized) persistence.markDirty();
       } catch (error) {
@@ -710,26 +792,35 @@ export function DocEditor({ node, title, onError, onDocumentSaved }: DocEditorPr
       <div ref={scrollRef} className="doc-editor-scroll">
         <div className="doc-editor-page">
           <header className="doc-editor-header">
+            <DocPageBar
+              title={title}
+              kbName={kbName}
+              starred={starred}
+              infoOpen={infoOpen}
+              onToggleStar={onToggleStar}
+              onToggleInfo={onToggleInfo}
+              onShare={onShare}
+              onPrint={onPrint}
+              onOpenKb={onOpenKb}
+            />
             <div className="mb-3 flex items-center gap-2">
               <Badge variant="doc">文档</Badge>
-              <span className="doc-editor-hint">输入 / 唤起命令</span>
+              <SaveIndicator status={persistence.status} onRetry={() => void persistence.retry()} />
             </div>
             <h1 className="doc-editor-title">{title}</h1>
             <div className={cn(CAPTION_CLS, "doc-editor-meta")}>
               <span>{displayCount} 字</span>
               <span aria-hidden="true">·</span>
-              <span>创建 {node ? formatTimestamp(node.createdAt) : "刚刚"}</span>
-              <span aria-hidden="true">·</span>
               <span>最近编辑 {displayUpdatedAt ? formatTimestamp(displayUpdatedAt) : "刚刚"}</span>
-              <span className="ml-auto inline-flex items-center gap-3">
-                {uploadingCount > 0 && (
-                  <span className="inline-flex items-center gap-1 text-muted-foreground" aria-live="polite">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    正在上传附件…
-                  </span>
-                )}
-                <SaveIndicator status={persistence.status} onRetry={() => void persistence.retry()} />
-              </span>
+              {uploadingCount > 0 && (
+                <span
+                  className="ml-auto inline-flex items-center gap-1 text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  正在上传附件…
+                </span>
+              )}
             </div>
           </header>
 

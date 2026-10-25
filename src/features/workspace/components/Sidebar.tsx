@@ -25,6 +25,16 @@ export interface SidebarProps {
   onManageKbs: () => void;
   onManageWorkspaces: () => void;
   onOpenSettings: () => void;
+  /** 打开整库导出弹窗 */
+  onAllExport: () => void;
+  /** 打开导入弹窗（根级） */
+  onImport: () => void;
+  /** 导入到指定文件夹 */
+  onImportToFolder: (parent: NodeItem) => void;
+  /** 上传附件到根或指定文件夹 */
+  onUploadAttachment: (parent: NodeItem | null) => void;
+  /** 打开组件库管理 */
+  onOpenLibrary: () => void;
   onMockAction: (label: string) => void;
   onShowStarred: () => void;
   onCreateNote: () => void;
@@ -117,6 +127,8 @@ export function Sidebar(props: SidebarProps) {
         onRename={props.onRenameNode}
         onDelete={props.onDeleteNode}
         onMove={props.onMoveNode}
+        onImportToFolder={props.onImportToFolder}
+        onUploadAttachment={props.onUploadAttachment}
         onError={props.onError}
       />
 
@@ -125,6 +137,9 @@ export function Sidebar(props: SidebarProps) {
           open={props.moreMenuOpen}
           onOpenChange={props.onMoreMenuOpenChange}
           onOpenSettings={props.onOpenSettings}
+          onAllExport={props.onAllExport}
+          onImport={props.onImport}
+          onOpenLibrary={props.onOpenLibrary}
           onMockAction={props.onMockAction}
         >
           <button

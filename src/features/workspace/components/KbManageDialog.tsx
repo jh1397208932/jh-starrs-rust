@@ -112,9 +112,7 @@ export function KbManageDialog({
                     </Badge>
                   )}
                 </button>
-                <span className="truncate text-[12.5px] text-muted-foreground">
-                  {kb.description || "暂无描述"}
-                </span>
+                <span className="truncate text-[12.5px] text-muted-foreground">{kb.description || "—"}</span>
                 <span className="text-right font-mono text-[12px] text-muted-foreground">
                   <NumberTicker value={kb.docCount} />
                 </span>
@@ -130,11 +128,11 @@ export function KbManageDialog({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[150px]">
                     <DropdownMenuItem disabled={isCurrent} onSelect={() => void switchTo(kb.id)}>
-                      切换到此知识库
+                      切换
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setEditing(kb)}>
                       <Pencil />
-                      重命名 / 改描述
+                      编辑
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setPendingDelete(kb)}>
                       <Trash2 />
@@ -166,7 +164,7 @@ export function KbManageDialog({
             if (!next) setPendingDelete(null);
           }}
           title={`删除知识库「${pendingDelete?.name ?? ""}」？`}
-          description="该知识库内的所有文件夹与文档节点都会一并删除，此操作不可撤销。"
+          description="知识库中的所有内容将被永久删除，此操作不可撤销。"
           onConfirm={async () => {
             if (pendingDelete) await onDeleteKb(pendingDelete.id);
             setPendingDelete(null);

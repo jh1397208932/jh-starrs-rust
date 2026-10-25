@@ -58,7 +58,7 @@ export function WorkspaceOnboarding({
   };
 
   return (
-    <div className="app-shell fixed inset-0 z-40 grid place-items-center overflow-y-auto p-6">
+    <div className="app-shell onboarding-shell z-40 grid place-items-center overflow-y-auto p-6">
       <div
         role="dialog"
         aria-modal="true"
@@ -76,7 +76,6 @@ export function WorkspaceOnboarding({
             >
               欢迎使用星屿
             </h1>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">所有知识库都保存在你选择的本地文件夹中</p>
           </div>
         </div>
 
@@ -89,7 +88,6 @@ export function WorkspaceOnboarding({
           >
             <Plus className="size-5" />
             <span className="text-[14px] font-semibold">新建工作区</span>
-            <span className="text-[11.5px] opacity-80">选择一个空文件夹作为数据根目录</span>
           </button>
           <button
             type="button"
@@ -99,7 +97,6 @@ export function WorkspaceOnboarding({
           >
             <FolderOpen className="size-5" />
             <span className="text-[14px] font-semibold">{busy === "open" ? "正在打开…" : "打开工作区"}</span>
-            <span className="text-[11.5px] text-muted-foreground">选择已含 db/workspace.sqlite3 的目录</span>
           </button>
         </div>
 
@@ -144,10 +141,6 @@ export function WorkspaceOnboarding({
         )}
 
         {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
-
-        <p className="mt-5 text-[11.5px] text-muted-foreground">
-          工作区是独立目录：数据库在 db/，附件在 storage/。不同工作区之间完全隔离。
-        </p>
       </div>
     </div>
   );

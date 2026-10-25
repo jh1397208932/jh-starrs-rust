@@ -81,9 +81,9 @@ export function WorkspaceSwitchPopover({
             <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className={currentKbId === kb.id ? "truncate font-semibold" : "truncate"}>{kb.name}</span>
-              <span className="truncate text-[12px] text-muted-foreground">
-                {kb.description || "暂无描述"}
-              </span>
+              {kb.description ? (
+                <span className="truncate text-[12px] text-muted-foreground">{kb.description}</span>
+              ) : null}
             </span>
             {currentKbId === kb.id && <Check className="size-3.5 shrink-0 text-primary" />}
           </DropdownMenuItem>

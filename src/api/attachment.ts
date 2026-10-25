@@ -4,17 +4,21 @@
  */
 
 import { invokeCommand, invokeRawCommand } from "@/api/client";
+import { mapNode, type NodeDto } from "@/api/node";
 import type {
   Attachment,
   AttachmentDeleteResult,
   AttachmentDownloadResult,
+  AttachmentLifecycleParams,
   AttachmentListQuery,
+  AttachmentMaintenanceResult,
   AttachmentStats,
   AttachmentVerifyResult,
   DownloadAttachmentParams,
   UpdateAttachmentParams,
   UploadAttachmentParams,
 } from "@/types/attachment";
+import type { NodeItem } from "@/types/notebook";
 
 /**
  * 上传本机文件到当前工作区附件库。
@@ -29,8 +33,47 @@ export async function uploadAttachment(params: UploadAttachmentParams): Promise<
       logicalPath: params.logicalPath ?? "",
       name: params.name ?? null,
       mime: params.mime ?? null,
+      scope: params.scope ?? null,
+      ttlSeconds: params.ttlSeconds ?? null,
     },
   });
+}
+
+/**
+ * 上传文件并创建左侧树附件节点。
+ * @param params 源路径、知识库、父文件夹与可选元数据
+ * @returns 新建的附件节点
+ * @example await uploadAttachmentToTree({ sourcePath, knowledgeBaseId, parentId });
+ */
+export async function uploadAttachmentToTree(params: {
+  sourcePath: string;
+  knowledgeBaseId: string;
+  parentId?: string | null;
+  logicalPath?: string;
+  name?: string;
+  mime?: string;
+}): Promise<NodeItem> {
+  const dto = await invokeCommand<NodeDto>("attachment_upload_to_tree", {
+    input: {
+      sourcePath: params.sourcePath,
+      knowledgeBaseId: params.knowledgeBaseId,
+      parentId: params.parentId ?? null,
+      logicalPath: params.logicalPath ?? "",
+      name: params.name ?? null,
+      mime: params.mime ?? null,
+    },
+  });
+  return mapNode(dto);
+}
+
+/**
+ * 按附件节点读取其对象。
+ * @param nodeId 附件节点 id
+ * @returns 附件元数据
+ * @example await getAttachmentByNode(node.id);
+ */
+export async function getAttachmentByNode(nodeId: string): Promise<Attachment> {
+  return invokeCommand<Attachment>("attachment_get_by_node", { nodeId });
 }
 
 /**
@@ -107,6 +150,37 @@ export async function updateAttachment(params: UpdateAttachmentParams): Promise<
  */
 export async function deleteAttachment(id: string): Promise<AttachmentDeleteResult> {
   return invokeCommand<AttachmentDeleteResult>("attachment_delete", { id });
+}
+
+/**
+ * 从回收站恢复附件。
+ * @param id 附件 id
+ * @returns 恢复后的附件
+ * @example await restoreAttachment(id);
+ */
+export async function restoreAttachment(id: string): Promise<Attachment> {
+  return invokeCommand<Attachment>("attachment_restore", { id });
+}
+
+/**
+ * 设置未关联附件的临时保留时间。
+ * @param params 附件 id 与秒数；null 表示永久
+ * @returns 更新后的附件
+ * @example await setAttachmentLifecycle({ id, ttlSeconds: 86400 });
+ */
+export async function setAttachmentLifecycle(params: AttachmentLifecycleParams): Promise<Attachment> {
+  return invokeCommand<Attachment>("attachment_set_lifecycle", {
+    input: { id: params.id, ttlSeconds: params.ttlSeconds },
+  });
+}
+
+/**
+ * 立即执行一轮附件维护（孤儿、TTL、回收站、staging、孤儿 blob、pack）。
+ * @returns 本轮清理计数
+ * @example const result = await runAttachmentMaintenance();
+ */
+export async function runAttachmentMaintenance(): Promise<AttachmentMaintenanceResult> {
+  return invokeCommand<AttachmentMaintenanceResult>("attachment_maintenance");
 }
 
 /**

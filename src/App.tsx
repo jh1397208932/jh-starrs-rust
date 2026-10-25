@@ -1,3 +1,4 @@
+import { ShortcutProvider } from "@/features/shortcuts/ShortcutProvider";
 import { WorkspaceRoot } from "@/features/workspace/components/WorkspaceRoot";
 import { ThemeProvider } from "@/lib/theme";
 
@@ -5,7 +6,9 @@ import { ThemeProvider } from "@/lib/theme";
 export default function App() {
   return (
     <ThemeProvider>
-      <WorkspaceRoot />
+      <ShortcutProvider>
+        <WorkspaceRoot />
+      </ShortcutProvider>
     </ThemeProvider>
   );
 }

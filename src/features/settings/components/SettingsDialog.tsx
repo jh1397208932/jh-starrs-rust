@@ -3,13 +3,12 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Kbd } from "@/components/ui/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AttachmentManager } from "@/features/attachments/components/AttachmentManager";
+import { ShortcutsSettings } from "@/features/shortcuts/components/ShortcutsSettings";
 import { THEME_LABELS, THEME_NAMES, type ThemeMode, type ThemeName, useTheme } from "@/lib/theme";
 import { CAPTION_CLS, cn } from "@/lib/utils";
-import { SHORTCUTS } from "@/mocks/shortcuts";
 
 type SettingsTab = "general" | "appearance" | "shortcuts" | "storage" | "cloud" | "about";
 
@@ -65,14 +64,13 @@ function AppearanceSection() {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">外观</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>选择明暗模式与主题预设，即时生效。</p>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <ModeCard target="light" label="浅色" />
         <ModeCard target="dark" label="深色" />
       </div>
 
-      <h4 className="mt-6 text-[13px] font-semibold">主题预设</h4>
+      <h4 className="mt-6 text-[13px] font-semibold">主题</h4>
       <div className="mt-2 grid grid-cols-3 gap-2">
         {THEME_NAMES.map((t) => {
           const active = theme === t;
@@ -107,45 +105,13 @@ function AppearanceSection() {
   );
 }
 
-function ShortcutsSection() {
-  return (
-    <div>
-      <h3 className="text-[14px] font-semibold">快捷键</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>点击条目可开始录制（本阶段仅展示）。</p>
-      <ul className="mt-3">
-        {SHORTCUTS.map((s) => (
-          <li key={s.label}>
-            <button
-              type="button"
-              className="flex h-9 w-full cursor-default items-center justify-between rounded-sm px-2 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-            >
-              <span className="text-[13px]">{s.label}</span>
-              <span className="flex gap-1">
-                {s.keys.map((k) => (
-                  <Kbd key={k}>{k}</Kbd>
-                ))}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function StorageSection({ workspacePath }: { workspacePath: string }) {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">存储</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>
-        当前工作区的数据全部保存在你选择的本地文件夹。
-      </p>
       <div className="mt-4 rounded-md border border-border bg-muted/60 p-4">
-        <p className="text-[12px] text-muted-foreground">工作区根目录</p>
+        <p className="text-[12px] text-muted-foreground">位置</p>
         <code className="mt-1 block break-all font-mono text-[12px]">{workspacePath || "未连接工作区"}</code>
-        <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-          数据库：db/workspace.sqlite3；附件目录：storage/。附件按 BLAKE3 内容寻址，相同内容只占一份物理空间。
-        </p>
       </div>
       <AttachmentManager key={workspacePath} />
     </div>
@@ -157,7 +123,6 @@ function GeneralSection() {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">通用</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>界面语言与基础行为。</p>
       <div className="mt-4 max-w-[280px]">
         <label htmlFor="lang" className="mb-1.5 block text-[13px] font-medium">
           界面语言
@@ -173,9 +138,6 @@ function GeneralSection() {
           </SelectContent>
         </Select>
       </div>
-      <p className={`${CAPTION_CLS} mt-4 text-muted-foreground`}>
-        启动时自动恢复上次工作区与外观设置；标签页会话尚未持久化。
-      </p>
     </div>
   );
 }
@@ -184,16 +146,7 @@ function CloudSection() {
   return (
     <div>
       <h3 className="text-[14px] font-semibold">云同步</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>
-        星屿云同步正在内测，当前版本所有数据保存在本地。
-      </p>
-      <div className="mt-4 flex items-center gap-3 rounded-md border border-border bg-muted p-4">
-        <Cloud className="size-5 text-muted-foreground" />
-        <div>
-          <p className="text-[13px] font-medium">尚未登录云账户</p>
-          <p className="text-[12px] text-muted-foreground">登录后可跨设备同步工作空间</p>
-        </div>
-      </div>
+      <p className={`${CAPTION_CLS} mt-2 text-muted-foreground`}>即将推出。</p>
     </div>
   );
 }
@@ -201,12 +154,11 @@ function CloudSection() {
 function AboutSection() {
   return (
     <div>
-      <h3 className="text-[14px] font-semibold">关于星屿</h3>
+      <h3 className="text-[14px] font-semibold">星屿</h3>
       <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>Starris · 本地工作区版</p>
       <dl className="mt-4 max-w-[320px]">
         {[
           ["版本", "0.1.0"],
-          ["引擎", "Tauri 2 + React 19"],
           ["设计系统", "v2.0 · 雾光笺"],
         ].map(([k, v]) => (
           <div
@@ -263,7 +215,7 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
           <ScrollArea className="flex-1 p-6">
             {tab === "general" && <GeneralSection />}
             {tab === "appearance" && <AppearanceSection />}
-            {tab === "shortcuts" && <ShortcutsSection />}
+            {tab === "shortcuts" && <ShortcutsSettings />}
             {tab === "storage" && <StorageSection workspacePath={workspacePath} />}
             {tab === "cloud" && <CloudSection />}
             {tab === "about" && <AboutSection />}

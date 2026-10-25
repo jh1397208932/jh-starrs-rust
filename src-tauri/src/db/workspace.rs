@@ -2,17 +2,21 @@
 //!
 //! 每个工作区一个连接、一个文件；切换工作区即替换连接（统一入口见 workspace_service）。
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
+use serde_json::Value;
 
+use crate::domain::attachment_refs;
 use crate::errors::{AppError, AppResult};
 use crate::logging;
+use crate::utils::now_ms;
 
 /// 工作区库结构版本。
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 10;
 /// v1 → v2：节点时间列对齐需求字段名 `create_time/update_time`。
 const MIGRATION_V1_TO_V2: &str = r#"
 ALTER TABLE node RENAME COLUMN created_at TO create_time;
@@ -142,6 +146,123 @@ ALTER TABLE attachment_blob_v7 RENAME TO attachment_blob;
 CREATE INDEX IF NOT EXISTS idx_attachment_blob_pack
     ON attachment_blob(pack_id, pack_offset);
 "#;
+/// v7 → v8：画板场景与视口。
+///
+/// 画板图片/附件不建映射表：图片元素 `fileId` 直接使用全局对象 id，
+/// 文件卡片把 objectId 写在图元 customData 里。画板只拥有场景与视口。
+const MIGRATION_V7_TO_V8: &str = r#"
+CREATE TABLE IF NOT EXISTS board_scene (
+    node_id        TEXT PRIMARY KEY NOT NULL,
+    elements_json  TEXT NOT NULL DEFAULT '[]',
+    app_state_json TEXT NOT NULL DEFAULT '{}',
+    scene_version  INTEGER NOT NULL DEFAULT 1,
+    element_count  INTEGER NOT NULL DEFAULT 0,
+    updated_at     INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS board_viewport (
+    node_id    TEXT PRIMARY KEY NOT NULL,
+    scroll_x   REAL NOT NULL DEFAULT 0,
+    scroll_y   REAL NOT NULL DEFAULT 0,
+    zoom       REAL NOT NULL DEFAULT 1 CHECK (zoom > 0),
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+"#;
+
+/// v8 → v9：组件库与库内组件；预设用 preset_key 去重，导入库可删除。
+const MIGRATION_V8_TO_V9: &str = r#"
+CREATE TABLE IF NOT EXISTS board_library (
+    id          TEXT PRIMARY KEY NOT NULL,
+    preset_key  TEXT UNIQUE,
+    name        TEXT NOT NULL,
+    author      TEXT NOT NULL DEFAULT '',
+    license     TEXT NOT NULL DEFAULT '',
+    source_url  TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL CHECK (source_type IN ('preset', 'import')),
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    item_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS board_library_item (
+    id            TEXT PRIMARY KEY NOT NULL,
+    library_id    TEXT NOT NULL,
+    name          TEXT NOT NULL DEFAULT '',
+    elements_json TEXT NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    FOREIGN KEY (library_id) REFERENCES board_library(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_board_library_item_library
+    ON board_library_item(library_id, sort_order);
+"#;
+
+/// v9 → v10：附件引用表、生命周期字段与附件节点类型。
+///
+/// node.type 的 CHECK 不能原地修改，必须重建表；重建期间关闭外键并用
+/// `legacy_alter_table` 防止 SQLite 改写依赖表的 FK 名称。迁移末尾会执行
+/// `PRAGMA foreign_key_check`，任何悬空引用都会拒绝启动，而不是带着坏库运行。
+const MIGRATION_V9_TO_V10: &str = r#"
+CREATE TABLE node_v10 (
+    id                TEXT PRIMARY KEY NOT NULL,
+    type              INTEGER NOT NULL CHECK (type BETWEEN 1 AND 6),
+    title             TEXT NOT NULL,
+    knowledge_base_id TEXT NOT NULL,
+    parent_id         TEXT,
+    level             INTEGER NOT NULL CHECK (level >= 1),
+    path              TEXT NOT NULL,
+    sort_order        INTEGER NOT NULL DEFAULT 0,
+    starred           INTEGER NOT NULL DEFAULT 0,
+    word_count        INTEGER NOT NULL DEFAULT 0,
+    content           TEXT NOT NULL DEFAULT '',
+    create_time       INTEGER NOT NULL,
+    update_time       INTEGER NOT NULL,
+    FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES node(id) ON DELETE CASCADE
+);
+INSERT INTO node_v10
+    (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+     starred, word_count, content, create_time, update_time)
+SELECT
+    id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+    starred, word_count, content, create_time, update_time
+FROM node;
+DROP TABLE node;
+ALTER TABLE node_v10 RENAME TO node;
+CREATE INDEX IF NOT EXISTS idx_node_kb_parent_sort
+    ON node(knowledge_base_id, parent_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_node_parent
+    ON node(parent_id);
+CREATE INDEX IF NOT EXISTS idx_node_kb
+    ON node(knowledge_base_id);
+
+ALTER TABLE attachment
+    ADD COLUMN scope TEXT NOT NULL DEFAULT 'library' CHECK (scope IN ('library', 'node'));
+ALTER TABLE attachment ADD COLUMN expires_at INTEGER;
+ALTER TABLE attachment ADD COLUMN orphaned_at INTEGER;
+CREATE INDEX IF NOT EXISTS idx_attachment_lifecycle
+    ON attachment(scope, status, orphaned_at, expires_at);
+
+CREATE TABLE IF NOT EXISTS node_attachment (
+    node_id    TEXT NOT NULL,
+    object_id  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (node_id, object_id),
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE,
+    FOREIGN KEY (object_id) REFERENCES attachment(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_node_attachment_object
+    ON node_attachment(object_id);
+
+CREATE TABLE IF NOT EXISTS workspace_meta (
+    key   TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+);
+"#;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_base (
@@ -204,6 +325,51 @@ CREATE TABLE IF NOT EXISTS doc_block_meta (
     update_time INTEGER NOT NULL,
     FOREIGN KEY (id) REFERENCES node(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS board_scene (
+    node_id        TEXT PRIMARY KEY NOT NULL,
+    elements_json  TEXT NOT NULL DEFAULT '[]',
+    app_state_json TEXT NOT NULL DEFAULT '{}',
+    scene_version  INTEGER NOT NULL DEFAULT 1,
+    element_count  INTEGER NOT NULL DEFAULT 0,
+    updated_at     INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS board_viewport (
+    node_id    TEXT PRIMARY KEY NOT NULL,
+    scroll_x   REAL NOT NULL DEFAULT 0,
+    scroll_y   REAL NOT NULL DEFAULT 0,
+    zoom       REAL NOT NULL DEFAULT 1 CHECK (zoom > 0),
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS board_library (
+    id          TEXT PRIMARY KEY NOT NULL,
+    preset_key  TEXT UNIQUE,
+    name        TEXT NOT NULL,
+    author      TEXT NOT NULL DEFAULT '',
+    license     TEXT NOT NULL DEFAULT '',
+    source_url  TEXT NOT NULL DEFAULT '',
+    source_type TEXT NOT NULL CHECK (source_type IN ('preset', 'import')),
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    item_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS board_library_item (
+    id            TEXT PRIMARY KEY NOT NULL,
+    library_id    TEXT NOT NULL,
+    name          TEXT NOT NULL DEFAULT '',
+    elements_json TEXT NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    FOREIGN KEY (library_id) REFERENCES board_library(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_board_library_item_library
+    ON board_library_item(library_id, sort_order);
 "#;
 
 /// 打开（必要时创建）工作区库并执行迁移。
@@ -242,7 +408,7 @@ fn configure(connection: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-/// 按 `PRAGMA user_version` 迁移；不重建已有表，保护用户数据。
+/// 按 `PRAGMA user_version` 迁移；保护现有数据，失败整体回滚。
 fn migrate(connection: &mut Connection) -> AppResult<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version > SCHEMA_VERSION {
@@ -252,13 +418,26 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
         );
         return Err(AppError::Internal);
     }
-    if version < SCHEMA_VERSION {
+    if version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    // v10 重建 node 表：必须在事务外关闭外键，并禁止 SQLite 改写依赖表的 FK 名称。
+    let rebuild_node = version < 10;
+    if rebuild_node {
+        connection.pragma_update(None, "foreign_keys", "OFF")?;
+        connection.pragma_update(None, "legacy_alter_table", "ON")?;
+    }
+
+    let result = (|| -> AppResult<()> {
         let transaction = connection.transaction()?;
         if version == 0 {
             transaction.execute_batch(SCHEMA)?;
             transaction.execute_batch(MIGRATION_V4_TO_V5)?;
             transaction.execute_batch(MIGRATION_V5_TO_V6)?;
             transaction.execute_batch(MIGRATION_V6_TO_V7)?;
+            transaction.execute_batch(MIGRATION_V7_TO_V8)?;
+            transaction.execute_batch(MIGRATION_V8_TO_V9)?;
         } else {
             if version == 1 {
                 transaction.execute_batch(MIGRATION_V1_TO_V2)?;
@@ -278,15 +457,132 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
             if version <= 6 {
                 transaction.execute_batch(MIGRATION_V6_TO_V7)?;
             }
+            if version <= 7 {
+                transaction.execute_batch(MIGRATION_V7_TO_V8)?;
+            }
+            if version <= 8 {
+                transaction.execute_batch(MIGRATION_V8_TO_V9)?;
+            }
+        }
+        if version <= 9 {
+            transaction.execute_batch(MIGRATION_V9_TO_V10)?;
+            backfill_attachment_relations(&transaction)?;
         }
         transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         transaction.commit()?;
-        logging::info(
-            "db.workspace",
-            &format!("工作区库迁移完成，版本={SCHEMA_VERSION}"),
-        );
+        Ok(())
+    })();
+
+    if rebuild_node {
+        connection.pragma_update(None, "legacy_alter_table", "OFF")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
     }
+    result?;
+
+    if rebuild_node {
+        let violations = foreign_key_violation_count(connection)?;
+        if violations > 0 {
+            logging::error(
+                "db.workspace",
+                &format!("工作区库迁移后存在 {violations} 条外键悬空引用"),
+            );
+            return Err(AppError::Internal);
+        }
+    }
+    logging::info(
+        "db.workspace",
+        &format!("工作区库迁移完成，版本={SCHEMA_VERSION}"),
+    );
     Ok(())
+}
+
+/// 迁移回填：从既有文档正文与画板场景建立附件引用。
+///
+/// 单条 JSON 损坏只记日志并跳过该节点，不让一条坏数据阻塞整个工作区打开；
+/// 其余节点仍会建立引用，后续维护任务也能发现未关联对象。
+fn backfill_attachment_relations(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    let now = now_ms();
+    let mut inserted = 0_usize;
+
+    let documents = {
+        let mut statement =
+            transaction.prepare("SELECT id, content FROM node WHERE type = 2 AND content <> ''")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    for (node_id, content) in documents {
+        match serde_json::from_str::<Value>(&content) {
+            Ok(document) => {
+                let object_ids = attachment_refs::collect_document_attachment_ids(&document);
+                inserted += insert_attachment_refs(transaction, &node_id, &object_ids, now)?;
+            }
+            Err(error) => logging::error(
+                "db.workspace",
+                &format!("回填附件引用时文档解析失败 node={node_id}: {error}"),
+            ),
+        }
+    }
+
+    let boards = {
+        let mut statement = transaction.prepare(
+            "SELECT s.node_id, s.elements_json
+             FROM board_scene s JOIN node n ON n.id = s.node_id
+             WHERE n.type = 3",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    for (node_id, elements_json) in boards {
+        match serde_json::from_str::<Value>(&elements_json) {
+            Ok(elements) => {
+                let object_ids = attachment_refs::collect_board_attachment_ids(&elements);
+                inserted += insert_attachment_refs(transaction, &node_id, &object_ids, now)?;
+            }
+            Err(error) => logging::error(
+                "db.workspace",
+                &format!("回填附件引用时画板解析失败 node={node_id}: {error}"),
+            ),
+        }
+    }
+
+    transaction.execute(
+        "UPDATE attachment SET scope = 'node'
+         WHERE scope = 'library'
+           AND EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = attachment.id)",
+        [],
+    )?;
+    logging::info("db.workspace", &format!("附件引用回填完成 refs={inserted}"));
+    Ok(())
+}
+
+/// 插入引用；object_id 必须仍存在于 attachment 表，避免坏 JSON 触发外键失败。
+fn insert_attachment_refs(
+    transaction: &rusqlite::Transaction<'_>,
+    node_id: &str,
+    object_ids: &BTreeSet<String>,
+    now: i64,
+) -> AppResult<usize> {
+    let mut inserted = 0;
+    for object_id in object_ids {
+        inserted += transaction.execute(
+            "INSERT OR IGNORE INTO node_attachment (node_id, object_id, created_at, updated_at)
+             SELECT ?1, ?2, ?3, ?3
+             WHERE EXISTS (SELECT 1 FROM attachment WHERE id = ?2)",
+            rusqlite::params![node_id, object_id, now],
+        )?;
+    }
+    Ok(inserted)
+}
+
+/// 统计外键悬空引用数；0 表示迁移后的关系完整。
+fn foreign_key_violation_count(connection: &Connection) -> AppResult<i64> {
+    let mut statement = connection.prepare("PRAGMA foreign_key_check")?;
+    let count = statement.query_map([], |_| Ok(()))?.count();
+    Ok(count as i64)
 }
 
 #[cfg(test)]
@@ -294,14 +590,30 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    /// v1 旧表的最小结构：只需要时间列用于验证重命名与数据保留。
+    /// v1 旧库的最小可迁移结构：保留真实节点字段，只把时间列名留在旧版本。
     const V1_NODE_SCHEMA: &str = r#"
+        CREATE TABLE knowledge_base (
+            id          TEXT PRIMARY KEY NOT NULL,
+            name        TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
         CREATE TABLE node (
-            id         TEXT PRIMARY KEY NOT NULL,
-            type       INTEGER NOT NULL,
-            title      TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
+            id                TEXT PRIMARY KEY NOT NULL,
+            type              INTEGER NOT NULL,
+            title             TEXT NOT NULL,
+            knowledge_base_id TEXT NOT NULL,
+            parent_id         TEXT,
+            level             INTEGER NOT NULL,
+            path              TEXT NOT NULL,
+            sort_order        INTEGER NOT NULL DEFAULT 0,
+            starred           INTEGER NOT NULL DEFAULT 0,
+            word_count        INTEGER NOT NULL DEFAULT 0,
+            content           TEXT NOT NULL DEFAULT '',
+            created_at        INTEGER NOT NULL,
+            updated_at        INTEGER NOT NULL
         );
     "#;
 
@@ -313,10 +625,14 @@ mod tests {
             let connection = Connection::open(&path).expect("创建 v1 库");
             connection.execute_batch(V1_NODE_SCHEMA).expect("v1 表");
             connection
-                .execute(
-                    "INSERT INTO node (id, type, title, created_at, updated_at)
-                     VALUES ('n1', 2, '旧数据', 1, 2)",
-                    [],
+                .execute_batch(
+                    "INSERT INTO knowledge_base
+                         (id, name, description, sort_order, created_at, updated_at)
+                     VALUES ('kb1', '旧库', '', 0, 1, 1);
+                     INSERT INTO node
+                         (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+                          starred, word_count, content, created_at, updated_at)
+                     VALUES ('n1', 2, '旧数据', 'kb1', NULL, 1, '/旧数据', 0, 0, 0, '', 1, 2);",
                 )
                 .expect("写入旧数据");
             connection
@@ -328,7 +644,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 7, "迁移必须停在 v7");
+        assert_eq!(version, 10, "迁移必须停在 v10");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(node)")
@@ -389,9 +705,12 @@ mod tests {
                 "status",
                 "created_at",
                 "updated_at",
-                "deleted_at"
+                "deleted_at",
+                "scope",
+                "expires_at",
+                "orphaned_at"
             ],
-            "v5 必须创建 attachment"
+            "v10 必须为 attachment 增加生命周期列"
         );
         let blob_columns: Vec<String> = connection
             .prepare("PRAGMA table_info(attachment_blob)")
@@ -459,6 +778,106 @@ mod tests {
     }
 
     #[test]
+    fn migrates_v9_to_v10_and_backfills_attachment_refs() {
+        let directory = tempdir().expect("临时目录");
+        let path = directory.path().join("workspace.sqlite3");
+        {
+            let connection = Connection::open(&path).expect("创建 v9 库");
+            connection.execute_batch(SCHEMA).expect("基础表");
+            for migration in [
+                MIGRATION_V4_TO_V5,
+                MIGRATION_V5_TO_V6,
+                MIGRATION_V6_TO_V7,
+                MIGRATION_V7_TO_V8,
+                MIGRATION_V8_TO_V9,
+            ] {
+                connection.execute_batch(migration).expect("v9 迁移");
+            }
+            connection
+                .pragma_update(None, "user_version", 9)
+                .expect("写 v9 版本");
+            connection
+                .execute_batch(
+                    r#"INSERT INTO knowledge_base (id, name, description, sort_order, created_at, updated_at)
+                     VALUES ('kb1', 'KB', '', 0, 1, 1);
+                     INSERT INTO node
+                         (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+                          starred, word_count, content, create_time, update_time)
+                     VALUES
+                         ('doc1', 2, 'Doc', 'kb1', NULL, 1, '/Doc', 0, 0, 0,
+                          '{"type":"doc","content":[{"type":"attachmentImage","attrs":{"attachmentId":"a1"}}]}', 1, 1),
+                         ('board1', 3, 'Board', 'kb1', NULL, 1, '/Board', 1, 0, 0, '', 1, 1);
+                     INSERT INTO board_scene
+                         (node_id, elements_json, app_state_json, scene_version, element_count, updated_at)
+                     VALUES ('board1', '[{"type":"image","fileId":"a2"}]', '{}', 1, 1, 1);
+                     INSERT INTO attachment
+                         (id, name, logical_path, content_hash, size, mime, status, created_at, updated_at)
+                     VALUES
+                         ('a1', 'doc.png', '', 'h1', 1, 'image/png', 'active', 1, 1),
+                         ('a2', 'board.png', '', 'h2', 1, 'image/png', 'active', 1, 1),
+                         ('a3', 'library.txt', '', 'h3', 1, 'text/plain', 'active', 1, 1);"#,
+                )
+                .expect("写入 v9 数据");
+        }
+
+        let connection = open(&path).expect("迁移打开");
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("读版本");
+        assert_eq!(version, 10);
+
+        let refs: Vec<(String, String)> = connection
+            .prepare("SELECT node_id, object_id FROM node_attachment ORDER BY node_id, object_id")
+            .expect("引用表")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("遍历引用")
+            .collect::<Result<_, _>>()
+            .expect("引用行");
+        assert_eq!(
+            refs,
+            vec![
+                ("board1".to_string(), "a2".to_string()),
+                ("doc1".to_string(), "a1".to_string())
+            ]
+        );
+
+        let scopes: Vec<(String, String)> = connection
+            .prepare("SELECT id, scope FROM attachment ORDER BY id")
+            .expect("附件 scope")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("遍历 scope")
+            .collect::<Result<_, _>>()
+            .expect("scope 行");
+        assert_eq!(
+            scopes,
+            vec![
+                ("a1".to_string(), "node".to_string()),
+                ("a2".to_string(), "node".to_string()),
+                ("a3".to_string(), "library".to_string())
+            ]
+        );
+
+        // type=6 已可写入。
+        connection
+            .execute(
+                "INSERT INTO node
+                     (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+                      starred, word_count, content, create_time, update_time)
+                 VALUES ('att1', 6, 'file.png', 'kb1', NULL, 1, '/file.png', 2, 0, 0, '', 1, 1)",
+                [],
+            )
+            .expect("v10 必须允许附件节点");
+
+        let violations: i64 = connection
+            .prepare("PRAGMA foreign_key_check")
+            .expect("外键检查")
+            .query_map([], |_| Ok(()))
+            .expect("遍历外键问题")
+            .count() as i64;
+        assert_eq!(violations, 0);
+    }
+
+    #[test]
     fn migrates_v6_blob_rows_to_v7_without_losing_objects() {
         let directory = tempdir().expect("临时目录");
         let path = directory.path().join("workspace.sqlite3");
@@ -502,7 +921,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 7, "v6 库必须升到 v7");
+        assert_eq!(version, 10, "v8 库必须升到 v10");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(attachment_blob)")

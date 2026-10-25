@@ -39,9 +39,9 @@ pub struct PreparedDocument {
 pub fn prepare_document(document: &Value) -> AppResult<PreparedDocument> {
     let root = document
         .as_object()
-        .ok_or_else(|| AppError::validation("文档必须是 JSON 对象"))?;
+        .ok_or_else(|| AppError::validation("文档内容无效"))?;
     if root.get("type").and_then(Value::as_str) != Some("doc") {
-        return Err(AppError::validation("文档根节点 type 必须是 doc"));
+        return Err(AppError::validation("文档内容无效"));
     }
     let mut changed = false;
     let mut normalized_root = Map::new();
@@ -57,7 +57,7 @@ pub fn prepare_document(document: &Value) -> AppResult<PreparedDocument> {
                         let mut normalized = Vec::with_capacity(blocks.len());
                         for block in blocks {
                             if !block.is_object() {
-                                return Err(AppError::validation("文档顶层块必须是 JSON 对象"));
+                                return Err(AppError::validation("文档内容无效"));
                             }
                             if let Some(node) = normalize_node(block, &mut changed) {
                                 normalized.push(node);
@@ -65,7 +65,7 @@ pub fn prepare_document(document: &Value) -> AppResult<PreparedDocument> {
                         }
                         normalized
                     }
-                    _ => return Err(AppError::validation("文档 content 必须是块数组")),
+                    _ => return Err(AppError::validation("文档内容无效")),
                 };
                 normalized_root.insert(key.clone(), Value::Array(blocks));
             }
@@ -95,7 +95,7 @@ fn extract_normalized_blocks(document: &Value) -> AppResult<Vec<ExtractedBlock>>
     let content = document
         .get("content")
         .and_then(Value::as_array)
-        .ok_or_else(|| AppError::validation("文档 content 必须是块数组"))?;
+        .ok_or_else(|| AppError::validation("文档内容无效"))?;
     let mut extracted = Vec::with_capacity(content.len());
     for block in content {
         let canonical = serde_json::to_string(block).map_err(|error| {

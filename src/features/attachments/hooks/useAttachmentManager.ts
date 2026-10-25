@@ -4,6 +4,8 @@ import {
   downloadAttachment,
   getAttachmentStats,
   listAttachments,
+  restoreAttachment,
+  runAttachmentMaintenance,
   uploadAttachment,
   verifyAttachment,
 } from "@/api/attachment";
@@ -21,6 +23,8 @@ export function useAttachmentManager() {
   const [items, setItems] = useState<Attachment[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [logicalPath, setLogicalPath] = useState("");
+  /** 上传时声明的临时保留秒数；null 表示永久。 */
+  const [ttlSeconds, setTtlSeconds] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +105,11 @@ export function useAttachmentManager() {
         const failures: string[] = [];
         for (const sourcePath of paths) {
           try {
-            await uploadAttachment({ sourcePath, logicalPath: logicalPath.trim() });
+            await uploadAttachment({
+              sourcePath,
+              logicalPath: logicalPath.trim(),
+              ttlSeconds: ttlSeconds ?? undefined,
+            });
             uploaded += 1;
           } catch (caught) {
             failures.push(toErrorMessage(caught));
@@ -116,7 +124,7 @@ export function useAttachmentManager() {
         }
       });
     })();
-  }, [fetchData, logicalPath, run]);
+  }, [fetchData, logicalPath, run, ttlSeconds]);
 
   const exportItem = useCallback(
     (item: Attachment) => {
@@ -139,6 +147,30 @@ export function useAttachmentManager() {
     [run],
   );
 
+  const restoreItem = useCallback(
+    (item: Attachment) => {
+      void run(`restore:${item.id}`, async () => {
+        await restoreAttachment(item.id);
+        if (!mountedRef.current) return;
+        await fetchData();
+        if (mountedRef.current) setNotice(`已恢复「${item.name}」`);
+      });
+    },
+    [fetchData, run],
+  );
+
+  const maintain = useCallback(() => {
+    void run("maintenance", async () => {
+      const result = await runAttachmentMaintenance();
+      if (!mountedRef.current) return;
+      await fetchData();
+      if (mountedRef.current) {
+        const reclaimed = Math.round(result.reclaimedBytes / 1024);
+        setNotice(`已清理 ${result.purged + result.expired + result.orphaned} 项，释放约 ${reclaimed} KB`);
+      }
+    });
+  }, [fetchData, run]);
+
   const verifyItem = useCallback(
     (item: Attachment) => {
       void run(`verify:${item.id}`, async () => {
@@ -147,7 +179,7 @@ export function useAttachmentManager() {
         if (result.valid) {
           setNotice(`「${item.name}」校验通过`);
         } else {
-          setError(`「${item.name}」校验失败：${result.message ?? "内容与元数据不一致"}`);
+          setError(`「${item.name}」校验失败：${result.message ?? "校验未通过"}`);
         }
       });
     },
@@ -161,16 +193,12 @@ export function useAttachmentManager() {
         return;
       }
       void run(`delete:${item.id}`, async () => {
-        const result = await deleteAttachment(item.id);
+        await deleteAttachment(item.id);
         if (!mountedRef.current) return;
         setPendingDelete(null);
         await fetchData();
         if (!mountedRef.current) return;
-        setNotice(
-          result.remainingReferences > 0
-            ? `已删除「${item.name}」，内容仍被其他附件引用`
-            : `已删除「${item.name}」`,
-        );
+        setNotice(`已删除「${item.name}」`);
       });
     },
     [fetchData, pendingDelete, run],
@@ -183,6 +211,8 @@ export function useAttachmentManager() {
     setIncludeDeleted,
     logicalPath,
     setLogicalPath,
+    ttlSeconds,
+    setTtlSeconds,
     loading,
     busy,
     error,
@@ -194,6 +224,8 @@ export function useAttachmentManager() {
     upload,
     exportItem,
     verifyItem,
+    restoreItem,
+    maintain,
     requestDelete,
     disabled: busy !== null || loading,
   };

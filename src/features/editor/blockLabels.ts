@@ -15,6 +15,6 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
 };
 
 export function blockTypeLabel(type: string | undefined): string {
-  if (!type) return "块";
-  return BLOCK_TYPE_LABELS[type] ?? "块";
+  if (!type) return "内容";
+  return BLOCK_TYPE_LABELS[type] ?? "内容";
 }

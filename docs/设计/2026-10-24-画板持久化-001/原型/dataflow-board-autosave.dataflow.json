@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "画板粘贴与自动保存数据流（全局 object_id）",
+    "locale": "zh-CN",
+    "output": "docs/设计/2026-10-24-画板持久化-001/原型/dataflow-board-autosave.html",
+    "viewBox": [
+      1080,
+      620
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "object-path",
+        "label": "粘贴对象",
+        "focus": [
+          "paste",
+          "upload",
+          "object_store",
+          "editor"
+        ],
+        "note": "粘贴时先上传全局对象，返回 object_id 后插入图片或文件卡片。"
+      },
+      {
+        "id": "save-path",
+        "label": "自动保存",
+        "focus": [
+          "editor",
+          "autosave",
+          "scene"
+        ],
+        "note": "自动保存只写 elements_json；对象已经在插入时落库，不再重复上传。"
+      },
+      {
+        "id": "viewport-path",
+        "label": "视口小表",
+        "focus": [
+          "autosave",
+          "viewport"
+        ],
+        "note": "平移缩放只写 board_viewport，不重写大段图元。"
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "粘贴"
+    },
+    {
+      "label": "上传"
+    },
+    {
+      "label": "插入"
+    },
+    {
+      "label": "保存"
+    },
+    {
+      "label": "落盘"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "paste",
+      "type": "frontend",
+      "label": "粘贴 / 拖放",
+      "sublabel": "任意文件",
+      "stage": 0,
+      "row": 1,
+      "tag": "onPaste / drop"
+    },
+    {
+      "id": "upload",
+      "type": "backend",
+      "label": "对象上传",
+      "sublabel": "upload_bytes",
+      "stage": 1,
+      "row": 1,
+      "tag": "全局对象"
+    },
+    {
+      "id": "object_store",
+      "type": "cloud",
+      "label": "storage/objects",
+      "sublabel": "big / pack",
+      "stage": 1,
+      "row": 2,
+      "tag": "BLAKE3"
+    },
+    {
+      "id": "editor",
+      "type": "frontend",
+      "label": "Excalidraw 画布",
+      "sublabel": "图片 / 文件卡片",
+      "stage": 2,
+      "row": 1,
+      "tag": "object_id"
+    },
+    {
+      "id": "autosave",
+      "type": "frontend",
+      "label": "自动保存",
+      "sublabel": "去抖 + 单飞",
+      "stage": 3,
+      "row": 1,
+      "tag": "800ms / 5s"
+    },
+    {
+      "id": "viewport",
+      "type": "database",
+      "label": "board_viewport",
+      "sublabel": "scroll / zoom",
+      "stage": 4,
+      "row": 0,
+      "tag": "小行"
+    },
+    {
+      "id": "scene",
+      "type": "database",
+      "label": "board_scene",
+      "sublabel": "图元 + object_id",
+      "stage": 4,
+      "row": 1,
+      "tag": "1 行"
+    }
+  ],
+  "flows": [
+    {
+      "id": "paste-to-upload",
+      "from": "paste",
+      "to": "upload",
+      "label": "文件字节",
+      "classification": "粘贴/拖放",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upload-to-store",
+      "from": "upload",
+      "to": "object_store",
+      "label": "BLAKE3 去重",
+      "classification": "全局对象库",
+      "variant": "dashed",
+      "labelAt": [
+        315,
+        314
+      ]
+    },
+    {
+      "id": "upload-to-editor",
+      "from": "upload",
+      "to": "editor",
+      "label": "返回 object_id",
+      "classification": "异步插入",
+      "variant": "emphasis"
+    },
+    {
+      "id": "editor-to-autosave",
+      "from": "editor",
+      "to": "autosave",
+      "label": "图元变更",
+      "classification": "onChange",
+      "variant": "emphasis"
+    },
+    {
+      "id": "autosave-to-scene",
+      "from": "autosave",
+      "to": "scene",
+      "label": "elements_json",
+      "classification": "单飞保存",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "autosave-to-viewport",
+      "from": "autosave",
+      "to": "viewport",
+      "label": "视口单独保存",
+      "classification": "不递增版本",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          745,
+          210
+        ],
+        [
+          960,
+          210
+        ]
+      ],
+      "labelAt": [
+        850,
+        230
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "无映射",
+      "items": [
+        "图片 fileId = 全局 object_id",
+        "文件卡片 customData.objectId",
+        "没有 board_file / board_object"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "保存只写场景",
+      "items": [
+        "粘贴时上传对象，保存不再传文件",
+        "自动保存只更新 elements_json",
+        "视口走独立小表"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "失败与退出",
+      "items": [
+        "上传成功但未插入会留下可见对象",
+        "保存失败保留脏数据并退避重试",
+        "切换页面/关闭窗口前先 flush"
+      ]
+    }
+  ]
+}

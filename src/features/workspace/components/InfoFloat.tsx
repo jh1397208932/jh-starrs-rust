@@ -28,7 +28,7 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 24, opacity: 0 }}
             transition={SPRING_PANEL}
-            className="absolute top-4 right-5 bottom-5 z-20 w-[264px]"
+            className="absolute top-16 right-5 bottom-5 z-20 w-[264px]"
           >
             <aside
               aria-label="文档信息浮窗"

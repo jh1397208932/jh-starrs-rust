@@ -8,11 +8,15 @@ use tauri::State;
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::attachment::{
-    AttachmentDeleteResult, AttachmentDto, AttachmentListQuery, AttachmentStatsDto,
-    AttachmentVerifyResult, DownloadAttachmentInput, DownloadAttachmentResult,
-    UpdateAttachmentInput, UploadAttachmentInput,
+    AttachmentDeleteResult, AttachmentDto, AttachmentLifecycleInput, AttachmentListQuery,
+    AttachmentMaintenanceResult, AttachmentStatsDto, AttachmentVerifyResult,
+    DownloadAttachmentInput, DownloadAttachmentResult, SCOPE_NODE, UpdateAttachmentInput,
+    UploadAttachmentInput, UploadAttachmentNodeInput,
 };
+use crate::models::{CreateAttachmentNodeInput, NodeDto};
+use crate::services::attachment_maintenance_service;
 use crate::services::attachment_service::{self, AttachmentContext};
+use crate::services::node_service;
 use crate::state::AppState;
 
 /// 上传本地文件到当前工作区附件库。
@@ -23,6 +27,58 @@ pub async fn attachment_upload(
 ) -> AppResult<AttachmentDto> {
     let context = AttachmentContext::from_state(state.inner())?;
     run_blocking(move || attachment_service::upload(&context, input)).await
+}
+
+/// 从文件树上传附件并创建 type=6 节点；两步失败时回滚逻辑附件。
+#[tauri::command(async)]
+pub async fn attachment_upload_to_tree(
+    state: State<'_, AppState>,
+    input: UploadAttachmentNodeInput,
+) -> AppResult<NodeDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    let logical_path = input.logical_path.clone();
+    let attachment = run_blocking(move || {
+        attachment_service::upload(
+            &context,
+            UploadAttachmentInput {
+                source_path: input.source_path,
+                logical_path,
+                name: input.name,
+                mime: input.mime,
+                scope: Some(SCOPE_NODE.to_string()),
+                ttl_seconds: None,
+            },
+        )
+    })
+    .await?;
+
+    let node = node_service::create_attachment_node(
+        state.inner(),
+        CreateAttachmentNodeInput {
+            knowledge_base_id: input.knowledge_base_id,
+            parent_id: input.parent_id,
+            object_id: attachment.id.clone(),
+        },
+    );
+    match node {
+        Ok(node) => Ok(node),
+        Err(error) => {
+            if let Ok(context) = AttachmentContext::from_state(state.inner()) {
+                let object_id = attachment.id;
+                let cleanup = run_blocking(move || {
+                    attachment_service::delete(&context, &object_id).map(|_| ())
+                })
+                .await;
+                if let Err(cleanup_error) = cleanup {
+                    logging::error(
+                        "attachment",
+                        &format!("附件节点创建失败后清理附件失败: {cleanup_error}"),
+                    );
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 /// 列出附件；可包含软删除行。
@@ -40,6 +96,16 @@ pub fn attachment_list(
 pub fn attachment_get(state: State<'_, AppState>, id: String) -> AppResult<AttachmentDto> {
     let context = AttachmentContext::from_state(state.inner())?;
     attachment_service::get(&context, &id)
+}
+
+/// 按附件节点读取对象。
+#[tauri::command(async)]
+pub fn attachment_get_by_node(
+    state: State<'_, AppState>,
+    node_id: String,
+) -> AppResult<AttachmentDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    attachment_service::get_by_node(&context, &node_id)
 }
 
 /// 重命名或移动逻辑附件。
@@ -87,6 +153,42 @@ pub async fn attachment_verify(
 pub fn attachment_stats(state: State<'_, AppState>) -> AppResult<AttachmentStatsDto> {
     let context = AttachmentContext::from_state(state.inner())?;
     attachment_service::stats(&context)
+}
+
+/// 从回收站恢复附件。
+#[tauri::command(async)]
+pub async fn attachment_restore(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<AttachmentDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    run_blocking(move || attachment_service::restore(&context, &id)).await
+}
+
+/// 设置未关联附件的临时保留时间。
+#[tauri::command(async)]
+pub fn attachment_set_lifecycle(
+    state: State<'_, AppState>,
+    input: AttachmentLifecycleInput,
+) -> AppResult<AttachmentDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    attachment_service::set_lifecycle(&context, input)
+}
+
+/// 立即执行一轮附件维护。
+#[tauri::command(async)]
+pub async fn attachment_maintenance(
+    state: State<'_, AppState>,
+) -> AppResult<AttachmentMaintenanceResult> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    run_blocking(move || {
+        attachment_maintenance_service::run(
+            &context,
+            crate::utils::now_ms(),
+            attachment_maintenance_service::MaintenancePolicy::default(),
+        )
+    })
+    .await
 }
 
 async fn run_blocking<T: Send + 'static>(

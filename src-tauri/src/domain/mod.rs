@@ -5,11 +5,12 @@
 use crate::errors::{AppError, AppResult};
 
 pub mod attachment;
+pub mod attachment_refs;
 pub mod block_plan;
 pub mod document;
 pub mod fractional_index;
 
-/// 文件树节点类型；数据库存储 1~5，禁止在其他层散落裸数字。
+/// 文件树节点类型；数据库存储 1~6，禁止在其他层散落裸数字。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i64)]
 pub enum NodeType {
@@ -18,6 +19,7 @@ pub enum NodeType {
     Board = 3,
     Table = 4,
     Flow = 5,
+    Attachment = 6,
 }
 
 impl NodeType {
@@ -29,7 +31,8 @@ impl NodeType {
             3 => Ok(Self::Board),
             4 => Ok(Self::Table),
             5 => Ok(Self::Flow),
-            _ => Err(AppError::validation("节点类型必须是 1~5")),
+            6 => Ok(Self::Attachment),
+            _ => Err(AppError::validation("内容类型无效")),
         }
     }
 
@@ -102,16 +105,16 @@ pub fn validate_kb_description(description: &str) -> AppResult<String> {
 pub fn validate_node_title(title: &str) -> AppResult<String> {
     let trimmed = title.trim();
     if trimmed.is_empty() {
-        return Err(AppError::validation("节点名称不能为空"));
+        return Err(AppError::validation("名称不能为空"));
     }
     if trimmed.chars().count() > 200 {
-        return Err(AppError::validation("节点名称不能超过 200 个字符"));
+        return Err(AppError::validation("名称不能超过 200 个字符"));
     }
     if trimmed.contains('/') || trimmed.contains('\\') {
-        return Err(AppError::validation("节点名称不能包含 / 或 \\"));
+        return Err(AppError::validation("名称不能包含 / 或 \\"));
     }
     if trimmed.chars().any(char::is_control) {
-        return Err(AppError::validation("节点名称不能包含控制字符"));
+        return Err(AppError::validation("名称不能包含控制字符"));
     }
     Ok(trimmed.to_string())
 }
@@ -124,7 +127,7 @@ pub fn validate_avatar_color(color: &str) -> AppResult<String> {
     if ALLOWED_AVATAR_COLORS.contains(&color) {
         Ok(color.to_string())
     } else {
-        Err(AppError::validation("未知的工作区头像颜色"))
+        Err(AppError::validation("头像颜色无效"))
     }
 }
 
@@ -208,8 +211,9 @@ mod tests {
     fn node_type_rejects_out_of_range() {
         assert!(NodeType::from_i64(1).is_ok());
         assert!(NodeType::from_i64(5).is_ok());
+        assert!(NodeType::from_i64(6).is_ok());
         assert!(NodeType::from_i64(0).is_err());
-        assert!(NodeType::from_i64(6).is_err());
+        assert!(NodeType::from_i64(7).is_err());
     }
 
     #[test]
@@ -229,7 +233,10 @@ mod tests {
     #[test]
     fn theme_names_accept_all_presets_and_reject_unknown() {
         for name in THEME_NAMES {
-            assert!(validate_theme_name(name).is_ok(), "预设主题 {name} 应被接受");
+            assert!(
+                validate_theme_name(name).is_ok(),
+                "预设主题 {name} 应被接受"
+            );
         }
         assert!(validate_theme_name("mist").is_ok());
         assert!(validate_theme_name("neon").is_err());

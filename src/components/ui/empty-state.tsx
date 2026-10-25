@@ -19,7 +19,7 @@ export interface EmptyStateProps {
   /** 小空态字形（✦ / ☆ / ⛓ / ⌕）；hero 变体改用星屿线稿 */
   glyph: string;
   title: string;
-  description: string;
+  description?: string;
   /**
    * hero = 主内容区空态：星屿线稿 + 宋体大标题 + 雾光背景；
    * panel = 浮窗 / 占位小空态：字形底片 + 常规标题。
@@ -87,17 +87,16 @@ export function EmptyState({
         <BlurFade delay={0.1}>
           <h2 className="empty-title">{title}</h2>
         </BlurFade>
-        <BlurFade delay={0.16}>
-          <p className="empty-desc">{description}</p>
-        </BlurFade>
+        {description && (
+          <BlurFade delay={0.16}>
+            <p className="empty-desc">{description}</p>
+          </BlurFade>
+        )}
         {children && (
           <BlurFade delay={0.22}>
             <div className="empty-actions">{children}</div>
           </BlurFade>
         )}
-        <BlurFade delay={0.3}>
-          <p className="empty-hint">本地优先 · 自动保存</p>
-        </BlurFade>
       </div>
     );
   }
@@ -114,9 +113,11 @@ export function EmptyState({
       <BlurFade delay={0.06}>
         <p className="mt-3 text-[15px] font-semibold text-foreground">{title}</p>
       </BlurFade>
-      <BlurFade delay={0.12}>
-        <p className={cn(CAPTION_CLS, "max-w-[220px] text-muted-foreground")}>{description}</p>
-      </BlurFade>
+      {description && (
+        <BlurFade delay={0.12}>
+          <p className={cn(CAPTION_CLS, "max-w-[220px] text-muted-foreground")}>{description}</p>
+        </BlurFade>
+      )}
       {children && (
         <BlurFade delay={0.18}>
           <div className="mt-4">{children}</div>

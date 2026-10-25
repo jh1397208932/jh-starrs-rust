@@ -1,4 +1,4 @@
-import { FileText, Folder, Presentation, Star, Table2, Workflow } from "lucide-react";
+import { FileText, Folder, Paperclip, Presentation, Star, Table2, Workflow } from "lucide-react";
 import type { NodeKind } from "@/types/notebook";
 
 /** 节点/标签类型：树节点为 NodeKind 五类，标签页额外支持 starred（收藏列表页签） */
@@ -11,6 +11,7 @@ const NODE_KIND_ICONS = {
   board: Presentation,
   table: Table2,
   flow: Workflow,
+  attachment: Paperclip,
   starred: Star,
 } as const;
 
@@ -23,7 +24,7 @@ export interface NodeKindIconProps {
 
 /**
  * 节点类型图标：按业务类型渲染对应 lucide 图标。
- * @param kind 节点/标签类型（folder | doc | board | table | flow | starred）
+ * @param kind 节点/标签类型（folder | doc | board | table | flow | attachment | starred）
  * @param className 图标类名，如 "size-3.5 text-primary"
  */
 export function NodeKindIcon({ kind, className }: NodeKindIconProps) {

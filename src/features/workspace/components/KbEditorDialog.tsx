@@ -38,7 +38,7 @@ export function KbEditorDialog({
   }, [open, initialName, initialDescription]);
 
   const trimmed = name.trim();
-  const nameError = trimmed.length === 0 ? "知识库名称不能为空" : null;
+  const nameError = trimmed.length === 0 ? "请输入名称" : null;
   const canSubmit = nameError === null && !pending;
 
   const submit = async () => {
@@ -90,7 +90,7 @@ export function KbEditorDialog({
             id="kb-desc"
             value={description}
             maxLength={500}
-            placeholder="一句话说明这个知识库收集什么"
+            placeholder="简介"
             onChange={(event) => setDescription(event.target.value)}
           />
         </div>
@@ -106,7 +106,7 @@ export function KbEditorDialog({
           </Button>
         </div>
         <DialogDescription className="sr-only">
-          {mode === "create" ? "创建一个新的知识库" : "修改知识库名称与描述"}
+          {mode === "create" ? "新建知识库" : "编辑知识库"}
         </DialogDescription>
       </DialogContent>
     </Dialog>

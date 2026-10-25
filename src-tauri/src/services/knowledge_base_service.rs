@@ -9,6 +9,8 @@ use crate::models::{
     CreateKbInput, DeleteKbResult, KnowledgeBaseDto, KnowledgeBaseRow, UpdateKbInput,
 };
 use crate::repositories::knowledge_base_repository as repository;
+use crate::repositories::node_attachment_repository;
+use crate::services::attachment_reference_service;
 use crate::state::AppState;
 use crate::utils::{new_id, now_ms};
 
@@ -83,8 +85,11 @@ pub fn delete(state: &AppState, id: &str) -> AppResult<DeleteKbResult> {
     let existing = repository::find_by_id(connection, id)?
         .ok_or_else(|| AppError::not_found("知识库不存在"))?;
     let deleted_nodes = repository::node_count(connection, &existing.id)?;
+    let object_ids =
+        node_attachment_repository::object_ids_for_knowledge_base(connection, &existing.id)?;
     let transaction = connection.unchecked_transaction()?;
     repository::delete(&transaction, &existing.id)?;
+    attachment_reference_service::mark_orphans_for(&transaction, &object_ids, now_ms())?;
     transaction.commit()?;
     logging::info(
         "kb",
@@ -98,7 +103,7 @@ fn find_dto(connection: &Connection, workspace_id: &str, id: &str) -> AppResult<
     let row = repository::find_by_id(connection, id)?
         .ok_or_else(|| AppError::not_found("知识库不存在"))?;
     let doc_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM node WHERE knowledge_base_id = ?1 AND type <> 1",
+        "SELECT COUNT(*) FROM node WHERE knowledge_base_id = ?1 AND type NOT IN (1, 6)",
         [id],
         |row| row.get(0),
     )?;

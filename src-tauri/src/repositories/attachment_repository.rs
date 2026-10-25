@@ -21,6 +21,10 @@ fn map_attachment(row: &Row<'_>) -> rusqlite::Result<AttachmentRow> {
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
         deleted_at: row.get(9)?,
+        scope: row.get(10)?,
+        expires_at: row.get(11)?,
+        orphaned_at: row.get(12)?,
+        reference_count: row.get(13)?,
     })
 }
 
@@ -48,8 +52,9 @@ fn map_pack(row: &Row<'_>) -> rusqlite::Result<AttachmentPackRow> {
     })
 }
 
-const ATTACHMENT_COLUMNS: &str =
-    "id, name, logical_path, content_hash, size, mime, status, created_at, updated_at, deleted_at";
+const ATTACHMENT_COLUMNS: &str = "id, name, logical_path, content_hash, size, mime, status,
+    created_at, updated_at, deleted_at, scope, expires_at, orphaned_at,
+    (SELECT COUNT(*) FROM node_attachment r WHERE r.object_id = attachment.id) AS reference_count";
 const BLOB_COLUMNS: &str = "hash, size, storage_kind, pack_id, pack_offset, created_at";
 const PACK_COLUMNS: &str = "id, file_name, size, active, created_at, retired_at";
 
@@ -70,8 +75,9 @@ pub fn find_active(connection: &Connection, id: &str) -> rusqlite::Result<Option
 pub fn insert_attachment(connection: &Connection, row: &AttachmentRow) -> rusqlite::Result<()> {
     connection.execute(
         "INSERT INTO attachment
-            (id, name, logical_path, content_hash, size, mime, status, created_at, updated_at, deleted_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            (id, name, logical_path, content_hash, size, mime, status, created_at, updated_at,
+             deleted_at, scope, expires_at, orphaned_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             row.id,
             row.name,
@@ -83,6 +89,9 @@ pub fn insert_attachment(connection: &Connection, row: &AttachmentRow) -> rusqli
             row.created_at,
             row.updated_at,
             row.deleted_at,
+            row.scope,
+            row.expires_at,
+            row.orphaned_at,
         ],
     )?;
     Ok(())
@@ -106,13 +115,64 @@ pub fn update_attachment_meta(
     )
 }
 
-/// 软删除活跃附件。
+/// 软删除活跃附件；保留物理对象以便恢复。
 pub fn mark_deleted(connection: &Connection, id: &str, deleted_at: i64) -> rusqlite::Result<usize> {
     connection.execute(
         "UPDATE attachment
          SET status = 'deleted', deleted_at = ?2, updated_at = ?2
          WHERE id = ?1 AND status = 'active'",
         params![id, deleted_at],
+    )
+}
+
+/// 从回收站恢复附件；内容不存在时仍恢复行，由后续校验提示。
+pub fn restore(connection: &Connection, id: &str, updated_at: i64) -> rusqlite::Result<usize> {
+    connection.execute(
+        // 恢复后没有业务引用，转为主动保留的 library，避免下轮维护再次判孤儿。
+        "UPDATE attachment
+         SET status = 'active', deleted_at = NULL, orphaned_at = NULL,
+             scope = 'library', expires_at = NULL, updated_at = ?2
+         WHERE id = ?1 AND status = 'deleted'",
+        params![id, updated_at],
+    )
+}
+
+/// 永久删除附件行（调用方负责随后判断物理对象是否可删）。
+pub fn purge_row(connection: &Connection, id: &str) -> rusqlite::Result<usize> {
+    connection.execute("DELETE FROM attachment WHERE id = ?1", [id])
+}
+
+/// 按 id 查询任意状态（回收站恢复/purge 使用）。
+pub fn find_any(connection: &Connection, id: &str) -> rusqlite::Result<Option<AttachmentRow>> {
+    connection
+        .query_row(
+            &format!("SELECT {ATTACHMENT_COLUMNS} FROM attachment WHERE id = ?1"),
+            [id],
+            map_attachment,
+        )
+        .optional()
+}
+
+/// 设置附件临时保留时间；None 清除。
+pub fn set_expires_at(
+    connection: &Connection,
+    id: &str,
+    expires_at: Option<i64>,
+    updated_at: i64,
+) -> rusqlite::Result<usize> {
+    connection.execute(
+        "UPDATE attachment SET expires_at = ?2, updated_at = ?3
+         WHERE id = ?1 AND status = 'active'",
+        params![id, expires_at, updated_at],
+    )
+}
+
+/// 统计同哈希的附件行数（含回收站）；0 才能删除物理对象。
+pub fn count_hash_rows(connection: &Connection, hash: &str) -> rusqlite::Result<i64> {
+    connection.query_row(
+        "SELECT COUNT(*) FROM attachment WHERE content_hash = ?1",
+        [hash],
+        |row| row.get(0),
     )
 }
 
@@ -173,12 +233,93 @@ pub fn insert_blob(connection: &Connection, row: &AttachmentBlobRow) -> rusqlite
 ///
 /// 这是"物理对象该不该存在"的唯一判据，取代了原先冗余的 `ref_count` 列；
 /// 走 `idx_attachment_hash`，0 表示可以删对象与 blob 行。
+#[cfg(test)]
 pub fn count_active_references(connection: &Connection, hash: &str) -> rusqlite::Result<i64> {
     connection.query_row(
         "SELECT COUNT(*) FROM attachment WHERE content_hash = ?1 AND status = 'active'",
         [hash],
         |row| row.get(0),
     )
+}
+
+/// 列出全部物理对象索引（维护任务与磁盘统计使用）。
+pub fn list_blobs(connection: &Connection) -> rusqlite::Result<Vec<AttachmentBlobRow>> {
+    let mut statement =
+        connection.prepare(&format!("SELECT {BLOB_COLUMNS} FROM attachment_blob"))?;
+    let rows = statement.query_map([], map_blob)?;
+    rows.collect()
+}
+
+/// 列出全部 pack。
+pub fn list_packs(connection: &Connection) -> rusqlite::Result<Vec<AttachmentPackRow>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {PACK_COLUMNS} FROM attachment_pack ORDER BY created_at, id"
+    ))?;
+    let rows = statement.query_map([], map_pack)?;
+    rows.collect()
+}
+
+/// 列出超过宽限期且无引用的 node 孤儿。
+pub fn list_orphaned_before(
+    connection: &Connection,
+    cutoff: i64,
+) -> rusqlite::Result<Vec<AttachmentRow>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {ATTACHMENT_COLUMNS} FROM attachment
+         WHERE scope = 'node' AND status = 'active'
+           AND orphaned_at IS NOT NULL AND orphaned_at <= ?1
+           AND NOT EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = attachment.id)
+         ORDER BY orphaned_at"
+    ))?;
+    let rows = statement.query_map([cutoff], map_attachment)?;
+    rows.collect()
+}
+
+/// 列出 TTL 到期且无引用的附件。
+pub fn list_expired(connection: &Connection, now: i64) -> rusqlite::Result<Vec<AttachmentRow>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {ATTACHMENT_COLUMNS} FROM attachment
+         WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?1
+           AND NOT EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = attachment.id)
+         ORDER BY expires_at"
+    ))?;
+    let rows = statement.query_map([now], map_attachment)?;
+    rows.collect()
+}
+
+/// 列出回收站超过保留期的附件。
+pub fn list_trash_before(
+    connection: &Connection,
+    cutoff: i64,
+) -> rusqlite::Result<Vec<AttachmentRow>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {ATTACHMENT_COLUMNS} FROM attachment
+         WHERE status = 'deleted' AND deleted_at IS NOT NULL AND deleted_at <= ?1
+         ORDER BY deleted_at"
+    ))?;
+    let rows = statement.query_map([cutoff], map_attachment)?;
+    rows.collect()
+}
+
+/// 读取工作区维护元数据。
+pub fn get_meta(connection: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    connection
+        .query_row(
+            "SELECT value FROM workspace_meta WHERE key = ?1",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()
+}
+
+/// 写入工作区维护元数据。
+pub fn set_meta(connection: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    connection.execute(
+        "INSERT INTO workspace_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
 }
 
 /// 删除物理对象行。
@@ -332,7 +473,11 @@ pub struct StatsBase {
     pub pack_objects: i64,
     pub pack_count: i64,
     pub pack_bytes: i64,
-    pub dead_pack_bytes: i64,
+    pub linked_count: i64,
+    pub unlinked_count: i64,
+    pub trash_count: i64,
+    pub trash_bytes: i64,
+    pub orphan_bytes: i64,
 }
 
 /// 一次查询所有统计值。
@@ -348,14 +493,17 @@ pub fn stats(connection: &Connection) -> rusqlite::Result<StatsBase> {
             (SELECT COUNT(*) FROM attachment_blob WHERE storage_kind = 'pack'),
             (SELECT COUNT(*) FROM attachment_pack),
             (SELECT COALESCE(SUM(size), 0) FROM attachment_pack),
-            (SELECT COALESCE(SUM(MAX(p.size - COALESCE(l.live_bytes, 0), 0)), 0)
-               FROM attachment_pack p
-               LEFT JOIN (
-                   SELECT pack_id, SUM(size) AS live_bytes
-                   FROM attachment_blob
-                   WHERE pack_id IS NOT NULL
-                   GROUP BY pack_id
-               ) l ON l.pack_id = p.id)",
+            (SELECT COUNT(*) FROM attachment a
+               WHERE a.status = 'active'
+                 AND EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = a.id)),
+            (SELECT COUNT(*) FROM attachment a
+               WHERE a.status = 'active'
+                 AND NOT EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = a.id)),
+            (SELECT COUNT(*) FROM attachment WHERE status = 'deleted'),
+            (SELECT COALESCE(SUM(size), 0) FROM attachment WHERE status = 'deleted'),
+            (SELECT COALESCE(SUM(size), 0) FROM attachment a
+               WHERE a.status = 'active' AND a.scope = 'node'
+                 AND NOT EXISTS (SELECT 1 FROM node_attachment r WHERE r.object_id = a.id))",
         [],
         |row| {
             Ok(StatsBase {
@@ -368,7 +516,11 @@ pub fn stats(connection: &Connection) -> rusqlite::Result<StatsBase> {
                 pack_objects: row.get(6)?,
                 pack_count: row.get(7)?,
                 pack_bytes: row.get(8)?,
-                dead_pack_bytes: row.get(9)?,
+                linked_count: row.get(9)?,
+                unlinked_count: row.get(10)?,
+                trash_count: row.get(11)?,
+                trash_bytes: row.get(12)?,
+                orphan_bytes: row.get(13)?,
             })
         },
     )

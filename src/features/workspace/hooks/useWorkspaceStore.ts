@@ -45,6 +45,8 @@ export interface WorkspaceStore {
   toggleStar: (node: NodeItem) => Promise<NodeItem>;
   /** 文档保存后同步树节点的字数与编辑时间，避免整树重读 */
   applyDocumentSaved: (nodeId: string, info: { wordCount: number; updatedAt: number }) => void;
+  /** 画板保存后只同步编辑时间，不改字数。 */
+  applyBoardSaved: (nodeId: string, updatedAt: number) => void;
 }
 
 /**
@@ -294,6 +296,13 @@ export function useWorkspaceStore(): WorkspaceStore {
     [applyNodes],
   );
 
+  const applyBoardSaved = useCallback(
+    (nodeId: string, updatedAt: number) => {
+      applyNodes(nodesRef.current.map((node) => (node.id === nodeId ? { ...node, updatedAt } : node)));
+    },
+    [applyNodes],
+  );
+
   const currentKb = useMemo(() => kbs.find((kb) => kb.id === currentKbId) ?? null, [kbs, currentKbId]);
 
   const starredNodes = useMemo(() => nodes.filter((node) => node.starred && node.kind !== "folder"), [nodes]);
@@ -327,5 +336,6 @@ export function useWorkspaceStore(): WorkspaceStore {
     moveNode,
     toggleStar,
     applyDocumentSaved,
+    applyBoardSaved,
   };
 }

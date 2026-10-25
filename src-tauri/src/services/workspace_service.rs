@@ -16,6 +16,8 @@ use crate::models::{
 use crate::repositories::knowledge_base_repository;
 use crate::repositories::settings_repository;
 use crate::repositories::workspace_repository;
+use crate::services::attachment_maintenance_service;
+use crate::services::attachment_service::AttachmentContext;
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
 
@@ -57,32 +59,26 @@ pub fn create(state: &AppState, input: CreateWorkspaceInput) -> AppResult<Worksp
     let avatar_color = validate_avatar_color(&input.avatar_color)?;
     let requested = PathBuf::from(&input.path);
     if !requested.is_absolute() {
-        return Err(AppError::validation("工作区路径必须是绝对路径"));
+        return Err(AppError::validation("请选择有效位置"));
     }
 
     let root = if requested.exists() {
         if !requested.is_dir() {
-            return Err(AppError::validation("所选路径不是文件夹"));
+            return Err(AppError::validation("请选择文件夹"));
         }
         let canonical = requested.canonicalize()?;
         let stored_path = db::paths::path_to_string(&canonical)?;
         {
             let global = state.global()?;
             if workspace_repository::find_by_path(&global, &stored_path)?.is_some() {
-                return Err(AppError::conflict(
-                    "该文件夹已登记为工作区，请使用“打开工作区”",
-                ));
+                return Err(AppError::conflict("该文件夹已是工作区"));
             }
         }
         if db::paths::is_valid_workspace(&canonical) {
-            return Err(AppError::conflict(
-                "该文件夹已经是工作区，请使用“打开工作区”",
-            ));
+            return Err(AppError::conflict("该文件夹已是工作区"));
         }
         if !is_effectively_empty(&canonical)? {
-            return Err(AppError::conflict(
-                "请选择一个空文件夹，或输入一个不存在的新路径",
-            ));
+            return Err(AppError::conflict("请选择空文件夹"));
         }
         canonical
     } else {
@@ -94,9 +90,7 @@ pub fn create(state: &AppState, input: CreateWorkspaceInput) -> AppResult<Worksp
     {
         let global = state.global()?;
         if workspace_repository::find_by_path(&global, &stored_path)?.is_some() {
-            return Err(AppError::conflict(
-                "该文件夹已登记为工作区，请使用“打开工作区”",
-            ));
+            return Err(AppError::conflict("该文件夹已是工作区"));
         }
     }
 
@@ -116,9 +110,7 @@ pub fn create(state: &AppState, input: CreateWorkspaceInput) -> AppResult<Worksp
     {
         let global = state.global()?;
         if workspace_repository::find_by_path(&global, &record.path)?.is_some() {
-            return Err(AppError::conflict(
-                "该文件夹已登记为工作区，请使用“打开工作区”",
-            ));
+            return Err(AppError::conflict("该文件夹已是工作区"));
         }
         workspace_repository::insert(&global, &record)?;
     }
@@ -206,6 +198,9 @@ pub fn switch_workspace(state: &AppState, workspace_id: &str) -> AppResult<Works
     {
         let mut guard = state.workspace()?;
         *guard = Some(session);
+    }
+    if let Ok(context) = AttachmentContext::from_state(state) {
+        attachment_maintenance_service::spawn_workspace_run(context);
     }
     logging::info(
         "workspace",

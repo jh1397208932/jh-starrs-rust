@@ -29,6 +29,7 @@ import { AttachmentBlock } from "./attachmentBlock";
 import { AttachmentImage } from "./attachmentImage";
 import { BlockDragHighlight } from "./blockDragHighlight";
 import { ClearMarksOnEnter } from "./clearMarksOnEnter";
+import { UserKeymap } from "./userKeymap";
 
 const lowlight = createLowlight(common);
 
@@ -66,7 +67,8 @@ export const EDITOR_EMOJIS: EmojiItem[] = [
 ];
 
 export interface EditorExtensionOptions {
-  onOutline: (items: OutlineItem[]) => void;
+  /** 大纲更新；同时带来源编辑器，供调用方过滤已被替换的旧实例。 */
+  onOutline: (editor: Editor, items: OutlineItem[]) => void;
   onImageError: (message: string) => void;
   /** 粘贴/拖放的文件；由 DocEditor 上传到附件对象模块后插入图片/附件块。 */
   onFilesDropped: (editor: Editor, files: File[], pos?: number) => void;
@@ -92,6 +94,7 @@ export function createEditorExtensions({
     }),
     ClearMarksOnEnter,
     BlockDragHighlight,
+    UserKeymap,
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
@@ -113,8 +116,9 @@ export function createEditorExtensions({
     DetailsSummary,
     DetailsContent,
     TableOfContents.configure({
-      onUpdate: (items) => {
+      onUpdate: function (this: { editor: Editor }, items) {
         onOutline(
+          this.editor,
           items.map((item) => ({
             id: item.id,
             text: item.textContent,
@@ -125,7 +129,7 @@ export function createEditorExtensions({
       },
     }),
     Placeholder.configure({
-      placeholder: ({ node }) => (node.type.name === "heading" ? "标题" : "输入 / 唤起命令，或直接开始写作…"),
+      placeholder: ({ node }) => (node.type.name === "heading" ? "标题" : "开始写作…"),
     }),
     CharacterCount.configure({
       textCounter: (text) => text.replace(/\s/g, "").length,

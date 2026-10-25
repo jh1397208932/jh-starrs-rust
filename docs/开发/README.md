@@ -8,12 +8,14 @@
 
 - 全局库 `~/.starris/rust/db/starris.db`：工作区注册表 + 记忆配置；日志在 `~/.starris/rust/logs/starris.log`。
 - 每个本地工作区独立目录：`db/workspace.sqlite3` + `storage/`。
-- 首次启动引导、工作区/知识库管理、任意层级文件树、5 类节点、拖拽换层/排序、主题/当前工作区/当前知识库记忆均已接入。
+- 首次启动引导、工作区/知识库管理、任意层级文件树、6 类节点（文件夹/文档/画板/表格/流程图/附件）、拖拽换层/排序、主题/当前工作区/当前知识库记忆均已接入。
 - 文档正文按顶层块内容寻址：`doc_block_hash` + `doc_block_tree`（工作区库 v5）；编辑后 1s 防抖保存，前端单飞互斥 + Rust 工作区互斥/事务；返回 `add/rm/order/tree` 差量；`doc_block_meta` 异步派生 Markdown/prop。
-- 附件对象存储：工作区库 v5 的 `attachment/attachment_blob/attachment_pack`；BLAKE3 内容寻址、big 原子发布、small pack、去重/引用计数/软删除/后台 compaction；设置 → 存储页可上传、导出、校验、删除。
+- 附件对象存储：`attachment/attachment_blob/attachment_pack`；BLAKE3 内容寻址、big 原子发布、small pack、去重、软删除/回收站与后台 compaction。工作区库 v10 新增 `node_attachment` 引用表与 `scope/expires_at/orphaned_at`；文档/画板保存同步引用，节点删除标记孤儿，看门狗每 6 小时清理 staging/TTL/孤儿/回收站并压缩 pack。
+- 附件节点：type=6，文件树可直接多选上传；附件标签页支持图片预览、元数据与下载；整库导出写到树对应位置并记录 `attachmentNodes`。设置 → 存储页支持关联数、实际占用、回收站恢复与立即清理。
 - 文档图片/附件块：`attachmentImage`（预览、左/中/右对齐、宽度缩放、下载）与 `attachmentBlock`（卡片/长条、文件类型图标、逐项下载/移除）；Slash/右键选文件与访达拖入走路径流式上传，剪贴板粘贴走 raw 字节上传，统一进入附件对象模块，文档 JSON 不写 base64。注意 `dragDropEnabled` 默认为 true，外部文件拖放不经过网页 `drop`，由 `src/api/dragDrop.ts` 订阅 webview 事件。
 - 编辑器接入 Tiptap 3.32 MIT 扩展：气泡菜单、右键浮层、Slash 菜单、颜色/高亮、对齐、表格、图片（≤2MB data URL）、任务列表、折叠块、Emoji、代码高亮、TOC；块手柄与拖拽为自绘实现（不依赖官方 DragHandle）。
-- 画板/表格/流程图编辑器数据仍为后续范围；编辑器内图片仍使用 data URL，尚未改为附件引用。
+- 画板已接入 Excalidraw 场景/视口持久化、组件库与三格式导出；表格/流程图仍是占位页。编辑器内图片/附件已走全局对象库。
+- 快捷键：应用/编辑器/画板三作用域，配置存全局 `shortcuts.config`；支持总开关、录制、冲突检测与恢复默认。应用动作走注册表，编辑器走 ProseMirror keymap，画板自有动作走 Excalidraw 公共 API；原生画板键位只读。
 
 ## 快速上手
 
@@ -26,11 +28,13 @@ npm run check          # Biome 静态检查（src）
 npm run check:licenses # 第三方许可证门禁（node_modules + Cargo + dist 字体）
 npm run typecheck      # tsc --noEmit
 npm run build          # typecheck + vite build + 许可证门禁
-cd src-tauri && cargo test      # Rust 集成测试
+pnpm run test          # 真机黑盒全量功能测试（macOS AX/CGEvent；会启动 Tauri 窗口）
+pnpm run test:backend  # Rust 集成测试
+cd src-tauri && cargo test      # 同上（在 src-tauri 目录直接跑）
 cd src-tauri && cargo clippy --all-targets
 ```
 
-测试隔离：给 `STARRIS_HOME` 指向临时目录即可使用独立的全局库/日志，不触碰真实用户数据：
+> 黑盒测试要求 macOS + Xcode CLT + 终端辅助功能权限，且没有其他星屿实例占用窗口。测试工作区在项目 `tmp/e2e/<运行时间>/`，输入 fixtures 在 `test/fixtures/files/`；详见 `test/README.md` 与 `docs/功能测试/2026-10-25-黑盒全量功能测试与合理性分析.md`。测试隔离：给 `STARRIS_HOME` 指向临时目录即可使用独立的全局库/日志，不触碰真实用户数据：
 
 ```bash
 STARRIS_HOME=/tmp/starris-test npm run tauri dev
@@ -51,6 +55,8 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | 全局目录/路径安全 | `src-tauri/src/db/paths.rs` |
 | 前端 IPC 封装 | `src/api/{workspace,knowledgeBase,node,memory,document,attachment,directory,fileDialog}.ts` |
 | 文档加载/1s 防抖互斥保存 | `src/features/editor/hooks/useDocumentPersistence.ts` |
+| 单文档 / 整库导出 | `src-tauri/src/services/export_service.rs`、`export_render.rs`；前端 `api/exchange.ts`、`ShareExportDialog.tsx`、`ExportKnowledgeBaseDialog.tsx` |
+| Markdown / Word 导入 | `src-tauri/src/services/import_service.rs`、`import_markdown.rs`、`import_word.rs`；前端 `ImportDialog.tsx` |
 | 编辑器扩展与菜单 | `src/features/editor/extensions/editorExtensions.ts`、`components/{DocEditor,EditorBubbleMenu,EditorContextMenu,SlashMenu}.tsx` |
 | 工作区/知识库/树状态 | `src/features/workspace/hooks/useWorkspaceStore.ts` |
 | 主界面控制器/布局/弹窗 | `hooks/useWorkspaceMainController.ts`、`components/Workspace{Layout,Modals}.tsx` |
@@ -59,7 +65,9 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | 编辑器扩展 | `features/editor/extensions/editorExtensions.ts`、`clearMarksOnEnter.ts` |
 | 文档元数据 | `src-tauri/src/services/document_meta_service.rs` + `doc_block_meta` |
 | 附件对象存储（哈希/pack/压缩） | `src-tauri/src/services/{attachment_service,attachment_store}.rs` |
-| 附件表/引用计数/统计 SQL | `src-tauri/src/repositories/attachment_repository.rs` |
+| 附件引用同步/孤儿/生命周期 | `src-tauri/src/services/{attachment_reference_service,attachment_maintenance_service}.rs`、`repositories/node_attachment_repository.rs` |
+| 附件表/统计/回收站 SQL | `src-tauri/src/repositories/attachment_repository.rs` |
+| 附件节点/树上传/附件页 | `src-tauri/src/services/node_service.rs`、`src/features/attachments/components/AttachmentNodeView.tsx`、`src/features/workspace/components/{FileTree,FileTreeRow}.tsx` |
 | 附件设置页 | `src/features/attachments/**` + `src/api/{attachment,fileDialog}.ts` |
 | 文档图片/附件块 | `src/features/editor/extensions/{attachmentImage,attachmentBlock}.ts` + `components/nodes/*`；上传与落点 `utils/attachmentUpload.ts`；外部拖放 `src/api/dragDrop.ts` |
 | 文件类型图标 | `src/features/attachments/components/FileTypeIcon.tsx` + `utils/fileKind.ts` |
@@ -67,7 +75,8 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | 颜色/主题/字号/圆角/动效 | `src/styles/tokens.css`（9 主题 × 深浅） |
 | 主题记忆 | `src/lib/theme.tsx` + `src/api/memory.ts` |
 | 窗口红绿灯/无边框策略 | `src-tauri/tauri.conf.json` + `src-tauri/src/lib.rs` + `components/common/TrafficLightSlot.tsx` |
-| 快捷键 | `features/workspace/hooks/useWorkspaceShortcuts.ts` |
+| 快捷键动作表/配置/录制 UI | `src/features/shortcuts/**` |
+| 应用/编辑器/画板快捷键分发 | `features/workspace/hooks/useWorkspaceShortcuts.ts`、`features/editor/extensions/userKeymap.ts`、`features/board/hooks/useBoardKeymap.ts` |
 
 ## 文档导航
 

@@ -1,4 +1,4 @@
-import { Download, FileText, Loader2, ShieldCheck, Trash2, X } from "lucide-react";
+import { Download, FileText, Loader2, RotateCcw, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ export interface AttachmentRowProps {
   onDelete: (item: Attachment) => void;
   onExport: (item: Attachment) => void;
   onVerify: (item: Attachment) => void;
+  onRestore: (item: Attachment) => void;
 }
 
 /** 附件列表行：文件名/逻辑目录/哈希摘要 + 校验/导出/删除。 */
@@ -26,10 +27,22 @@ export function AttachmentRow({
   onDelete,
   onExport,
   onVerify,
+  onRestore,
 }: AttachmentRowProps) {
   const deleted = item.status === "deleted";
+  const referenced = item.referenceCount > 0;
   const itemBusy =
-    busy === `export:${item.id}` || busy === `verify:${item.id}` || busy === `delete:${item.id}`;
+    busy === `export:${item.id}` ||
+    busy === `verify:${item.id}` ||
+    busy === `delete:${item.id}` ||
+    busy === `restore:${item.id}`;
+  const lifecycleLabel = deleted
+    ? "已删除 · 回收站"
+    : item.referenceCount > 0
+      ? `${item.referenceCount} 处引用`
+      : item.expiresAt
+        ? `保留至 ${formatTimestamp(item.expiresAt)}`
+        : "未关联";
   return (
     <li
       className={cn(
@@ -49,20 +62,30 @@ export function AttachmentRow({
           {itemBusy && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
         </div>
         <p className="truncate text-[10.5px] text-muted-foreground">
-          {item.logicalPath || "根目录"} · {item.mime} · {item.contentHash.slice(0, 12)} ·{" "}
-          {formatTimestamp(item.createdAt)}
+          {item.logicalPath || "未分类"} · {lifecycleLabel} · {formatTimestamp(item.createdAt)}
         </p>
       </div>
       <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
         {formatAttachmentBytes(item.size)}
       </span>
-      {!deleted && (
+      {deleted ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`恢复 ${item.name}`}
+          title="恢复"
+          disabled={disabled || itemBusy}
+          onClick={() => onRestore(item)}
+        >
+          <RotateCcw className="size-3.5" />
+        </Button>
+      ) : (
         <div className="flex shrink-0 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label={`校验 ${item.name}`}
-            title="校验内容"
+            title="校验"
             disabled={disabled}
             onClick={() => onVerify(item)}
           >
@@ -104,8 +127,8 @@ export function AttachmentRow({
               variant="ghost"
               size="icon-sm"
               aria-label={`删除 ${item.name}`}
-              title="删除"
-              disabled={disabled}
+              title={referenced ? `仍被 ${item.referenceCount} 个位置引用` : "删除"}
+              disabled={disabled || referenced}
               onClick={() => onDelete(item)}
             >
               <Trash2 className="size-3.5" />

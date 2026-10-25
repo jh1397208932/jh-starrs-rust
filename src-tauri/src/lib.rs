@@ -28,6 +28,7 @@ pub fn run() {
             // 全局库打开失败属于不可恢复启动错误；工作区恢复失败则由前端进入引导页。
             let state = bootstrap::initialize()?;
             app.manage(state);
+            services::attachment_maintenance_service::spawn_watchdog(app.handle().clone());
 
             // Windows/Linux：移除系统窗口装饰（macOS 依赖 Overlay 保留红绿灯，勿动）
             #[cfg(not(target_os = "macos"))]
@@ -61,14 +62,31 @@ pub fn run() {
             commands::memory::memory_save,
             commands::document::doc_load,
             commands::document::doc_save,
+            commands::board::board_load,
+            commands::board::board_save,
+            commands::board::board_save_viewport,
+            commands::library::library_list,
+            commands::library::library_items,
+            commands::library::library_import,
+            commands::library::library_set_enabled,
+            commands::library::library_delete,
+            commands::export::export_document,
+            commands::export::export_knowledge_base,
+            commands::export::export_write_file,
+            commands::import::import_documents,
             commands::attachment::attachment_upload,
+            commands::attachment::attachment_upload_to_tree,
             commands::attachment::attachment_list,
             commands::attachment::attachment_get,
+            commands::attachment::attachment_get_by_node,
             commands::attachment::attachment_update,
             commands::attachment::attachment_delete,
             commands::attachment::attachment_download,
             commands::attachment::attachment_verify,
             commands::attachment::attachment_stats,
+            commands::attachment::attachment_restore,
+            commands::attachment::attachment_set_lifecycle,
+            commands::attachment::attachment_maintenance,
             commands::attachment::attachment_upload_bytes,
             commands::attachment::attachment_read_bytes,
         ])

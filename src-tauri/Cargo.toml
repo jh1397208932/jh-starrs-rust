@@ -30,6 +30,14 @@ thiserror = "2"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 blake3 = "1"
 mime_guess = "2"
+office_oxide = "0.1.15"
+docx-rs = "0.4.22"
+pulldown-cmark = "0.13"
+printpdf = { version = "0.12.8", default-features = false, features = ["html", "images", "png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+html-escape = "0.2"
+base64 = "0.22"
+percent-encoding = "2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Ellipsis, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Ellipsis, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import {
   DropdownMenu,
@@ -21,6 +21,10 @@ export interface FileTreeRowProps {
   onCreateChild: (parent: NodeItem) => void;
   onRename: (node: NodeItem) => void;
   onDelete: (node: NodeItem) => void;
+  /** 导入到此文件夹 */
+  onImportToFolder: (parent: NodeItem) => void;
+  /** 上传附件到此文件夹 */
+  onUploadAttachment: (parent: NodeItem) => void;
 }
 
 /** 单个树行（递归）：展开/折叠、选中、拖放提示与节点操作菜单。 */
@@ -100,10 +104,20 @@ export function FileTreeRow(props: FileTreeRowProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[140px]">
             {isFolder ? (
-              <DropdownMenuItem onSelect={() => props.onCreateChild(node)}>
-                <Plus />
-                新建子级
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuItem onSelect={() => props.onCreateChild(node)}>
+                  <Plus />
+                  新建
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => props.onImportToFolder(node)}>
+                  <FileUp />
+                  导入到这里
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => props.onUploadAttachment(node)}>
+                  <Upload />
+                  上传附件
+                </DropdownMenuItem>
+              </>
             ) : (
               <DropdownMenuItem onSelect={() => props.onOpenNode(node)}>
                 <NodeKindIcon kind={node.kind} />

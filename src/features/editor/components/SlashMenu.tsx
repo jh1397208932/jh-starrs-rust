@@ -54,7 +54,7 @@ export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }
   return (
     <div
       role="menu"
-      aria-label="Slash 命令"
+      aria-label="插入内容"
       className="editor-float anim-pop-in fixed z-50 w-[304px] overflow-hidden"
       style={{ left, top }}
       // 按下不抢焦点，保持编辑器选区

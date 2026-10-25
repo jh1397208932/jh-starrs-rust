@@ -67,8 +67,8 @@ export async function invokeRawCommand<T>(
 }
 
 /** 从 Rust 错误载荷解析消息：字符串直接使用，其他回退通用文案。 */
-function resolveMessage(command: string, cause: unknown): string {
+function resolveMessage(_command: string, cause: unknown): string {
   if (typeof cause === "string" && cause.trim()) return cause;
   if (cause instanceof Error && cause.message.trim()) return cause.message;
-  return `命令 ${command} 调用失败`;
+  return "操作失败，请稍后重试";
 }

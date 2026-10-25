@@ -18,16 +18,16 @@ pub enum AppError {
     #[error("{0}")]
     Conflict(String),
     /// 当前没有已连接的工作区
-    #[error("还没有打开工作区，请先新建或打开一个本地工作区")]
+    #[error("请先打开工作区")]
     NoActiveWorkspace,
     /// 目录缺少工作区结构或数据库无法使用
-    #[error("所选文件夹不是有效的工作区（缺少 db/workspace.sqlite3 或数据库不可用）")]
+    #[error("所选文件夹不是有效的工作区")]
     InvalidWorkspace,
     /// 数据库错误（详细原因只写日志）
     #[error("数据库操作失败，请稍后重试")]
     Database,
     /// 文件系统错误（详细原因只写日志）
-    #[error("文件系统操作失败，请检查目录权限后重试")]
+    #[error("文件操作失败，请检查权限后重试")]
     FileSystem,
     /// 内部状态异常（锁中毒、迁移版本过新等）
     #[error("应用内部状态异常，请重启应用")]

@@ -4,10 +4,14 @@ use crate::domain::{NodeType, join_node_path, replace_path_prefix, validate_node
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::{
-    CreateNodeInput, DeleteNodeResult, MoveNodeInput, NodeDto, NodeRow, UpdateNodeInput,
+    CreateAttachmentNodeInput, CreateNodeInput, DeleteNodeResult, MoveNodeInput, NodeDto, NodeRow,
+    UpdateNodeInput,
 };
+use crate::repositories::attachment_repository;
 use crate::repositories::knowledge_base_repository as kb_repository;
+use crate::repositories::node_attachment_repository;
 use crate::repositories::node_repository as repository;
+use crate::services::attachment_reference_service;
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
 
@@ -22,9 +26,97 @@ pub fn list(state: &AppState, knowledge_base_id: &str) -> AppResult<Vec<NodeDto>
     })
 }
 
+/// 由已上传对象创建附件叶子节点，并在同一事务登记引用。
+///
+/// 标题取附件文件名；父级规则与普通节点一致。对象不存在/已删除时拒绝创建。
+pub fn create_attachment_node(
+    state: &AppState,
+    input: CreateAttachmentNodeInput,
+) -> AppResult<NodeDto> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        kb_repository::find_by_id(connection, &input.knowledge_base_id)?
+            .ok_or_else(|| AppError::not_found("知识库不存在"))?;
+        let attachment = attachment_repository::find_active(connection, &input.object_id)?
+            .ok_or_else(|| AppError::not_found("附件不存在或已删除"))?;
+        let title = validate_node_title(&attachment.name)?;
+
+        let (parent_id, level, parent_path) = match input.parent_id.as_deref() {
+            Some(parent_id) => {
+                let parent = repository::find_by_id(connection, parent_id)?
+                    .ok_or_else(|| AppError::not_found("父级不存在"))?;
+                if parent.knowledge_base_id != input.knowledge_base_id {
+                    return Err(AppError::validation("父级不在当前知识库中"));
+                }
+                if !NodeType::from_i64(parent.node_type)?.is_folder() {
+                    return Err(AppError::validation("只能在文件夹中新建"));
+                }
+                (
+                    Some(parent_id.to_string()),
+                    parent.level + 1,
+                    Some(parent.path),
+                )
+            }
+            None => (None, 1, None),
+        };
+
+        let path = join_node_path(parent_path.as_deref(), &title);
+        let sort_order =
+            repository::max_sort_order(connection, &input.knowledge_base_id, parent_id.as_deref())?
+                .map_or(0, |value| value + 1);
+        let now = now_ms();
+        let row = NodeRow {
+            id: new_id(),
+            node_type: NodeType::Attachment.as_i64(),
+            title,
+            knowledge_base_id: input.knowledge_base_id,
+            parent_id,
+            level,
+            path,
+            sort_order,
+            starred: false,
+            word_count: 0,
+            create_time: now,
+            update_time: now,
+        };
+        let transaction = connection.unchecked_transaction()?;
+        repository::insert(&transaction, &row)?;
+        let registered = attachment_reference_service::register_node_object(
+            &transaction,
+            &row.id,
+            &input.object_id,
+            now,
+        )?;
+        if !registered {
+            return Err(AppError::validation("附件不存在或已删除"));
+        }
+        transaction.commit()?;
+        logging::info(
+            "node",
+            &format!(
+                "创建附件节点 id={} object={} level={} kb={}",
+                row.id, input.object_id, row.level, row.knowledge_base_id
+            ),
+        );
+        Ok(row.to_dto())
+    })
+}
+
+/// 读取单个节点；供导出/导入等需要标题的场景使用。
+pub fn get(state: &AppState, id: &str) -> AppResult<NodeDto> {
+    with_session(state, |session| {
+        let row = repository::find_by_id(&session.connection, id)?
+            .ok_or_else(|| AppError::not_found("内容不存在"))?;
+        Ok(row.to_dto())
+    })
+}
+
 /// 新建节点。根节点允许任意类型；有父级时父级必须是同知识库文件夹。
 pub fn create(state: &AppState, input: CreateNodeInput) -> AppResult<NodeDto> {
     let node_type = NodeType::from_i64(input.node_type)?;
+    if node_type == NodeType::Attachment {
+        return Err(AppError::validation("附件请使用上传入口"));
+    }
     let title = validate_node_title(&input.title)?;
     with_session(state, |session| {
         let connection = &session.connection;
@@ -34,12 +126,12 @@ pub fn create(state: &AppState, input: CreateNodeInput) -> AppResult<NodeDto> {
         let (parent_id, level, parent_path) = match input.parent_id.as_deref() {
             Some(parent_id) => {
                 let parent = repository::find_by_id(connection, parent_id)?
-                    .ok_or_else(|| AppError::not_found("父节点不存在"))?;
+                    .ok_or_else(|| AppError::not_found("父级不存在"))?;
                 if parent.knowledge_base_id != input.knowledge_base_id {
-                    return Err(AppError::validation("父节点不在当前知识库中"));
+                    return Err(AppError::validation("父级不在当前知识库中"));
                 }
                 if !NodeType::from_i64(parent.node_type)?.is_folder() {
-                    return Err(AppError::validation("只有文件夹可以创建子节点"));
+                    return Err(AppError::validation("只能在文件夹中新建"));
                 }
                 (
                     Some(parent_id.to_string()),
@@ -89,7 +181,7 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
     with_session(state, |session| {
         let connection = &session.connection;
         let existing = repository::find_by_id(connection, &input.id)?
-            .ok_or_else(|| AppError::not_found("节点不存在"))?;
+            .ok_or_else(|| AppError::not_found("内容不存在"))?;
 
         let new_title = match input.title {
             Some(raw) => Some(validate_node_title(&raw)?),
@@ -106,7 +198,7 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
             let parent_path = match existing.parent_id.as_deref() {
                 Some(parent_id) => Some(
                     repository::find_by_id(connection, parent_id)?
-                        .ok_or_else(|| AppError::not_found("父节点不存在"))?
+                        .ok_or_else(|| AppError::not_found("父级不存在"))?
                         .path,
                 ),
                 None => None,
@@ -123,6 +215,19 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
             let transaction = connection.unchecked_transaction()?;
             if title_changed {
                 repository::update_title(&transaction, &existing.id, final_title, &new_path, now)?;
+                if NodeType::from_i64(existing.node_type)? == NodeType::Attachment
+                    && let Some(object_id) =
+                        node_attachment_repository::first_object_id(&transaction, &existing.id)?
+                {
+                    // 节点标题是用户看到的文件名；下载名必须跟随重命名。
+                    attachment_repository::update_attachment_meta(
+                        &transaction,
+                        &object_id,
+                        Some(final_title),
+                        None,
+                        now,
+                    )?;
+                }
                 for descendant in descendants.iter().filter(|row| row.id != existing.id) {
                     let path = replace_path_prefix(&descendant.path, &existing.path, &new_path);
                     repository::update_subtree_position(
@@ -144,7 +249,7 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
         }
 
         let updated = repository::find_by_id(connection, &existing.id)?
-            .ok_or_else(|| AppError::not_found("节点不存在"))?;
+            .ok_or_else(|| AppError::not_found("内容不存在"))?;
         Ok(updated.to_dto())
     })
 }
@@ -154,10 +259,13 @@ pub fn delete(state: &AppState, id: &str) -> AppResult<DeleteNodeResult> {
     with_session(state, |session| {
         let connection = &session.connection;
         let existing = repository::find_by_id(connection, id)?
-            .ok_or_else(|| AppError::not_found("节点不存在"))?;
+            .ok_or_else(|| AppError::not_found("内容不存在"))?;
         let deleted_count = repository::count_subtree(connection, &existing.id)?;
+        let object_ids =
+            node_attachment_repository::object_ids_for_subtree(connection, &existing.id)?;
         let transaction = connection.unchecked_transaction()?;
         repository::delete(&transaction, &existing.id)?;
+        attachment_reference_service::mark_orphans_for(&transaction, &object_ids, now_ms())?;
         transaction.commit()?;
         logging::info(
             "node",
@@ -175,11 +283,11 @@ pub fn move_node(state: &AppState, input: MoveNodeInput) -> AppResult<Vec<NodeDt
     with_session(state, |session| {
         let connection = &session.connection;
         let node = repository::find_by_id(connection, &input.id)?
-            .ok_or_else(|| AppError::not_found("节点不存在"))?;
+            .ok_or_else(|| AppError::not_found("内容不存在"))?;
         let target_parent_id = input.parent_id.as_deref();
 
         if target_parent_id == Some(node.id.as_str()) {
-            return Err(AppError::validation("不能把节点移动到自身之下"));
+            return Err(AppError::validation("不能移动到自身之下"));
         }
 
         let (new_level, parent_path) = match target_parent_id {
@@ -187,13 +295,13 @@ pub fn move_node(state: &AppState, input: MoveNodeInput) -> AppResult<Vec<NodeDt
                 let parent = repository::find_by_id(connection, parent_id)?
                     .ok_or_else(|| AppError::not_found("目标文件夹不存在"))?;
                 if parent.knowledge_base_id != node.knowledge_base_id {
-                    return Err(AppError::validation("不能跨知识库移动节点"));
+                    return Err(AppError::validation("不能跨知识库移动"));
                 }
                 if !NodeType::from_i64(parent.node_type)?.is_folder() {
                     return Err(AppError::validation("只能移动到文件夹中"));
                 }
                 if repository::is_ancestor(connection, parent_id, &node.id)? {
-                    return Err(AppError::validation("不能把文件夹移动到自己的子级中"));
+                    return Err(AppError::validation("不能移动到自己的子级"));
                 }
                 (parent.level + 1, Some(parent.path))
             }

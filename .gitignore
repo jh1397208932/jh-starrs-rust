@@ -27,3 +27,6 @@ node_modules-*/
 *.njsproj
 *.sln
 *.sw?
+
+# 本地黑盒测试工作区/tmp 产物
+tmp/

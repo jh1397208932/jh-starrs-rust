@@ -18,6 +18,7 @@ use crate::models::document::{
     BlockAddDto, BlockNodeDto, DocLoadResult, DocSaveResult, OrderChangeDto,
 };
 use crate::repositories::document_repository as repository;
+use crate::services::attachment_reference_service;
 use crate::services::document_meta_service::{self, DocMetaPayload};
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
@@ -166,6 +167,13 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
             &input.node_id,
             &content,
             word_count,
+            updated_at,
+        )?;
+        // 引用同步与正文同事务：保存失败时不能留下指向半份文档的关联。
+        attachment_reference_service::sync_document_refs(
+            &transaction,
+            &input.node_id,
+            &prepared.document,
             updated_at,
         )?;
         transaction.commit()?;

@@ -7,9 +7,16 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub mod attachment;
+pub mod board;
 pub mod document;
+pub mod exchange;
+pub mod library;
 
 pub use document::{DocLoadResult, DocSaveResult, SaveDocumentInput};
+pub use exchange::{
+    BoardExportTarget, ExportDocumentInput, ExportFileDto, ExportFormat, ExportKnowledgeBaseInput,
+    ExportResult, ExportWriteFileInput, ImportDocumentsInput, ImportResult,
+};
 
 /// 记忆配置中“当前工作区”的保留键；只由工作区统一切换入口写入。
 pub const SETTING_CURRENT_WORKSPACE: &str = "current_workspace_id";
@@ -234,6 +241,15 @@ pub struct CreateNodeInput {
     #[serde(rename = "type")]
     pub node_type: i64,
     pub title: String,
+}
+
+/// 由已上传对象创建附件节点。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAttachmentNodeInput {
+    pub knowledge_base_id: String,
+    pub parent_id: Option<String>,
+    pub object_id: String,
 }
 
 /// 修改节点入参；名称与收藏可选。

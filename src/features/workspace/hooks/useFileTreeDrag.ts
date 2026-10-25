@@ -113,7 +113,7 @@ export function useFileTreeDrag({
     const resolved = resolveDropTarget(nodes, movingId, target.id, hint.position);
     clear();
     if (!resolved) {
-      onError("不能把节点放到这个位置");
+      onError("不能放到这里");
       return;
     }
     void runMove(movingId, resolved.parentId, resolved.index);

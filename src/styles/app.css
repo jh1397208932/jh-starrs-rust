@@ -159,21 +159,11 @@ body {
   width: 100%;
   max-width: 860px;
   margin: 0 auto;
-  padding: 52px 60px 140px;
+  padding: 28px 60px 140px;
 }
 
 .doc-editor-header {
   margin-bottom: 18px;
-}
-
-.doc-editor-hint {
-  border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 62%, transparent);
-  padding: 2px 9px;
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  color: var(--accent-foreground);
 }
 
 .doc-editor-title {
@@ -1057,7 +1047,7 @@ body.starris-block-dragging .doc-editor * {
 /* 窄窗口：收紧页边距，同时保留手柄所需的最小走廊 */
 @media (max-width: 720px) {
   .doc-editor-page {
-    padding: 28px 48px 120px;
+    padding: 20px 48px 120px;
   }
 
   .doc-content {
@@ -1660,6 +1650,13 @@ body.starris-image-resizing {
 [data-mode="dark"] .app-shell::before {
   opacity: 0.1;
   mix-blend-mode: soft-light;
+}
+
+/* 引导页是覆盖层：.app-shell 自带 position: relative（无层样式压过 Tailwind 的 fixed 工具类），
+   必须用专门类显式固定，否则卡片会排到全屏占位块下方、整窗只见底色。 */
+.app-shell.onboarding-shell {
+  position: fixed;
+  inset: 0;
 }
 
 /* 内容纸面：轻边框 + 顶部主题雾光 + 三层柔和投影 */

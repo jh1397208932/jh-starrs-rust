@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,10 @@ export interface FileTreeProps {
   onCreateChild: (parent: NodeItem) => void;
   onRename: (node: NodeItem) => void;
   onDelete: (node: NodeItem) => void;
+  /** 导入到此文件夹 */
+  onImportToFolder: (parent: NodeItem) => void;
+  /** 上传附件到根或指定文件夹 */
+  onUploadAttachment: (parent: NodeItem | null) => void;
   /** 拖动移动；失败由拖拽 hook 调 onError */
   onMove: (id: string, parentId: string | null, index: number) => Promise<void>;
   onError: (message: string) => void;
@@ -39,6 +43,8 @@ export function FileTree({
   onCreateChild,
   onRename,
   onDelete,
+  onImportToFolder,
+  onUploadAttachment,
   onMove,
   onError,
 }: FileTreeProps) {
@@ -96,20 +102,36 @@ export function FileTree({
           <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-primary/70" />
           {currentKbName ?? "文件"}
         </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="新建节点"
-              disabled={!currentKbName}
-              onClick={onCreateRoot}
-              className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Plus className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{currentKbName ? "新建节点" : "请先新建知识库"}</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="上传附件"
+                disabled={!currentKbName}
+                onClick={() => onUploadAttachment(null)}
+                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Upload className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{currentKbName ? "上传附件" : "请先新建知识库"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="新建内容"
+                disabled={!currentKbName}
+                onClick={onCreateRoot}
+                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{currentKbName ? "新建内容" : "请先新建知识库"}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <div
@@ -120,17 +142,9 @@ export function FileTree({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring"
       >
         {!currentKbName ? (
-          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">
-            当前工作区还没有知识库
-            <br />
-            使用左上角菜单新建知识库
-          </p>
+          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">还没有知识库</p>
         ) : tree.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">
-            还没有内容
-            <br />
-            点击右上角 + 新建
-          </p>
+          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">还没有内容</p>
         ) : (
           tree.map((entry) => (
             <FileTreeRow
@@ -145,11 +159,13 @@ export function FileTree({
               onCreateChild={onCreateChild}
               onRename={onRename}
               onDelete={onDelete}
+              onImportToFolder={onImportToFolder}
+              onUploadAttachment={onUploadAttachment}
             />
           ))
         )}
         <fieldset
-          aria-label="拖到根级末尾"
+          aria-label="移动到顶层"
           onDragOver={drag.handleRootDragOver}
           onDrop={drag.handleRootDrop}
           className={cn(

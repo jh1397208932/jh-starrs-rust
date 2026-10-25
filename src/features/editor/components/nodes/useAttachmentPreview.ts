@@ -18,12 +18,12 @@ export function useAttachmentPreview(attachmentId: string | null, mime: string):
   const [state, setState] = useState<AttachmentPreviewState>({
     url: null,
     loading: Boolean(attachmentId),
-    error: attachmentId ? null : "缺少附件 id",
+    error: attachmentId ? null : "附件不可用",
   });
 
   useEffect(() => {
     if (!attachmentId) {
-      setState({ url: null, loading: false, error: "缺少附件 id" });
+      setState({ url: null, loading: false, error: "附件不可用" });
       return;
     }
     let cancelled = false;

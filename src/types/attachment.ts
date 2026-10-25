@@ -7,6 +7,9 @@
 /** 附件状态 */
 export type AttachmentStatus = "active" | "deleted";
 
+/** 附件来源作用域 */
+export type AttachmentScope = "library" | "node";
+
 /** 逻辑附件（用户可见的一行） */
 export interface Attachment {
   id: string;
@@ -22,6 +25,14 @@ export interface Attachment {
   createdAt: number;
   updatedAt: number;
   deletedAt: number | null;
+  /** library 为主动保留；node 失去引用后进入孤儿流程 */
+  scope: AttachmentScope;
+  /** 未关联时的临时到期时间；null 表示永久 */
+  expiresAt: number | null;
+  /** 失去最后一个引用的时间 */
+  orphanedAt: number | null;
+  /** 当前引用该附件的节点数 */
+  referenceCount: number;
 }
 
 /** 列表查询 */
@@ -42,6 +53,10 @@ export interface UploadAttachmentParams {
   name?: string;
   /** 覆盖 MIME 推断 */
   mime?: string;
+  /** 来源作用域；默认 library */
+  scope?: AttachmentScope;
+  /** 临时保留秒数；缺省永久 */
+  ttlSeconds?: number;
 }
 
 /** 重命名/移动参数；至少提供一个字段 */
@@ -103,4 +118,34 @@ export interface AttachmentStats {
   packCount: number;
   packBytes: number;
   deadPackBytes: number;
+  /** 至少被一个节点引用 */
+  linkedCount: number;
+  /** 没有任何节点引用 */
+  unlinkedCount: number;
+  /** 回收站数量 */
+  trashCount: number;
+  /** 实际磁盘占用 */
+  diskBytes: number;
+  /** 可回收字节估算 */
+  reclaimableBytes: number;
+  /** 最近维护时间 */
+  lastMaintenanceAt: number | null;
+}
+
+/** 设置临时保留时间 */
+export interface AttachmentLifecycleParams {
+  id: string;
+  /** null 清除 TTL */
+  ttlSeconds: number | null;
+}
+
+/** 维护结果 */
+export interface AttachmentMaintenanceResult {
+  stagedFiles: number;
+  orphaned: number;
+  expired: number;
+  purged: number;
+  orphanBlobs: number;
+  compactedPacks: number;
+  reclaimedBytes: number;
 }

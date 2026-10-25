@@ -2,6 +2,8 @@ import { ShareExportDialog } from "@/features/editor/components/ShareExportDialo
 import { SettingsDialog } from "@/features/settings/components/SettingsDialog";
 import type { WorkspaceMainController } from "../hooks/useWorkspaceMainController";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ExportKnowledgeBaseDialog } from "./ExportKnowledgeBaseDialog";
+import { ImportDialog } from "./ImportDialog";
 import { NameDialog } from "./NameDialog";
 import { NodeCreateDialog } from "./NodeCreateDialog";
 import { WorkspaceDialogs } from "./WorkspaceDialogs";
@@ -31,6 +33,9 @@ export function WorkspaceModals({ controller }: WorkspaceModalsProps) {
     submitNodeCreate,
     submitNodeRename,
     submitNodeDelete,
+    exportActiveDocument,
+    exportCurrentKnowledgeBase,
+    importIntoKnowledgeBase,
   } = controller;
   const currentWorkspace = store.currentWorkspace;
   if (!currentWorkspace) return null;
@@ -49,7 +54,26 @@ export function WorkspaceModals({ controller }: WorkspaceModalsProps) {
         kbName={store.currentKb?.name ?? ""}
         wordCount={activeNode?.wordCount ?? 0}
         updatedAt={activeNode?.updatedAt ?? Date.now()}
-        onMockExport={() => controller.showError("导出功能将在后续阶段实现")}
+        onExport={exportActiveDocument}
+      />
+      <ExportKnowledgeBaseDialog
+        open={dialog?.type === "exportKb"}
+        onOpenChange={(open) => onDialogChange(open ? { type: "exportKb" } : null)}
+        kbName={store.currentKb?.name ?? "知识库"}
+        docCount={store.nodes.filter((node) => node.kind !== "folder" && node.kind !== "attachment").length}
+        onExport={exportCurrentKnowledgeBase}
+      />
+      <ImportDialog
+        open={dialog?.type === "import"}
+        onOpenChange={(open) =>
+          onDialogChange(
+            open ? { type: "import", parentId: dialog?.type === "import" ? dialog.parentId : null } : null,
+          )
+        }
+        knowledgeBaseId={store.currentKb?.id ?? ""}
+        nodes={store.nodes}
+        defaultParentId={dialog?.type === "import" ? dialog.parentId : null}
+        onImport={importIntoKnowledgeBase}
       />
       <WorkspaceDialogs
         open={workspaceDialogKind}
@@ -93,8 +117,8 @@ export function WorkspaceModals({ controller }: WorkspaceModalsProps) {
         title={`删除「${nodeDelete?.title ?? ""}」？`}
         description={
           nodeDelete?.kind === "folder" && nodeDeleteCount > 0
-            ? `该文件夹及其下 ${nodeDeleteCount} 个节点将被永久删除，此操作不可撤销。`
-            : "该节点将被永久删除，此操作不可撤销。"
+            ? `文件夹及其中 ${nodeDeleteCount} 项内容将被永久删除，此操作不可撤销。`
+            : "此内容将被永久删除，此操作不可撤销。"
         }
         onConfirm={submitNodeDelete}
       />

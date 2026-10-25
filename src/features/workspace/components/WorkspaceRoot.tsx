@@ -51,7 +51,14 @@ export function WorkspaceRoot() {
   );
 
   const workspaceDialogKind: WorkspaceDialogKind | null =
-    dialog && dialog.type !== "settings" && dialog.type !== "share" ? dialog.type : null;
+    dialog &&
+    dialog.type !== "settings" &&
+    dialog.type !== "share" &&
+    dialog.type !== "exportKb" &&
+    dialog.type !== "import" &&
+    dialog.type !== "library"
+      ? dialog.type
+      : null;
 
   if (!store.ready || (store.loading && !store.error && !store.currentWorkspace)) {
     return (

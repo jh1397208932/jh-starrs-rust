@@ -1,76 +1,30 @@
-/**
- * 快捷键动作集：由 App 组装层注入具体实现（状态操作 + toast + 弹窗开关）。
- * 未实现功能统一走 mock toast（quickJump / globalSearch / presentBoard）。
- */
-export interface ShortcutActions {
-  createDoc: () => void;
-  closeActiveTab: () => void;
-  toggleStar: () => void;
-  toggleSidebar: () => void;
-  toggleMoreMenu: () => void;
-  openSettings: () => void;
-  quickJump: () => void;
-  globalSearch: () => void;
-  saveDoc: () => void;
-  presentBoard: () => void;
-}
+import { APP_SHORTCUT_ACTIONS } from "@/features/shortcuts/actions";
+import { bindingFromEvent } from "@/features/shortcuts/shortcutKeys";
+import type { ShortcutConfig } from "@/features/shortcuts/types";
+
+/** 应用级动作处理表：key 为 actions.ts 中的稳定 action id。 */
+export type AppShortcutHandlers = Record<string, () => void>;
 
 /**
- * 工作区全局快捷键规则（⌘/Ctrl 组合，与设置-快捷键列表 mocks/shortcuts.ts 一致）：
- * N 新建文档 · K 快速跳转 · ⇧F 全局搜索 · , 设置 · W 关闭标签页 ·
- * S 保存 · D 收藏 · \ 侧栏 · P 放映画板 · J 更多菜单。
+ * 应用级快捷键规则：由中心配置表驱动，总开关/作用域关闭时不拦截。
  *
- * @returns keydown 事件处理器，配合 hooks/useKeyboardShortcuts 挂载
+ * @param handlers action id → 回调
+ * @param config 当前快捷键配置
+ * @returns keydown 处理器，配合 useKeyboardShortcuts 挂载
  */
-export function useWorkspaceShortcuts(actions: ShortcutActions) {
-  const {
-    createDoc,
-    closeActiveTab,
-    toggleStar,
-    toggleSidebar,
-    toggleMoreMenu,
-    openSettings,
-    quickJump,
-    globalSearch,
-    saveDoc,
-    presentBoard,
-  } = actions;
-
+export function useWorkspaceShortcuts(handlers: AppShortcutHandlers, config: ShortcutConfig) {
   return (event: KeyboardEvent) => {
-    const mod = event.metaKey || event.ctrlKey;
-    if (!mod) return;
-    const key = event.key.toLowerCase();
-
-    if (key === "n") {
-      event.preventDefault();
-      createDoc();
-    } else if (key === "k") {
-      event.preventDefault();
-      quickJump();
-    } else if (key === "f" && event.shiftKey) {
-      event.preventDefault();
-      globalSearch();
-    } else if (key === ",") {
-      event.preventDefault();
-      openSettings();
-    } else if (key === "w") {
-      event.preventDefault();
-      closeActiveTab();
-    } else if (key === "s") {
-      event.preventDefault();
-      saveDoc();
-    } else if (key === "d") {
-      event.preventDefault();
-      toggleStar();
-    } else if (key === "\\") {
-      event.preventDefault();
-      toggleSidebar();
-    } else if (key === "p") {
-      event.preventDefault();
-      presentBoard();
-    } else if (key === "j") {
-      event.preventDefault();
-      toggleMoreMenu();
-    }
+    if (!config.enabled || !config.scopes.app) return;
+    if (event.defaultPrevented || event.isComposing || event.repeat) return;
+    const binding = bindingFromEvent(event);
+    if (!binding) return;
+    const action = APP_SHORTCUT_ACTIONS.find(
+      (candidate) => (config.bindings[candidate.id] ?? "") === binding,
+    );
+    if (!action) return;
+    const handler = handlers[action.id];
+    if (!handler) return;
+    event.preventDefault();
+    handler();
   };
 }

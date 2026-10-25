@@ -1,4 +1,4 @@
-import { FolderOpen, HardDrive } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import type { CreateWorkspaceParams } from "@/api/workspace";
@@ -33,16 +33,16 @@ const AVATAR_COLORS = [
 /** 名称校验：与后端 1~80 字符规则一致（前端只做即时反馈） */
 function validateName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed.length === 0) return "工作区名称不能为空";
-  if (trimmed.length > 80) return "工作区名称不能超过 80 个字符";
+  if (trimmed.length === 0) return "请输入名称";
+  if (trimmed.length > 80) return "名称不能超过 80 个字符";
   return null;
 }
 
 /** 路径校验：必须是绝对路径；后端仍会做最终校验 */
 function validatePath(path: string): string | null {
   const trimmed = path.trim();
-  if (trimmed.length === 0) return "请选择目标文件夹";
-  if (!/^([A-Za-z]:[\\/]|[\\/])/.test(trimmed)) return "请使用绝对路径";
+  if (trimmed.length === 0) return "请选择位置";
+  if (!/^([A-Za-z]:[\\/]|[\\/])/.test(trimmed)) return "请输入完整路径";
   return null;
 }
 
@@ -144,27 +144,17 @@ export function CreateWorkspaceWizard({
       <DialogContent className="w-[440px] p-6">
         <div className="flex items-center gap-3">
           <BrandLogo size={32} />
-          <DialogHeader title="创建工作空间" description="工作空间是知识库、文档与附件的本地容器" />
-        </div>
-
-        <div className="mt-5 flex items-start gap-3 rounded-md border border-border bg-muted/60 p-3">
-          <HardDrive className="mt-0.5 size-4 shrink-0 text-primary" />
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold">本地文件夹</p>
-            <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-              所选目录将成为工作区根目录，自动创建 db/ 与 storage/，数据完全保存在本机。
-            </p>
-          </div>
+          <DialogHeader title="创建工作区" />
         </div>
 
         <div className="mt-4">
           <label htmlFor="ws-name" className="mb-1.5 block text-[13px] font-medium">
-            空间名称
+            名称
           </label>
           <Input
             id="ws-name"
             value={name}
-            placeholder="例如：星屿工作区"
+            placeholder="名称"
             aria-invalid={name.trim().length > 0 && nameError !== null}
             onChange={(event) => updateName(event.target.value)}
             className={name.trim().length > 0 && nameError ? "border-destructive" : undefined}
@@ -176,13 +166,13 @@ export function CreateWorkspaceWizard({
 
         <div className="mt-4">
           <label htmlFor="ws-path" className="mb-1.5 block text-[13px] font-medium">
-            目标文件夹
+            位置
           </label>
           <div className="flex items-center gap-2">
             <Input
               id="ws-path"
               value={path}
-              placeholder="选择或输入一个绝对路径"
+              placeholder="选择文件夹"
               onChange={(event) => {
                 setPath(event.target.value);
                 setPathTouched(true);
@@ -198,19 +188,17 @@ export function CreateWorkspaceWizard({
             </Button>
           </div>
           {pathTouched && pathError && <p className="mt-1.5 text-[12px] text-destructive">{pathError}</p>}
-          <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-            目录需为空或不存在；已有工作区请使用“打开工作区”。
-          </p>
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">目录需为空</p>
         </div>
 
         <div className="mt-4">
-          <span className="mb-1.5 block text-[13px] font-medium">空间头像</span>
+          <span className="mb-1.5 block text-[13px] font-medium">颜色</span>
           <div className="flex gap-2">
-            {AVATAR_COLORS.map((color) => (
+            {AVATAR_COLORS.map((color, index) => (
               <button
                 key={color}
                 type="button"
-                aria-label={`选择头像色 ${color}`}
+                aria-label={`颜色 ${index + 1}`}
                 aria-pressed={avatar === color}
                 disabled={pending}
                 onClick={() => setAvatar(color)}
@@ -231,7 +219,7 @@ export function CreateWorkspaceWizard({
             取消
           </Button>
           <Button className="min-w-[96px]" disabled={!canCreate} onClick={() => void submit()}>
-            {pending ? "创建中…" : "创建工作空间"}
+            {pending ? "创建中…" : "创建"}
           </Button>
         </div>
       </DialogContent>

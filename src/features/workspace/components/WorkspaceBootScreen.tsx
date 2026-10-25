@@ -25,7 +25,7 @@ export function WorkspaceBootScreen({ mode, message, onRetry }: WorkspaceBootScr
             <TriangleAlert className="mt-6 size-6 text-destructive" />
             <h1 className="mt-3 text-[18px] font-semibold">无法加载工作区</h1>
             <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
-              {message ?? "请检查应用数据目录权限后重试。"}
+              {message ?? "请检查文件夹权限后重试。"}
             </p>
             {onRetry && (
               <Button className="mt-5" size="sm" onClick={onRetry}>

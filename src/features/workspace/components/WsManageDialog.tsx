@@ -75,7 +75,7 @@ export function WsManageDialog({
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            placeholder="按名称或路径查询…"
+            placeholder="搜索…"
             aria-label="查询工作区"
             onChange={(event) => setQuery(event.target.value)}
             className="h-8 pl-8 text-[12.5px]"
@@ -138,7 +138,7 @@ export function WsManageDialog({
                       onSelect={() => void switchTo(workspace.id)}
                     >
                       <ArrowLeftRight />
-                      切换到此工作区
+                      切换
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setRenaming(workspace)}>
                       <Pencil />
@@ -161,8 +161,7 @@ export function WsManageDialog({
             if (!next) setRenaming(null);
           }}
           title="重命名工作区"
-          description="只修改显示名称，不会改名或移动本地文件夹。"
-          label="工作区名称"
+          label="名称"
           initialValue={renaming?.name ?? ""}
           maxLength={80}
           submitLabel="保存"

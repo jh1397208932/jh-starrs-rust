@@ -18,7 +18,7 @@ export interface StarredListProps {
 export function StarredList({ nodes, onOpenNode, onMockAction }: StarredListProps) {
   if (nodes.length === 0) {
     return (
-      <EmptyState glyph="☆" title="还没有收藏" description="点击文档工具栏的 ☆ 即可收藏到这里">
+      <EmptyState glyph="☆" title="还没有收藏" description="收藏的文档会显示在这里">
         <Button variant="secondary" size="sm" onClick={() => onMockAction("收藏当前文档", "⌘D")}>
           ⌘D 收藏当前文档
         </Button>

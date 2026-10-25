@@ -78,7 +78,7 @@ export function useWorkspaceDialogActions(
   const deleteKb = useCallback(
     async (id: string) => {
       const result = await store.deleteKb(id);
-      showToast(`知识库已删除（含 ${result.deletedNodes} 个节点）`);
+      showToast(`知识库已删除（含 ${result.deletedNodes} 项）`);
       return result;
     },
     [store, showToast],
@@ -105,7 +105,7 @@ export function useWorkspaceDialogActions(
   const deleteNode = useCallback(
     async (id: string) => {
       const result = await store.deleteNode(id);
-      showToast(`已删除（含 ${result.deletedCount} 个节点）`);
+      showToast(`已删除（含 ${result.deletedCount} 项）`);
       return result;
     },
     [store, showToast],

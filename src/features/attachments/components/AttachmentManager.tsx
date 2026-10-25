@@ -1,5 +1,6 @@
-import { FileText, HardDrive, Loader2, Package, RefreshCw, Upload, X } from "lucide-react";
+import { FileText, Loader2, RefreshCw, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import type { AttachmentStats } from "@/types/attachment";
 import { useAttachmentManager } from "../hooks/useAttachmentManager";
@@ -19,23 +20,14 @@ function StatsGrid({ stats }: { stats: AttachmentStats }) {
   return (
     <>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatCell label="活跃附件" value={`${stats.activeCount}`} />
-        <StatCell label="逻辑大小" value={formatAttachmentBytes(stats.logicalBytes)} />
-        <StatCell label="物理占用" value={formatAttachmentBytes(stats.physicalBytes)} />
-        <StatCell label="唯一对象" value={`${stats.uniqueObjects}`} />
+        <StatCell label="活跃" value={`${stats.activeCount}`} />
+        <StatCell label="已关联" value={`${stats.linkedCount}`} />
+        <StatCell label="回收站" value={`${stats.trashCount}`} />
+        <StatCell label="占用空间" value={formatAttachmentBytes(stats.diskBytes)} />
       </div>
-      <p
-        className={cn(CAPTION_CLS, "mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground")}
-      >
-        <span className="inline-flex items-center gap-1">
-          <HardDrive className="size-3" /> big {stats.bigObjects}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Package className="size-3" /> pack 对象 {stats.packObjects}
-        </span>
-        <span>pack 文件 {stats.packCount}</span>
-        <span>死字节 {formatAttachmentBytes(stats.deadPackBytes)}</span>
-        {stats.deletedCount > 0 && <span>已删除 {stats.deletedCount}</span>}
+      <p className={cn(CAPTION_CLS, "mt-2 text-muted-foreground")}>
+        可回收 {formatAttachmentBytes(stats.reclaimableBytes)} · 未关联 {stats.unlinkedCount} · 最近维护{" "}
+        {stats.lastMaintenanceAt ? formatTimestamp(stats.lastMaintenanceAt) : "尚未执行"}
       </p>
     </>
   );
@@ -55,9 +47,6 @@ export function AttachmentManager() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-[13.5px] font-semibold">附件</h4>
-          <p className={cn(CAPTION_CLS, "mt-0.5 text-muted-foreground")}>
-            内容按 BLAKE3 寻址；小文件进入 pack，删除在无引用后清理。
-          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button
@@ -66,7 +55,10 @@ export function AttachmentManager() {
             aria-pressed={manager.includeDeleted}
             onClick={() => manager.setIncludeDeleted((value) => !value)}
           >
-            含已删除
+            回收站
+          </Button>
+          <Button variant="ghost" size="sm" disabled={manager.disabled} onClick={manager.maintain}>
+            {busy === "maintenance" ? "清理中…" : "立即清理"}
           </Button>
           <Button
             variant="ghost"
@@ -85,22 +77,37 @@ export function AttachmentManager() {
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="attachment-logical-path" className="sr-only">
-          上传到的逻辑目录
+          上传目录
         </label>
         <input
           id="attachment-logical-path"
           value={manager.logicalPath}
           onChange={(event) => manager.setLogicalPath(event.target.value)}
-          placeholder="逻辑目录（可选）"
+          placeholder="目录（可选）"
           className="h-[31px] w-40 rounded-[8px] border border-input bg-background px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         />
+        <label htmlFor="attachment-ttl" className="sr-only">
+          上传保留时间
+        </label>
+        <select
+          id="attachment-ttl"
+          value={manager.ttlSeconds ?? ""}
+          disabled={manager.disabled}
+          onChange={(event) => manager.setTtlSeconds(event.target.value ? Number(event.target.value) : null)}
+          className="h-[31px] rounded-[8px] border border-input bg-background px-2 text-[12px] text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <option value="">永久保留</option>
+          <option value="86400">保留 1 天</option>
+          <option value="604800">保留 7 天</option>
+          <option value="2592000">保留 30 天</option>
+        </select>
         <Button size="sm" onClick={manager.upload} disabled={manager.disabled}>
           {busy === "upload" ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <Upload className="size-3.5" />
           )}
-          {busy === "upload" ? "上传中…" : "选择文件上传"}
+          {busy === "upload" ? "上传中…" : "上传"}
         </Button>
       </div>
 
@@ -138,7 +145,6 @@ export function AttachmentManager() {
             <div>
               <FileText className="mx-auto size-5 text-muted-foreground" />
               <p className="mt-1 text-[12.5px] text-muted-foreground">还没有附件</p>
-              <p className="text-[11px] text-muted-foreground/80">选择文件后按内容哈希存入工作区 storage/</p>
             </div>
           </div>
         ) : (
@@ -154,6 +160,7 @@ export function AttachmentManager() {
                 onDelete={manager.requestDelete}
                 onExport={manager.exportItem}
                 onVerify={manager.verifyItem}
+                onRestore={manager.restoreItem}
               />
             ))}
           </ul>

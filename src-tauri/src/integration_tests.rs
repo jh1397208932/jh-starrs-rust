@@ -17,22 +17,28 @@ use crate::db;
 use crate::domain::attachment::StoragePolicy;
 use crate::errors::AppError;
 use crate::models::attachment::{
-    AttachmentDto, AttachmentListQuery, DownloadAttachmentInput, UpdateAttachmentInput,
-    UploadAttachmentInput,
+    AttachmentDto, AttachmentLifecycleInput, AttachmentListQuery, DownloadAttachmentInput,
+    UpdateAttachmentInput, UploadAttachmentInput,
 };
+use crate::models::board::{BoardSaveInput, BoardSaveViewportInput};
+use crate::models::exchange::ImportMode;
+use crate::models::library::{ImportLibraryInput, SetLibraryEnabledInput};
 use crate::models::{
-    CreateKbInput, CreateNodeInput, CreateWorkspaceInput, DeleteWorkspaceInput, DocSaveResult,
-    MoveNodeInput, NodeDto, RenameWorkspaceInput, SaveDocumentInput, UpdateKbInput,
-    UpdateNodeInput, WorkspaceDto,
+    CreateAttachmentNodeInput, CreateKbInput, CreateNodeInput, CreateWorkspaceInput,
+    DeleteWorkspaceInput, DocSaveResult, ExportDocumentInput, ExportFormat,
+    ExportKnowledgeBaseInput, ExportWriteFileInput, ImportDocumentsInput, MoveNodeInput, NodeDto,
+    RenameWorkspaceInput, SaveDocumentInput, UpdateKbInput, UpdateNodeInput, WorkspaceDto,
 };
 use crate::repositories::attachment_repository;
 use crate::repositories::document_repository;
+use crate::services::attachment_maintenance_service::{self, MaintenancePolicy};
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::{
-    attachment_store, document_service, knowledge_base_service, memory_service, node_service,
-    workspace_service,
+    attachment_store, board_service, document_service, export_service, import_service,
+    knowledge_base_service, library_service, memory_service, node_service, workspace_service,
 };
 use crate::state::AppState;
+use crate::utils::now_ms;
 
 const FOLDER: i64 = 1;
 const DOC: i64 = 2;
@@ -919,6 +925,8 @@ fn upload_file(
             logical_path: logical_path.to_string(),
             name: Some(name.to_string()),
             mime: None,
+            scope: None,
+            ttl_seconds: None,
         },
     )
     .expect("上传附件")
@@ -938,10 +946,243 @@ fn upload_file_with_policy(
             logical_path: logical_path.to_string(),
             name: Some(name.to_string()),
             mime: None,
+            scope: None,
+            ttl_seconds: None,
         },
         policy,
     )
     .expect("上传附件")
+}
+
+#[test]
+fn attachment_tree_node_rename_delete_and_export() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-tree", "附件树");
+    let kb_id = env.first_kb_id();
+    let context = attachment_context(&env);
+    let source = write_source(&env, "tree-notes.txt", b"tree attachment");
+    let attachment = attachment_service::upload(
+        &context,
+        UploadAttachmentInput {
+            source_path: source.to_string_lossy().into_owned(),
+            logical_path: String::new(),
+            name: Some("tree-notes.txt".to_string()),
+            mime: Some("text/plain".to_string()),
+            scope: Some("node".to_string()),
+            ttl_seconds: None,
+        },
+    )
+    .expect("上传树附件");
+    let node = node_service::create_attachment_node(
+        &env.state,
+        CreateAttachmentNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            object_id: attachment.id.clone(),
+        },
+    )
+    .expect("创建附件节点");
+    assert_eq!(node.node_type, 6);
+    assert_eq!(node.title, "tree-notes.txt");
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE node_id = ?1 AND object_id = ?2",
+            rusqlite::params![node.id, attachment.id],
+            |row| row.get(0),
+        )
+        .expect("附件节点引用");
+    assert_eq!(references, 1);
+
+    node_service::update(
+        &env.state,
+        UpdateNodeInput {
+            id: node.id.clone(),
+            title: Some("重命名附件.txt".to_string()),
+            starred: None,
+        },
+    )
+    .expect("重命名附件节点");
+    let attachment_name: String = connection
+        .query_row(
+            "SELECT name FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("附件名称");
+    assert_eq!(
+        attachment_name, "重命名附件.txt",
+        "节点重命名必须同步下载名"
+    );
+
+    let export_dir = env.dir.path().join("export-attachment-tree");
+    fs::create_dir_all(&export_dir).expect("导出目录");
+    let result = export_service::export_knowledge_base(
+        &env.state,
+        ExportKnowledgeBaseInput {
+            knowledge_base_id: kb_id,
+            format: ExportFormat::Markdown,
+            dest_dir: export_dir.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("整库导出");
+    assert_eq!(
+        result.attachment_nodes.len(),
+        1,
+        "附件节点必须写入 manifest"
+    );
+    let exported = PathBuf::from(&result.attachment_nodes[0].path);
+    assert!(exported.is_file(), "附件节点必须按树位置导出");
+    assert_eq!(fs::read(&exported).expect("读导出附件"), b"tree attachment");
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(PathBuf::from(&result.root_path).join("manifest.json")).expect("读 manifest"),
+    )
+    .expect("manifest JSON");
+    assert_eq!(manifest["attachmentNodes"][0]["nodeId"], node.id);
+    assert_eq!(manifest["attachmentNodes"][0]["title"], "重命名附件.txt");
+
+    node_service::delete(&env.state, &node.id).expect("删除附件节点");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE object_id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("删除后引用");
+    assert_eq!(references, 0);
+    let orphaned: Option<i64> = connection
+        .query_row(
+            "SELECT orphaned_at FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("孤儿时间");
+    assert!(orphaned.is_some());
+}
+
+#[test]
+fn document_refs_cascade_and_attachment_trash_restore() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-attach-refs", "附件引用闭环");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "带附件文档");
+    let context = attachment_context(&env);
+    let source = write_source(&env, "refs.txt", b"attachment lifecycle");
+
+    let attachment = attachment_service::upload(
+        &context,
+        UploadAttachmentInput {
+            source_path: source.to_string_lossy().into_owned(),
+            logical_path: String::new(),
+            name: Some("refs.txt".to_string()),
+            mime: Some("text/plain".to_string()),
+            scope: Some("node".to_string()),
+            ttl_seconds: None,
+        },
+    )
+    .expect("上传节点附件");
+    let content = document(vec![json!({
+        "type": "attachmentBlock",
+        "attrs": {
+            "attachmentId": attachment.id,
+            "name": attachment.name,
+            "size": attachment.size,
+            "mime": attachment.mime
+        }
+    })]);
+    env.save_doc(&doc.id, content);
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+    let reference_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE node_id = ?1 AND object_id = ?2",
+            rusqlite::params![doc.id, attachment.id],
+            |row| row.get(0),
+        )
+        .expect("引用数");
+    assert_eq!(reference_count, 1, "文档保存必须同步附件引用");
+
+    let blocked =
+        attachment_service::delete(&context, &attachment.id).expect_err("被引用附件不能直接删除");
+    assert!(matches!(blocked, AppError::Conflict(_)), "{blocked:?}");
+
+    node_service::delete(&env.state, &doc.id).expect("删除文档");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE object_id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("删除后引用数");
+    assert_eq!(references, 0);
+    let orphaned: Option<i64> = connection
+        .query_row(
+            "SELECT orphaned_at FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("孤儿时间");
+    assert!(orphaned.is_some(), "失去最后一个引用必须标记孤儿");
+
+    let deleted = attachment_service::delete(&context, &attachment.id).expect("移入回收站");
+    assert!(!deleted.physical_deleted);
+    assert!(
+        attachment_repository::find_blob(&connection, &attachment.content_hash)
+            .expect("blob")
+            .is_some(),
+        "回收站必须保留物理对象"
+    );
+    let restored = attachment_service::restore(&context, &attachment.id).expect("恢复附件");
+    assert_eq!(restored.status, "active");
+
+    attachment_service::set_lifecycle(
+        &context,
+        AttachmentLifecycleInput {
+            id: attachment.id.clone(),
+            ttl_seconds: Some(1),
+        },
+    )
+    .expect("设置 TTL");
+    attachment_maintenance_service::run(
+        &context,
+        now_ms() + 2_000,
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 60_000,
+            staging_max_age_ms: 0,
+            storage_policy: StoragePolicy::default(),
+        },
+    )
+    .expect("TTL 维护");
+    let status: String = connection
+        .query_row(
+            "SELECT status FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("TTL 后状态");
+    assert_eq!(status, "deleted", "TTL 到期应进入回收站");
+
+    attachment_maintenance_service::run(
+        &context,
+        now_ms() + 4_000,
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 0,
+            storage_policy: StoragePolicy::default(),
+        },
+    )
+    .expect("回收站维护");
+    let remaining: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("purge 后行数");
+    assert_eq!(remaining, 0, "保留期结束必须 purge");
 }
 
 #[test]
@@ -988,30 +1229,51 @@ fn attachment_big_is_deduped_and_refcount_drives_physical_delete() {
     );
 
     let deleted_first = attachment_service::delete(&context, &first.id).expect("删除第一个引用");
-    assert_eq!(deleted_first.remaining_references, 1);
+    assert_eq!(deleted_first.remaining_references, 0);
     assert!(!deleted_first.physical_deleted);
-    assert!(big_path.is_file(), "仍有引用时不得删除物理文件");
+    assert!(big_path.is_file(), "回收站保留期内不得删除物理文件");
 
     let stats_after_first = attachment_service::stats(&context).expect("统计");
     assert_eq!(stats_after_first.active_count, 1);
     assert_eq!(stats_after_first.deleted_count, 1);
     assert_eq!(stats_after_first.unique_objects, 1);
+    assert_eq!(stats_after_first.trash_count, 1);
 
-    let deleted_second =
-        attachment_service::delete(&context, &second.id).expect("删除最后一个引用");
+    let deleted_second = attachment_service::delete(&context, &second.id).expect("删除第二条");
     assert_eq!(deleted_second.remaining_references, 0);
-    assert!(deleted_second.physical_deleted);
-    assert!(!big_path.exists(), "引用归零后 big 文件必须被删除");
+    assert!(!deleted_second.physical_deleted);
+    assert!(big_path.is_file(), "软删除必须保留对象以支持恢复");
+    assert!(
+        attachment_repository::find_blob(&connection, &expected_hash)
+            .expect("再次查询 blob")
+            .is_some(),
+        "回收站期间 blob 行必须保留"
+    );
+
+    // 保留期设为 0：维护任务将回收站行与无引用物理对象一并清理。
+    let maintenance = attachment_maintenance_service::run(
+        &context,
+        now_ms() + 1,
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 0,
+            storage_policy: StoragePolicy::default(),
+        },
+    )
+    .expect("执行维护");
+    assert_eq!(maintenance.purged, 2);
+    assert!(!big_path.exists(), "purge 后 big 文件必须被删除");
     assert!(
         attachment_repository::find_blob(&connection, &expected_hash)
             .expect("再次查询 blob")
             .is_none(),
-        "引用归零后 blob 行必须删除"
+        "purge 后 blob 行必须删除"
     );
 
     let stats = attachment_service::stats(&context).expect("最终统计");
     assert_eq!(stats.active_count, 0);
-    assert_eq!(stats.deleted_count, 2);
+    assert_eq!(stats.deleted_count, 0);
     assert_eq!(stats.logical_bytes, 0);
     assert_eq!(stats.unique_objects, 0);
     assert_eq!(stats.physical_bytes, 0);
@@ -1348,6 +1610,8 @@ fn attachment_rejects_invalid_paths_and_names() {
                 logical_path: logical_path.to_string(),
                 name: Some(name.to_string()),
                 mime: None,
+                scope: None,
+                ttl_seconds: None,
             },
         )
         .expect_err("非法路径/名称必须失败");
@@ -1363,6 +1627,8 @@ fn attachment_rejects_invalid_paths_and_names() {
                 logical_path: String::new(),
                 name: Some("dir".to_string()),
                 mime: None,
+                scope: None,
+                ttl_seconds: None,
             }
         )
         .is_err(),
@@ -1386,10 +1652,6 @@ fn attachment_pack_compaction_keeps_live_objects_readable() {
         compaction_dead_ratio: 0.3,
         compaction_min_dead_bytes: 0,
     };
-    let no_schedule = StoragePolicy {
-        compaction_min_dead_bytes: u64::MAX,
-        ..policy
-    };
     let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
     let mut uploads = Vec::new();
     for index in 0..8 {
@@ -1408,13 +1670,21 @@ fn attachment_pack_compaction_keeps_live_objects_readable() {
         .expect("查活跃 pack")
         .expect("活跃 pack 存在");
     for (uploaded, _) in uploads.iter().take(6) {
-        let result = attachment_service::delete_with_policy(&context, &uploaded.id, no_schedule)
-            .expect("删除小对象");
+        let result = attachment_service::delete(&context, &uploaded.id).expect("删除小对象");
         assert!(!result.compaction_scheduled);
     }
 
-    attachment_service::compact_for_test(&context, &active_pack.id, policy)
-        .expect("执行 compaction");
+    attachment_maintenance_service::run(
+        &context,
+        now_ms() + 1,
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 0,
+            storage_policy: policy,
+        },
+    )
+    .expect("执行维护与 compaction");
     assert!(
         attachment_repository::find_pack(&connection, &active_pack.id)
             .expect("查旧 pack")
@@ -1486,10 +1756,6 @@ fn attachment_compaction_removes_pack_without_live_objects() {
         compaction_dead_ratio: 0.3,
         compaction_min_dead_bytes: 0,
     };
-    let no_schedule = StoragePolicy {
-        compaction_min_dead_bytes: u64::MAX,
-        ..policy
-    };
     let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
     let mut ids = Vec::new();
     for index in 0..2 {
@@ -1510,9 +1776,19 @@ fn attachment_compaction_removes_pack_without_live_objects() {
         .expect("查活跃 pack")
         .expect("活跃 pack 存在");
     for id in &ids {
-        attachment_service::delete_with_policy(&context, id, no_schedule).expect("删除");
+        attachment_service::delete(&context, id).expect("删除");
     }
-    attachment_service::compact_for_test(&context, &active_pack.id, policy).expect("清理空 pack");
+    attachment_maintenance_service::run(
+        &context,
+        now_ms() + 1,
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 0,
+            storage_policy: policy,
+        },
+    )
+    .expect("清理空 pack");
     assert!(
         attachment_repository::find_pack(&connection, &active_pack.id)
             .expect("查旧 pack")
@@ -1809,4 +2085,1005 @@ fn document_attachment_nodes_roundtrip_and_derive_markdown() {
     let prop: Value = serde_json::from_str(&prop).expect("prop JSON");
     assert_eq!(prop["imageCount"], 1);
     assert_eq!(prop["attachmentCount"], 2);
+}
+
+// ───────────────────────── 导出 / 导入（第十二轮） ─────────────────────────
+
+const PNG_1X1: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4xsAAAAASUVORK5CYII=";
+
+fn png_bytes() -> Vec<u8> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(PNG_1X1)
+        .expect("1x1 png")
+}
+
+fn export_doc_with_attachment(env: &TestEnv, title: &str) -> (String, AttachmentDto) {
+    let kb_id = env.first_kb_id();
+    let node = env.create_node(&kb_id, None, DOC, title);
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let attachment = attachment_service::upload_bytes(
+        &context,
+        "封面.png".to_string(),
+        "attach".to_string(),
+        Some("image/png".to_string()),
+        png_bytes(),
+    )
+    .expect("上传图片");
+    let value = document(vec![
+        json!({"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": "导出标题"}]}),
+        paragraph("正文内容"),
+        json!({
+            "type": "attachmentImage",
+            "attrs": {
+                "attachmentId": attachment.id,
+                "name": "封面.png",
+                "size": 70,
+                "mime": "image/png",
+                "alt": "封面",
+                "width": 0,
+                "align": "left"
+            }
+        }),
+        json!({
+            "type": "attachmentBlock",
+            "attrs": {
+                "variant": "list",
+                "align": "left",
+                "items": [{
+                    "attachmentId": attachment.id,
+                    "name": "封面.png",
+                    "size": 70,
+                    "mime": "image/png"
+                }]
+            }
+        }),
+    ]);
+    env.save_doc(&node.id, value);
+    (node.id, attachment)
+}
+
+#[test]
+fn export_document_supports_markdown_html_docx_pdf_and_attachments() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-export", "导出工作区");
+    let (node_id, _attachment) = export_doc_with_attachment(&env, "导出测试");
+
+    for format in [
+        ExportFormat::Markdown,
+        ExportFormat::Html,
+        ExportFormat::Docx,
+        ExportFormat::Pdf,
+    ] {
+        let dir = env
+            .dir
+            .path()
+            .join(format!("export-{}", format.extension()));
+        fs::create_dir_all(&dir).expect("导出目录");
+        let dest = dir.join(format!("文档.{}", format.extension()));
+        let result = export_service::export_document(
+            &env.state,
+            ExportDocumentInput {
+                node_id: node_id.clone(),
+                format,
+                dest_path: dest.to_string_lossy().into_owned(),
+            },
+        )
+        .expect("导出成功");
+        assert!(dest.is_file(), "缺少 {} 输出", format.label());
+        assert!(
+            result.files.iter().any(|file| file.kind == "attachment"),
+            "{} 未导出附件",
+            format.label()
+        );
+        assert!(
+            dir.join("attach").join("封面.png").is_file(),
+            "{} 的附件未落在 attach/",
+            format.label()
+        );
+        let bytes = fs::read(&dest).expect("读取导出文件");
+        match format {
+            ExportFormat::Markdown => {
+                let text = String::from_utf8(bytes).expect("markdown");
+                assert!(text.contains("attach/"), "markdown={text}");
+                assert!(
+                    !text.contains("attachment://"),
+                    "markdown 附件 token 未替换"
+                );
+            }
+            ExportFormat::Html => {
+                let text = String::from_utf8(bytes).expect("html");
+                assert!(text.contains("attach/"), "html 未引用附件");
+            }
+            ExportFormat::Docx => assert!(bytes.starts_with(b"PK"), "docx 不是 zip 包"),
+            ExportFormat::Pdf => assert!(bytes.starts_with(b"%PDF"), "pdf 文件头不正确"),
+        }
+    }
+}
+
+#[test]
+fn export_knowledge_base_preserves_tree_and_all_attachments() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-export-tree", "整库导出");
+    let kb_id = env.first_kb_id();
+    let folder = env.create_node(&kb_id, None, FOLDER, "设计");
+    let doc = env.create_node(&kb_id, Some(&folder.id), DOC, "首页");
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let referenced = attachment_service::upload_bytes(
+        &context,
+        "树附件.txt".to_string(),
+        "attach".to_string(),
+        Some("text/plain".to_string()),
+        b"referenced".to_vec(),
+    )
+    .expect("上传文档附件");
+    env.save_doc(
+        &doc.id,
+        document(vec![
+            paragraph("树导出"),
+            json!({
+                "type": "attachmentBlock",
+                "attrs": {
+                    "variant": "list",
+                    "align": "left",
+                    "items": [{
+                        "attachmentId": referenced.id,
+                        "name": referenced.name,
+                        "size": referenced.size,
+                        "mime": referenced.mime,
+                    }],
+                },
+            }),
+        ]),
+    );
+
+    attachment_service::upload_bytes(
+        &context,
+        "未引用.txt".to_string(),
+        "loose".to_string(),
+        Some("text/plain".to_string()),
+        b"orphan".to_vec(),
+    )
+    .expect("上传未引用附件");
+
+    let dest = env.dir.path().join("tree-export");
+    fs::create_dir_all(&dest).expect("导出根目录");
+    let result = export_service::export_knowledge_base(
+        &env.state,
+        ExportKnowledgeBaseInput {
+            knowledge_base_id: kb_id.clone(),
+            format: ExportFormat::Markdown,
+            dest_dir: dest.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("整库导出成功");
+    let root = PathBuf::from(&result.root_path);
+    assert!(root.join("设计").join("首页.md").is_file(), "树层级未保留");
+    let tree_attachment = result
+        .files
+        .iter()
+        .find(|file| file.kind == "attachment" && file.path.ends_with("树附件.txt"))
+        .expect("文档引用附件未出现在导出清单");
+    assert!(
+        tree_attachment.path.contains("/设计/attach/"),
+        "{}",
+        tree_attachment.path
+    );
+    assert!(Path::new(&tree_attachment.path).is_file());
+    assert!(root.join("manifest.json").is_file(), "缺少 manifest");
+    assert!(root.join("导出说明.md").is_file(), "缺少导出说明");
+    assert!(
+        root.join("_attachments")
+            .join("loose")
+            .join("未引用.txt")
+            .is_file(),
+        "未引用附件未导出"
+    );
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).expect("manifest"))
+            .expect("json");
+    assert_eq!(manifest["knowledgeBase"]["id"], kb_id);
+    assert!(
+        manifest["files"]
+            .as_array()
+            .is_some_and(|files| !files.is_empty())
+    );
+}
+
+#[test]
+fn import_markdown_preserves_blocks_images_and_original_file() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-import-md", "导入 Markdown");
+    let source_dir = env.dir.path().join("md-source");
+    fs::create_dir_all(&source_dir).expect("md 源目录");
+    let image_path = source_dir.join("本地图.png");
+    fs::write(&image_path, png_bytes()).expect("写图片");
+    let markdown = "# 导入标题\n\n正文 **粗体** 与 `代码`。\n\n- 项目一\n- 项目二\n  - 子项\n\n| 列 A | 列 B |\n| --- | --- |\n| 1 | 2 |\n\n![本地图](本地图.png)\n\n脚注引用[^1]\n\n[^1]: 脚注内容\n";
+    let file = source_dir.join("导入.md");
+    fs::write(&file, markdown).expect("写 markdown");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: env.first_kb_id(),
+            parent_id: None,
+            paths: vec![file.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("导入成功");
+    assert_eq!(result.imported, 1, "{:?}", result.files);
+    assert_eq!(result.failed, 0);
+    let node_id = result.files[0].node_id.clone().expect("节点 id");
+    let loaded = document_service::load(&env.state, &node_id).expect("加载导入文档");
+    let content = loaded.document["content"].as_array().expect("content");
+    let types = content
+        .iter()
+        .filter_map(|node| node.get("type").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert!(types.contains(&"heading"), "{types:?}");
+    assert!(types.contains(&"bulletList"), "{types:?}");
+    assert!(types.contains(&"table"), "{types:?}");
+    assert!(types.contains(&"attachmentImage"), "{types:?}");
+    assert!(
+        types.contains(&"attachmentBlock"),
+        "原始文件附件缺失：{types:?}"
+    );
+    let bullet = content
+        .iter()
+        .find(|node| node["type"] == "bulletList")
+        .expect("无序列表");
+    let second = &bullet["content"][1];
+    assert_eq!(second["content"][0]["type"], "paragraph");
+    assert_eq!(second["content"][0]["content"][0]["text"], "项目二");
+    assert_eq!(second["content"][1]["type"], "bulletList");
+    assert_eq!(
+        second["content"][1]["content"][0]["content"][0]["content"][0]["text"],
+        "子项"
+    );
+    assert!(
+        result.files[0].attachment_count >= 2,
+        "图片与原始文件都应附件化：{}",
+        result.files[0].attachment_count
+    );
+
+    // 同一文件再次导入：标题与附件名都要自动去重，不能触发附件唯一约束。
+    let repeated = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: env.first_kb_id(),
+            parent_id: None,
+            paths: vec![file.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("重复导入成功");
+    assert_eq!(repeated.imported, 1, "{:?}", repeated.files);
+    assert_eq!(repeated.failed, 0);
+    assert_eq!(
+        repeated.files[0].attachment_count, result.files[0].attachment_count,
+        "重复导入的附件数量应一致"
+    );
+}
+
+#[test]
+fn import_word_and_directory_hierarchy_work() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-import-word", "导入 Word");
+    let source_dir = env.dir.path().join("word-source");
+    fs::create_dir_all(source_dir.join("子目录")).expect("源目录");
+
+    let docx_path = source_dir.join("子目录").join("报告.docx");
+    let file = fs::File::create(&docx_path).expect("创建 docx");
+    docx_rs::Docx::new()
+        .add_paragraph(
+            docx_rs::Paragraph::new()
+                .style("Heading1")
+                .add_run(docx_rs::Run::new().add_text("Word 标题")),
+        )
+        .add_paragraph(docx_rs::Paragraph::new().add_run(docx_rs::Run::new().add_text("Word 正文")))
+        .add_paragraph(
+            docx_rs::Paragraph::new()
+                .add_run(docx_rs::Run::new().add_image(docx_rs::Pic::new(&png_bytes()))),
+        )
+        .build()
+        .pack(file)
+        .expect("写 docx");
+    fs::write(source_dir.join("说明.md"), "# 子目录说明\n\n正文").expect("写 md");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: env.first_kb_id(),
+            parent_id: None,
+            paths: vec![source_dir.to_string_lossy().into_owned()],
+            mode: ImportMode::Directory,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("目录导入成功");
+    assert_eq!(result.failed, 0, "{:?}", result.files);
+    assert_eq!(result.imported, 2);
+    assert_eq!(result.created_folder_ids.len(), 2, "根目录与子目录都应创建");
+
+    let docx_result = result
+        .files
+        .iter()
+        .find(|file| file.source_path.ends_with("报告.docx"))
+        .expect("docx 结果");
+    let node_id = docx_result.node_id.clone().expect("docx 节点");
+    let loaded = document_service::load(&env.state, &node_id).expect("加载 docx");
+    let content = loaded.document["content"].as_array().expect("content");
+    assert!(
+        content.iter().any(|node| node["type"] == "heading"),
+        "{content:?}"
+    );
+    assert!(
+        content.iter().any(|node| node["type"] == "paragraph"),
+        "{content:?}"
+    );
+    assert!(
+        content.iter().any(|node| node["type"] == "attachmentImage"),
+        "Word 图片未导入：{content:?}"
+    );
+    assert!(
+        content.iter().any(|node| node["type"] == "attachmentBlock"),
+        "原始 docx 未附加：{content:?}"
+    );
+}
+
+#[test]
+fn board_scene_roundtrip_filters_deleted_and_guards_version() {
+    let env = TestEnv::new();
+    env.create_workspace("board-roundtrip", "画板往返");
+    let kb_id = env.first_kb_id();
+    let board = env.create_node(&kb_id, None, BOARD, "测试画板");
+
+    let elements = json!([
+        {"id": "r1", "type": "rectangle", "x": 0, "y": 0, "isDeleted": false},
+        {"id": "gone", "type": "rectangle", "x": 10, "y": 10, "isDeleted": true}
+    ]);
+    let saved = board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: board.id.clone(),
+            base_version: 0,
+            elements,
+            app_state: json!({
+                "gridModeEnabled": true,
+                "viewBackgroundColor": "#ffffff",
+                "scrollX": 999,
+                "unknown": "drop"
+            }),
+        },
+    )
+    .expect("首次保存画板");
+    assert_eq!(saved.version, 1);
+    assert_eq!(saved.element_count, 1, "已删除图元不落库");
+
+    let loaded = board_service::load(&env.state, &board.id).expect("加载画板");
+    assert_eq!(loaded.version, 1);
+    assert_eq!(loaded.elements.as_array().expect("元素数组").len(), 1);
+    assert_eq!(loaded.app_state["gridModeEnabled"], true);
+    assert!(
+        loaded.app_state.get("scrollX").is_none(),
+        "视口不得写入 app_state"
+    );
+    assert!(
+        loaded.app_state.get("unknown").is_none(),
+        "非白名单字段必须丢弃"
+    );
+    assert_eq!(loaded.viewport.zoom, 1.0);
+
+    let conflict = board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: board.id.clone(),
+            base_version: 0,
+            elements: json!([]),
+            app_state: json!({}),
+        },
+    )
+    .expect_err("旧版本必须冲突");
+    assert!(matches!(conflict, AppError::Conflict(_)), "{conflict:?}");
+
+    let doc = env.create_node(&kb_id, None, DOC, "普通文档");
+    let wrong_type = board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: doc.id,
+            base_version: 0,
+            elements: json!([]),
+            app_state: json!({}),
+        },
+    )
+    .expect_err("文档节点不能按画板保存");
+    assert!(matches!(wrong_type, AppError::Validation(_)));
+}
+
+#[test]
+fn board_images_use_global_object_ids_and_report_missing_objects() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("board-objects", "画板对象");
+    let kb_id = env.first_kb_id();
+    let board = env.create_node(&kb_id, None, BOARD, "对象画板");
+
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let image = attachment_service::upload_bytes(
+        &context,
+        "image.png".to_string(),
+        "画板".to_string(),
+        Some("image/png".to_string()),
+        vec![0x89, b'P', b'N', b'G', 1, 2, 3],
+    )
+    .expect("上传画板图片");
+
+    let saved = board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: board.id.clone(),
+            base_version: 0,
+            elements: json!([
+                {
+                    "id": "img-1",
+                    "type": "image",
+                    "fileId": image.id,
+                    "customData": {"boardObject": true},
+                    "isDeleted": false
+                },
+                {
+                    "id": "card-1",
+                    "type": "rectangle",
+                    "customData": {
+                        "boardFileCard": true,
+                        "objectId": "missing-object",
+                        "name": "报告.pdf",
+                        "mime": "application/pdf",
+                        "size": 10
+                    },
+                    "isDeleted": false
+                }
+            ]),
+            app_state: json!({}),
+        },
+    )
+    .expect("保存带对象的画板");
+    assert_eq!(saved.element_count, 2);
+
+    let loaded = board_service::load(&env.state, &board.id).expect("加载带对象的画板");
+    assert_eq!(loaded.files.len(), 1, "图片对象必须回填");
+    assert_eq!(loaded.files[0].id, image.id, "fileId 就是全局 object_id");
+    assert!(
+        loaded.files[0]
+            .data_url
+            .starts_with("data:image/png;base64,"),
+        "{}",
+        loaded.files[0].data_url
+    );
+    assert_eq!(
+        loaded.missing_object_ids,
+        vec!["missing-object".to_string()]
+    );
+
+    let viewport = board_service::save_viewport(
+        &env.state,
+        BoardSaveViewportInput {
+            node_id: board.id.clone(),
+            scroll_x: 12.5,
+            scroll_y: -30.0,
+            zoom: 1.5,
+        },
+    )
+    .expect("保存视口");
+
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("附件库");
+
+    assert_eq!(viewport.zoom, 1.5);
+    let loaded = board_service::load(&env.state, &board.id).expect("再次加载");
+    assert_eq!(loaded.version, saved.version, "视口不得递增场景版本");
+    assert_eq!(loaded.viewport.scroll_x, 12.5);
+    assert_eq!(loaded.viewport.scroll_y, -30.0);
+    assert_eq!(loaded.viewport.zoom, 1.5);
+
+    let version: i64 = {
+        let guard = env.state.workspace().expect("工作区锁");
+        guard
+            .as_ref()
+            .expect("工作区存在")
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("读取 schema 版本")
+    };
+    assert_eq!(version, 10, "工作区库必须升级到 v10");
+
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE node_id = ?1 AND object_id = ?2",
+            rusqlite::params![board.id, image.id],
+            |row| row.get(0),
+        )
+        .expect("画板引用数");
+    assert_eq!(references, 1, "画板保存必须同步图片引用");
+
+    board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: board.id.clone(),
+            base_version: saved.version,
+            elements: json!([]),
+            app_state: json!({}),
+        },
+    )
+    .expect("清空画板");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE object_id = ?1",
+            [&image.id],
+            |row| row.get(0),
+        )
+        .expect("清空后引用数");
+    assert_eq!(references, 0, "移除图元必须释放引用");
+    let orphaned: Option<i64> = connection
+        .query_row(
+            "SELECT orphaned_at FROM attachment WHERE id = ?1",
+            [&image.id],
+            |row| row.get(0),
+        )
+        .expect("孤儿时间");
+    assert!(orphaned.is_some(), "失去最后一个引用必须标记孤儿");
+}
+
+#[test]
+fn library_seeds_presets_imports_and_toggles() {
+    let env = TestEnv::new();
+    env.create_workspace("libraries", "组件库");
+
+    let libraries = library_service::list(&env.state).expect("组件库列表");
+    assert!(
+        libraries.len() >= 7,
+        "内置预设应被 seed：{:?}",
+        libraries.len()
+    );
+    let shapes = libraries
+        .iter()
+        .find(|library| library.name == "基础形状")
+        .expect("基础形状预设");
+    assert!(shapes.enabled, "核心预设默认启用");
+    assert!(shapes.item_count > 0);
+
+    let before = library_service::enabled_items(&env.state).expect("启用组件");
+    assert!(!before.is_empty(), "启用库必须返回组件");
+
+    let library_dir = env.dir.path().join("libs");
+    fs::create_dir_all(&library_dir).expect("组件库目录");
+    let path = library_dir.join("custom.excalidrawlib");
+    fs::write(
+        &path,
+        json!({
+            "type": "excalidrawlib",
+            "version": 1,
+            "library": [[
+                {"type": "rectangle", "id": "r1", "x": 0, "y": 0, "width": 10, "height": 10}
+            ]]
+        })
+        .to_string(),
+    )
+    .expect("写入组件库文件");
+    let imported = library_service::import(
+        &env.state,
+        ImportLibraryInput {
+            path: path.to_string_lossy().into_owned(),
+            name: Some("自定义组件".to_string()),
+            author: Some("测试".to_string()),
+            license: Some("MIT".to_string()),
+            source_url: None,
+        },
+    )
+    .expect("导入组件库");
+    assert_eq!(imported.item_count, 1);
+
+    let disabled = library_service::set_enabled(
+        &env.state,
+        SetLibraryEnabledInput {
+            id: shapes.id.clone(),
+            enabled: false,
+        },
+    )
+    .expect("停用预设");
+    assert!(!disabled.enabled);
+    let after = library_service::enabled_items(&env.state).expect("停用后的组件");
+    assert!(
+        after.len() < before.len(),
+        "停用预设后组件数量必须减少：{} -> {}",
+        before.len(),
+        after.len()
+    );
+
+    let preset_delete = library_service::delete(&env.state, &shapes.id).expect_err("预设不可删除");
+    assert!(matches!(preset_delete, AppError::Validation(_)));
+
+    let result = library_service::delete(&env.state, &imported.id).expect("删除导入库");
+    assert_eq!(result.deleted_items, 1);
+    assert!(
+        library_service::list(&env.state)
+            .expect("删除后的列表")
+            .iter()
+            .all(|library| library.id != imported.id)
+    );
+}
+
+// ───────────────────────── 画板导出 / 导入（2026-10-25） ─────────────────────────
+
+#[test]
+fn export_knowledge_base_writes_board_bundle_attachments_and_sidecar() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-board-bundle", "画板导出");
+    let kb_id = env.first_kb_id();
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let image = attachment_service::upload_bytes(
+        &context,
+        "架构图.png".to_string(),
+        "画板".to_string(),
+        Some("image/png".to_string()),
+        png_bytes(),
+    )
+    .expect("上传画板图片");
+    let file = attachment_service::upload_bytes(
+        &context,
+        "说明.txt".to_string(),
+        "画板".to_string(),
+        Some("text/plain".to_string()),
+        b"sidecar".to_vec(),
+    )
+    .expect("上传画板附件");
+    attachment_service::upload_bytes(
+        &context,
+        "孤立.txt".to_string(),
+        "loose".to_string(),
+        Some("text/plain".to_string()),
+        b"orphan".to_vec(),
+    )
+    .expect("上传未引用附件");
+
+    let board = env.create_node(&kb_id, None, BOARD, "架构画板");
+    board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: board.id.clone(),
+            base_version: 0,
+            elements: json!([
+                {
+                    "type": "image",
+                    "id": "img",
+                    "fileId": image.id,
+                    "x": 0,
+                    "y": 0,
+                    "width": 10,
+                    "height": 10
+                },
+                {
+                    "type": "rectangle",
+                    "id": "card",
+                    "x": 20,
+                    "y": 0,
+                    "width": 10,
+                    "height": 10,
+                    "customData": {
+                        "boardFileCard": true,
+                        "objectId": file.id,
+                        "name": "说明.txt",
+                        "mime": "text/plain",
+                        "size": 7
+                    }
+                }
+            ]),
+            app_state: json!({"viewBackgroundColor": "#ffffff"}),
+        },
+    )
+    .expect("保存画板");
+
+    let dest = env.dir.path().join("export-boards");
+    fs::create_dir_all(&dest).expect("导出目录");
+    let result = export_service::export_knowledge_base(
+        &env.state,
+        ExportKnowledgeBaseInput {
+            knowledge_base_id: kb_id.clone(),
+            format: ExportFormat::Markdown,
+            dest_dir: dest.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("整库导出");
+
+    assert_eq!(result.boards.len(), 1);
+    let target = &result.boards[0];
+    assert_eq!(target.title, "架构画板");
+    assert!(!Path::new(&target.png_path).exists(), "PNG 应由前端写入");
+    assert!(!Path::new(&target.svg_path).exists(), "SVG 应由前端写入");
+
+    let raw = fs::read_to_string(&target.excalidraw_path).expect("读取 excalidraw");
+    let value: Value = serde_json::from_str(&raw).expect("excalidraw JSON");
+    assert_eq!(value["type"], "excalidraw");
+    assert_eq!(value["elements"][0]["fileId"], json!(image.id));
+    let files_map = value["files"].as_object().expect("files 映射");
+    assert!(files_map.contains_key(&image.id), "图片未内嵌");
+    assert!(
+        files_map[&image.id]["dataURL"]
+            .as_str()
+            .is_some_and(|url| url.starts_with("data:image/png;base64,"))
+    );
+
+    let sidecar_path = Path::new(&target.dir_path).join("attachments.json");
+    let sidecar: Value =
+        serde_json::from_slice(&fs::read(&sidecar_path).expect("attachments.json")).expect("json");
+    assert_eq!(
+        sidecar["attachments"].as_array().expect("附件数组").len(),
+        2
+    );
+    let attach_dir = Path::new(&target.dir_path).join("attach");
+    assert!(attach_dir.join("架构图.png").is_file());
+    assert!(attach_dir.join("说明.txt").is_file());
+    assert_eq!(result.attachment_count, 3, "2 个画板附件 + 1 个未引用附件");
+    assert!(
+        result
+            .files
+            .iter()
+            .any(|file| file.kind == "board" && file.path == target.excalidraw_path)
+    );
+
+    let root = PathBuf::from(&result.root_path);
+    assert!(
+        root.join("_attachments")
+            .join("loose")
+            .join("孤立.txt")
+            .is_file(),
+        "未引用附件未导出"
+    );
+    assert!(
+        !root
+            .join("_attachments")
+            .join("loose")
+            .join("架构图.png")
+            .exists(),
+        "画板图片不应重复进入 _attachments"
+    );
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).expect("manifest"))
+            .expect("manifest JSON");
+    assert_eq!(
+        manifest["boards"][0]["formats"]
+            .as_array()
+            .expect("formats")
+            .len(),
+        3
+    );
+    assert_eq!(manifest["boards"][0]["dir"], json!(target.dir_path));
+}
+
+#[test]
+fn export_write_file_handles_base64_overwrite_and_paths() {
+    use base64::Engine as _;
+
+    let env = TestEnv::new();
+    let dir = env.dir.path().join("write-export");
+    fs::create_dir_all(&dir).expect("导出目录");
+    let path = dir.join("board.png");
+    let encode = |value: &[u8]| base64::engine::general_purpose::STANDARD.encode(value);
+
+    let written = export_service::write_export_file(ExportWriteFileInput {
+        path: path.to_string_lossy().into_owned(),
+        data_base64: encode(b"first"),
+        overwrite: false,
+    })
+    .expect("写入 PNG");
+    assert_eq!(written.kind, "board-image");
+    assert_eq!(fs::read(&path).expect("读取 PNG"), b"first");
+
+    let duplicate = export_service::write_export_file(ExportWriteFileInput {
+        path: path.to_string_lossy().into_owned(),
+        data_base64: encode(b"second"),
+        overwrite: false,
+    })
+    .expect_err("未允许覆盖时应失败");
+    assert!(matches!(duplicate, AppError::Validation(_)));
+
+    export_service::write_export_file(ExportWriteFileInput {
+        path: path.to_string_lossy().into_owned(),
+        data_base64: encode(b"second"),
+        overwrite: true,
+    })
+    .expect("覆盖写入");
+    assert_eq!(fs::read(&path).expect("读取覆盖后的 PNG"), b"second");
+
+    let relative = export_service::write_export_file(ExportWriteFileInput {
+        path: "relative.png".to_string(),
+        data_base64: encode(b"x"),
+        overwrite: true,
+    })
+    .expect_err("相对路径必须失败");
+    assert!(matches!(relative, AppError::Validation(_)));
+
+    let invalid = export_service::write_export_file(ExportWriteFileInput {
+        path: dir.join("bad.png").to_string_lossy().into_owned(),
+        data_base64: "!!!".to_string(),
+        overwrite: true,
+    })
+    .expect_err("非法 base64 必须失败");
+    assert!(matches!(invalid, AppError::Validation(_)));
+}
+
+#[test]
+fn import_excalidraw_uploads_embedded_images_to_board() {
+    use base64::Engine as _;
+
+    let env = TestEnv::new();
+    env.create_workspace("ws-board-import", "画板导入");
+    let kb_id = env.first_kb_id();
+    let data_url = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(png_bytes())
+    );
+    let source = env.dir.path().join("外部画板.excalidraw");
+    let payload = json!({
+        "type": "excalidraw",
+        "version": 2,
+        "source": "test",
+        "elements": [
+            {"type": "rectangle", "id": "r1", "x": 0, "y": 0, "width": 10, "height": 10},
+            {"type": "image", "id": "i1", "fileId": "file-1", "x": 20, "y": 0, "width": 10, "height": 10}
+        ],
+        "appState": {"viewBackgroundColor": "#ffffff"},
+        "files": {
+            "file-1": {"mimeType": "image/png", "dataURL": data_url, "created": 1}
+        }
+    });
+    fs::write(&source, serde_json::to_vec(&payload).expect("序列化")).expect("写入测试文件");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![source.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: false,
+        },
+    )
+    .expect("导入 Excalidraw");
+    assert_eq!(result.imported, 1);
+    assert_eq!(result.failed, 0);
+    let info = &result.files[0];
+    assert_eq!(info.title, "外部画板");
+    assert_eq!(info.attachment_count, 1);
+    let node_id = info.node_id.clone().expect("画板节点");
+    let nodes = node_service::list(&env.state, &kb_id).expect("节点列表");
+    let node = nodes
+        .iter()
+        .find(|node| node.id == node_id)
+        .expect("画板节点存在");
+    assert_eq!(node.node_type, BOARD);
+
+    let loaded = board_service::load(&env.state, &node_id).expect("加载画板");
+    assert_eq!(loaded.files.len(), 1);
+    let new_file_id = loaded.files[0].id.clone();
+    assert_ne!(new_file_id, "file-1", "fileId 必须改写为 object_id");
+    let elements = loaded.elements.as_array().expect("图元数组");
+    let image = elements
+        .iter()
+        .find(|element| element.get("type").and_then(Value::as_str) == Some("image"))
+        .expect("图片图元");
+    assert_eq!(image["fileId"], json!(new_file_id));
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let meta = attachment_service::get(&context, &new_file_id).expect("全局对象");
+    assert_eq!(meta.mime, "image/png");
+}
+
+#[test]
+fn import_excalidraw_restores_sidecar_card_attachment_and_rejects_invalid() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-board-sidecar", "画板附件导入");
+    let kb_id = env.first_kb_id();
+    let package = env.dir.path().join("board-package");
+    fs::create_dir_all(package.join("attach")).expect("画板包目录");
+    fs::write(package.join("attach/说明.txt"), b"sidecar").expect("写入附件");
+    let payload = json!({
+        "type": "excalidraw",
+        "version": 2,
+        "source": "test",
+        "elements": [{
+            "type": "rectangle",
+            "id": "card",
+            "x": 0,
+            "y": 0,
+            "width": 10,
+            "height": 10,
+            "customData": {
+                "boardFileCard": true,
+                "objectId": "legacy-card",
+                "name": "说明.txt",
+                "mime": "text/plain",
+                "size": 7
+            }
+        }],
+        "appState": {},
+        "files": {}
+    });
+    let source = package.join("带附件画板.excalidraw");
+    fs::write(&source, serde_json::to_vec(&payload).expect("序列化")).expect("写入画板");
+    fs::write(
+        package.join("attachments.json"),
+        serde_json::to_vec(&json!({
+            "type": "starris-board-attachments",
+            "version": 1,
+            "attachments": [{
+                "objectId": "legacy-card",
+                "name": "说明.txt",
+                "mime": "text/plain",
+                "size": 7,
+                "file": "attach/说明.txt"
+            }]
+        }))
+        .expect("序列化 sidecar"),
+    )
+    .expect("写入 sidecar");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![source.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: false,
+        },
+    )
+    .expect("导入带附件画板");
+    assert_eq!(result.imported, 1);
+    assert_eq!(result.files[0].attachment_count, 1);
+    let node_id = result.files[0].node_id.clone().expect("画板节点");
+    let loaded = board_service::load(&env.state, &node_id).expect("加载画板");
+    assert!(loaded.missing_object_ids.is_empty(), "附件应恢复");
+    let elements = loaded.elements.as_array().expect("图元数组");
+    let card = elements
+        .iter()
+        .find(|element| {
+            element
+                .get("customData")
+                .and_then(|custom| custom.get("boardFileCard"))
+                .and_then(Value::as_bool)
+                .is_some_and(|value| value)
+        })
+        .expect("文件卡片");
+    let object_id = card["customData"]["objectId"].as_str().expect("objectId");
+    assert_ne!(object_id, "legacy-card");
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let meta = attachment_service::get(&context, object_id).expect("恢复的全局对象");
+    assert_eq!(meta.mime, "text/plain");
+
+    let before = node_service::list(&env.state, &kb_id)
+        .expect("节点列表")
+        .len();
+    let invalid = env.dir.path().join("坏画板.excalidraw");
+    fs::write(&invalid, br#"{"type":"excalidraw"}"#).expect("写入坏文件");
+    let failed = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![invalid.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: false,
+        },
+    )
+    .expect("导入坏文件");
+    assert_eq!(failed.failed, 1);
+    assert_eq!(
+        node_service::list(&env.state, &kb_id)
+            .expect("节点列表")
+            .len(),
+        before,
+        "无效画板不应留下节点"
+    );
 }

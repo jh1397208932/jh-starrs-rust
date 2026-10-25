@@ -48,8 +48,8 @@ export function BlockHandle({
       <button
         type="button"
         className="editor-block-handle__button"
-        aria-label="在下方插入块"
-        title="在下方插入块"
+        aria-label="在下方插入"
+        title="在下方插入"
         tabIndex={-1}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onAddBelow}
@@ -60,7 +60,7 @@ export function BlockHandle({
         type="button"
         className="editor-block-handle__grip"
         aria-label={targetLabel}
-        title={`${targetLabel}（拖动排序）`}
+        title="拖动排序"
         tabIndex={-1}
         data-block-drag-grip=""
         onPointerDown={onGripPointerDown}
