@@ -1,5 +1,5 @@
 /**
- * 全局快捷键：新建、更多、设置、收藏、保存、侧栏、全局搜索/跳转/放映 mock、关闭标签。
+ * 全局快捷键：新建、更多、设置、收藏、保存、侧栏、关闭标签；未实现动作不拦截。
  */
 export default {
   id: "80-shortcuts",
@@ -39,11 +39,11 @@ export default {
       dialogs: 0,
     },
     {
-      action: "⌘⇧F、⌘K、⌘P 触发占位动作",
+      action: "⌘⇧F 搜索、⌘K 快速跳转",
       ui: "全局快捷键",
       clicks: 0,
       dialogs: 0,
-      note: "当前提示「即将推出」，记录而非判失败。",
+      note: "不判失败；被 WebView 保留时记录发现。",
     },
     {
       action: "⌘W 关闭当前标签",
@@ -57,7 +57,7 @@ export default {
     dialogs: 3,
     typingFields: 0,
     assessment:
-      "常用操作有快捷键覆盖，且与菜单文案提示一致（⌘N/⌘J/⌘S/⌘D）。⌘⇧F 全局搜索、⌘K 快速跳转、⌘P 放映画板仍是占位动作，按下提示「即将推出」，设置列表也已标注；用户不会误以为功能已可用。⌘W 关闭标签无二次确认，文档有未保存守卫，属合理取舍。",
+      "常用操作有快捷键覆盖，且与菜单文案提示一致（⌘N/⌘J/⌘S/⌘D）。⌘⇧F 搜索、⌘K 快速跳转已接入真实面板；WKWebView 若保留组合键，顶栏入口仍可用。⌘P 放映尚未实现，动作表标记为不可用。⌘W 关闭标签无二次确认，文档有未保存守卫，属合理取舍。",
   },
   async run(ctx) {
     const docTitle = ctx.shared.docTitle;
@@ -104,30 +104,21 @@ export default {
       throw new Error("⌘\\ 未恢复侧栏");
     }
 
-    const mockShortcuts = [
-      { combo: "cmd+shift+f", label: "全局搜索" },
-      { combo: "cmd+k", label: "快速跳转" },
-      { combo: "cmd+p", label: "放映当前画板" },
-    ];
-    for (const item of mockShortcuts) {
-      await ctx.key(item.combo);
-      let responded = false;
+    for (const [combo, placeholder] of [
+      ["cmd+shift+f", "搜索标题与正文…"],
+      ["cmd+k", "跳转到最近内容…"],
+    ]) {
+      await ctx.key(combo);
       try {
-        await ctx.expectText(item.label, { timeout: 2500 });
-        await ctx.expectText("即将推出", { timeout: 2500 });
-        responded = true;
-        ctx.log(`${item.combo} → ${item.label} mock toast`);
+        await ctx.expectText(placeholder, { timeout: 2500 });
+        ctx.log(`${combo} 打开检索面板`);
+        await ctx.key("escape");
       } catch {
-        responded = false;
-      }
-      if (!responded) {
         ctx.finding(
-          "medium",
-          `${item.combo} 没有出现「${item.label}」提示`,
-          "该快捷键在源码中注册为 mock 动作，但真实 WKWebView 下未看到 toast；Cmd+Shift+F / Cmd+K / Cmd+P 与 WebView/系统保留键冲突时可能被截获。建议改用非保留组合或在 Tauri 菜单层注册。",
+          "low",
+          `${combo} 在 WKWebView 下未打开检索面板`,
+          "顶栏搜索入口可用；组合键可能被 WebView 保留。可在 Tauri 菜单层注册或改用非保留组合。",
         );
-      } else {
-        await ctx.expectGone("即将推出", { timeout: 6000 });
       }
     }
 

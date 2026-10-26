@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export interface SlashCommand {
   id: string;
@@ -41,6 +42,7 @@ function groupLabel(command: SlashCommand, index: number, all: SlashCommand[]): 
 
 /** Slash 命令菜单：过滤、↑↓ 选择、Enter 插入。 */
 export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }: SlashMenuProps) {
+  const { t } = useI18n();
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }
   return (
     <div
       role="menu"
-      aria-label="插入内容"
+      aria-label={t("插入内容")}
       className="editor-float anim-pop-in fixed z-50 w-[304px] overflow-hidden"
       style={{ left, top }}
       // 按下不抢焦点，保持编辑器选区
@@ -62,13 +64,15 @@ export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }
     >
       <div className="flex items-center justify-between border-b border-border/70 px-3 py-2">
         <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-          插入内容
+          {t("插入内容")}
         </span>
         <kbd className="editor-kbd">/</kbd>
       </div>
       <div className="max-h-[320px] overflow-y-auto overscroll-contain p-1.5" role="presentation">
         {commands.length === 0 && (
-          <div className="px-3 py-8 text-center text-[12.5px] text-muted-foreground">没有匹配的命令</div>
+          <div className="px-3 py-8 text-center text-[12.5px] text-muted-foreground">
+            {t("没有匹配的命令")}
+          </div>
         )}
         {commands.map((command, index) => {
           const label = groupLabel(command, index, commands);
@@ -104,11 +108,11 @@ export function SlashMenu({ position, commands, activeIndex, onSelect, onHover }
         })}
       </div>
       <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2 text-[10.5px] text-muted-foreground">
-        <span>↑↓ 选择</span>
+        <span>{t("↑↓ 选择")}</span>
         <span aria-hidden="true">·</span>
-        <span>Enter 插入</span>
+        <span>{t("Enter 插入")}</span>
         <span aria-hidden="true">·</span>
-        <span>Esc 关闭</span>
+        <span>{t("Esc 关闭")}</span>
       </div>
     </div>
   );

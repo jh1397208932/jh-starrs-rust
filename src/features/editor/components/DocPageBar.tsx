@@ -1,4 +1,4 @@
-import { ChevronRight, Download, List, PanelRight, Printer, Star } from "lucide-react";
+import { ChevronRight, Download, History, List, PanelRight, Printer, Star } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { jumpToOutline, useEditorOutline } from "../editorOutline";
 
@@ -27,6 +28,8 @@ export interface DocPageBarProps {
   onShare: () => void;
   /** 触发打印 */
   onPrint: () => void;
+  /** 打开历史版本 */
+  onHistory: () => void;
   /** 点击面包屑中的知识库 */
   onOpenKb: () => void;
 }
@@ -47,13 +50,15 @@ export function DocPageBar({
   onToggleInfo,
   onShare,
   onPrint,
+  onHistory,
   onOpenKb,
 }: DocPageBarProps) {
+  const { t } = useI18n();
   const { items: outline } = useEditorOutline();
 
   return (
-    <div className="mb-4 flex min-h-7 items-center justify-between gap-4">
-      <nav aria-label="所在位置" className="flex min-w-0 items-center">
+    <div className="doc-page-bar mb-4 flex min-h-7 items-center justify-between gap-4">
+      <nav aria-label={t("所在位置")} className="flex min-w-0 items-center">
         {kbName && (
           <>
             <button
@@ -79,7 +84,7 @@ export function DocPageBar({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={starred ? "取消收藏 (⌘D)" : "收藏 (⌘D)"}
+              aria-label={starred ? t("取消收藏 (⌘D)") : t("收藏 (⌘D)")}
               aria-pressed={starred}
               onClick={onToggleStar}
               className={cn(ICON_BTN)}
@@ -87,20 +92,20 @@ export function DocPageBar({
               <Star className={cn("size-4", starred && "fill-primary text-primary")} />
             </button>
           </TooltipTrigger>
-          <TooltipContent>收藏 (⌘D)</TooltipContent>
+          <TooltipContent>{t("收藏 (⌘D)")}</TooltipContent>
         </Tooltip>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" aria-label="文档目录" className={cn(ICON_BTN)}>
+            <button type="button" aria-label={t("文档目录")} className={cn(ICON_BTN)}>
               <List className="size-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[240px]">
-            <DropdownMenuLabel>大纲</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("大纲")}</DropdownMenuLabel>
             {outline.length === 0 && (
               <DropdownMenuItem disabled className="text-muted-foreground">
-                暂无标题
+                {t("暂无标题")}
               </DropdownMenuItem>
             )}
             {outline.map((heading) => (
@@ -114,7 +119,7 @@ export function DocPageBar({
                   heading.level >= 3 && "pl-9 text-muted-foreground",
                 )}
               >
-                {heading.text || "无标题"}
+                {heading.text || t("无标题")}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -124,7 +129,7 @@ export function DocPageBar({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={infoOpen ? "关闭信息面板" : "打开信息面板"}
+              aria-label={infoOpen ? t("关闭信息面板") : t("打开信息面板")}
               aria-pressed={infoOpen}
               onClick={onToggleInfo}
               className={cn(ICON_BTN, infoOpen && "bg-accent text-accent-foreground")}
@@ -132,25 +137,34 @@ export function DocPageBar({
               <PanelRight className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>信息面板</TooltipContent>
+          <TooltipContent>{t("信息面板")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" aria-label="导出文档" onClick={onShare} className={cn(ICON_BTN)}>
+            <button type="button" aria-label={t("导出文档")} onClick={onShare} className={cn(ICON_BTN)}>
               <Download className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>导出文档</TooltipContent>
+          <TooltipContent>{t("导出文档")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" aria-label="打印" onClick={onPrint} className={cn(ICON_BTN)}>
+            <button type="button" aria-label={t("历史版本")} onClick={onHistory} className={cn(ICON_BTN)}>
+              <History className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{t("历史版本")}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" aria-label={t("打印")} onClick={onPrint} className={cn(ICON_BTN)}>
               <Printer className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>打印</TooltipContent>
+          <TooltipContent>{t("打印")}</TooltipContent>
         </Tooltip>
       </div>
     </div>

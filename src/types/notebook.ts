@@ -133,10 +133,3 @@ export interface OutlineHeading {
   text: string;
   level: 1 | 2;
 }
-
-/** 信息面板「相关」tab 的相关文档条目 */
-export interface RelatedItem {
-  id: string;
-  title: string;
-  kbName: string;
-}

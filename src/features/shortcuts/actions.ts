@@ -9,15 +9,14 @@ export const APP_SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "app.save", label: "保存当前文档", scope: "app", defaultBinding: "Mod+S" },
   { id: "app.star", label: "收藏 / 取消收藏", scope: "app", defaultBinding: "Mod+D" },
   { id: "app.sidebar", label: "显示 / 隐藏侧栏", scope: "app", defaultBinding: "Mod+Backslash" },
-  { id: "app.quickJump", label: "快速跳转", scope: "app", defaultBinding: "Mod+K", available: false },
+  { id: "app.quickJump", label: "快速跳转", scope: "app", defaultBinding: "Mod+K" },
   {
     id: "app.globalSearch",
     label: "全局搜索",
     scope: "app",
     defaultBinding: "Mod+Shift+F",
-    available: false,
   },
-  { id: "app.presentBoard", label: "放映当前画板", scope: "app", defaultBinding: "Mod+P", available: false },
+  { id: "app.presentBoard", label: "放映当前画板", scope: "app", defaultBinding: "Mod+P" },
 ];
 
 /** 编辑器自有快捷键；仅这些动作会被自定义 keymap 接管。 */
@@ -38,6 +37,7 @@ export const EDITOR_SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "editor.undo", label: "撤销", scope: "editor", defaultBinding: "Mod+Z" },
   { id: "editor.redo", label: "重做", scope: "editor", defaultBinding: "Mod+Shift+Z" },
   { id: "editor.image", label: "插入图片", scope: "editor", defaultBinding: "" },
+  { id: "editor.find", label: "文档内查找", scope: "editor", defaultBinding: "Mod+F" },
   { id: "editor.attachment", label: "插入附件", scope: "editor", defaultBinding: "" },
 ];
 

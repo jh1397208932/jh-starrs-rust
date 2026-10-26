@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { NodeItem, TreeNode } from "@/types/notebook";
 import type { FileTreeDragController } from "../hooks/useFileTreeDrag";
@@ -29,6 +30,7 @@ export interface FileTreeRowProps {
 
 /** 单个树行（递归）：展开/折叠、选中、拖放提示与节点操作菜单。 */
 export function FileTreeRow(props: FileTreeRowProps) {
+  const { t } = useI18n();
   const { entry, depth, collapsed, selectedNodeId, drag } = props;
   const { node, children } = entry;
   const isFolder = node.kind === "folder";
@@ -94,7 +96,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label={`${node.title} 操作`}
+              aria-label={t("{title} 操作", { title: node.title })}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               className="mr-1 grid size-6 shrink-0 cursor-default place-items-center rounded-[8px] text-sidebar-muted opacity-0 transition-[opacity,background-color] duration-150 ease-[var(--ease)] hover:bg-card/60 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
@@ -107,30 +109,30 @@ export function FileTreeRow(props: FileTreeRowProps) {
               <>
                 <DropdownMenuItem onSelect={() => props.onCreateChild(node)}>
                   <Plus />
-                  新建
+                  {t("新建")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => props.onImportToFolder(node)}>
                   <FileUp />
-                  导入到这里
+                  {t("导入到这里")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => props.onUploadAttachment(node)}>
                   <Upload />
-                  上传附件
+                  {t("上传附件")}
                 </DropdownMenuItem>
               </>
             ) : (
               <DropdownMenuItem onSelect={() => props.onOpenNode(node)}>
                 <NodeKindIcon kind={node.kind} />
-                打开
+                {t("打开")}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => props.onRename(node)}>
               <Pencil />
-              重命名
+              {t("重命名")}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onDelete(node)}>
               <Trash2 />
-              删除
+              {t("删除")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

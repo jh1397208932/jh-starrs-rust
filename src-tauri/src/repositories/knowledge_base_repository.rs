@@ -15,7 +15,8 @@ pub fn list(connection: &Connection) -> rusqlite::Result<Vec<KnowledgeBaseWithCo
     let mut statement = connection.prepare(
         "SELECT kb.id, kb.name, kb.description, kb.sort_order, kb.created_at, kb.updated_at,
                 (SELECT COUNT(*) FROM node n
-                 WHERE n.knowledge_base_id = kb.id AND n.type <> 1) AS doc_count
+                 WHERE n.knowledge_base_id = kb.id AND n.type <> 1
+                   AND n.deleted_at IS NULL) AS doc_count
          FROM knowledge_base kb
          ORDER BY kb.sort_order, kb.created_at, kb.id",
     )?;

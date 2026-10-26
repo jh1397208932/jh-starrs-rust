@@ -4,8 +4,10 @@
  */
 
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { invokeCommand } from "@/api/client";
+import { t } from "@/lib/i18n";
 import type { BoardExportFormat } from "@/types/board";
-import type { ExportFormat } from "@/types/exchange";
+import type { ExportFormat, ExportPathGrant } from "@/types/exchange";
 
 /** 文件选择选项 */
 export interface PickAttachmentOptions {
@@ -25,9 +27,9 @@ export async function pickAttachmentFiles(options: PickAttachmentOptions = {}): 
   const selected = await open({
     multiple: options.multiple ?? true,
     directory: false,
-    title: options.imagesOnly ? "选择图片" : "选择附件",
+    title: options.imagesOnly ? t("选择图片") : t("选择附件"),
     filters: options.imagesOnly
-      ? [{ name: "图片", extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif"] }]
+      ? [{ name: t("图片"), extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif"] }]
       : undefined,
   });
   if (selected === null) return [];
@@ -42,7 +44,7 @@ export async function pickAttachmentFiles(options: PickAttachmentOptions = {}): 
  */
 export async function pickAttachmentExportPath(defaultName: string): Promise<string | null> {
   return save({
-    title: "导出附件",
+    title: t("导出附件"),
     defaultPath: defaultName,
   });
 }
@@ -56,8 +58,8 @@ export async function pickLibraryFile(): Promise<string | null> {
   const selected = await open({
     multiple: false,
     directory: false,
-    title: "选择组件库",
-    filters: [{ name: "组件库文件", extensions: ["excalidrawlib"] }],
+    title: t("选择组件库"),
+    filters: [{ name: t("组件库文件"), extensions: ["excalidrawlib"] }],
   });
   if (selected === null) return null;
   return Array.isArray(selected) ? (selected[0] ?? null) : selected;
@@ -72,20 +74,33 @@ const EXPORT_FILTERS: Record<ExportFormat, { name: string; extensions: string[] 
 };
 
 /**
- * 选择单文档导出目标路径。
+ * 选择单文档导出目标路径；保存面板由 Rust 打开并签发一次性令牌。
  * @param format 导出格式
  * @param defaultName 默认文件名（不含扩展名）
- * @returns 绝对路径；取消时为 null
+ * @returns 路径令牌；取消时为 null
  * @example await pickExportPath("markdown", "设计文档");
  */
-export async function pickExportPath(format: ExportFormat, defaultName: string): Promise<string | null> {
+export async function pickExportPath(
+  format: ExportFormat,
+  defaultName: string,
+): Promise<ExportPathGrant | null> {
   const filter = EXPORT_FILTERS[format];
-  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || "未命名文档";
-  return save({
-    title: `导出为 ${filter.name}`,
-    defaultPath: `${safeName}.${filter.extensions[0]}`,
-    filters: [filter],
+  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名文档");
+  return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
+    suggestedName: `${safeName}.${filter.extensions[0]}`,
+    filterName: t(filter.name),
+    extensions: filter.extensions,
   });
+}
+
+/**
+ * 选择整库导出目录；目录令牌只允许写入该目录及其后代。
+ * @param title 面板标题
+ * @returns 目录令牌；取消时为 null
+ * @example const grant = await pickExportDirectory("选择导出位置");
+ */
+export async function pickExportDirectory(title: string): Promise<ExportPathGrant | null> {
+  return invokeCommand<ExportPathGrant | null>("dialog_pick_export_dir", { title });
 }
 
 /**
@@ -97,7 +112,7 @@ export async function pickImportFiles(): Promise<string[]> {
   const selected = await open({
     multiple: true,
     directory: false,
-    title: "选择要导入的文件",
+    title: t("选择要导入的文件"),
     filters: [
       {
         name: "Markdown / Word / Excalidraw",
@@ -117,21 +132,21 @@ const BOARD_EXPORT_FILTERS: Record<BoardExportFormat, { name: string; extensions
 };
 
 /**
- * 选择画板导出目标路径。
+ * 选择画板导出目标路径；保存面板由 Rust 打开并签发一次性令牌。
  * @param format png / svg / excalidraw
  * @param defaultName 默认文件名（不含扩展名）
- * @returns 绝对路径；取消时为 null
+ * @returns 路径令牌；取消时为 null
  * @example await pickBoardExportPath("png", "架构画板");
  */
 export async function pickBoardExportPath(
   format: BoardExportFormat,
   defaultName: string,
-): Promise<string | null> {
+): Promise<ExportPathGrant | null> {
   const filter = BOARD_EXPORT_FILTERS[format];
-  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || "未命名画板";
-  return save({
-    title: "导出画板",
-    defaultPath: `${safeName}.${filter.extensions[0]}`,
-    filters: [filter],
+  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名画板");
+  return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
+    suggestedName: `${safeName}.${filter.extensions[0]}`,
+    filterName: t(filter.name),
+    extensions: filter.extensions,
   });
 }

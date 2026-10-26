@@ -41,6 +41,12 @@ export interface AttachmentListQuery {
   logicalPath?: string | null;
   /** 是否包含已软删除行 */
   includeDeleted?: boolean;
+  /** 名称/目录模糊搜索 */
+  search?: string | null;
+  /** 返回条数，默认 50，最大 200 */
+  limit?: number;
+  /** 偏移量 */
+  offset?: number;
 }
 
 /** 上传参数 */
@@ -126,10 +132,19 @@ export interface AttachmentStats {
   trashCount: number;
   /** 实际磁盘占用 */
   diskBytes: number;
+  /** 存储所在磁盘剩余字节；后端无法读取时为 null */
+  diskFreeBytes: number | null;
   /** 可回收字节估算 */
   reclaimableBytes: number;
   /** 最近维护时间 */
   lastMaintenanceAt: number | null;
+}
+
+/** 当前工作区的附件保留策略 */
+export interface MaintenanceSettings {
+  orphanGraceDays: number;
+  trashRetentionDays: number;
+  stagingMaxAgeHours: number;
 }
 
 /** 设置临时保留时间 */
@@ -148,4 +163,10 @@ export interface AttachmentMaintenanceResult {
   orphanBlobs: number;
   compactedPacks: number;
   reclaimedBytes: number;
+  /** 本轮删除的无引用文档块哈希数 */
+  docHashesRemoved: number;
+  /** 本轮移入 quarantine 的孤儿文件数 */
+  orphanFiles: number;
+  /** 本轮清理的过期 quarantine 目录数 */
+  quarantineRemoved: number;
 }

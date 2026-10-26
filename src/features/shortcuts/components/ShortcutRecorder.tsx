@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useI18n } from "@/lib/i18n";
 import { bindingFromEvent } from "../shortcutKeys";
 
 export interface ShortcutRecorderProps {
@@ -12,6 +13,7 @@ export interface ShortcutRecorderProps {
  * 仅按下修饰键不提交；录制期间阻止快捷键继续分发。
  */
 export function ShortcutRecorder({ onCommit, onCancel }: ShortcutRecorderProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -48,10 +50,10 @@ export function ShortcutRecorder({ onCommit, onCancel }: ShortcutRecorderProps) 
     <button
       type="button"
       ref={ref}
-      aria-label="正在录制快捷键"
+      aria-label={t("正在录制快捷键")}
       className="flex h-7 min-w-[148px] cursor-default items-center justify-center rounded-[7px] border border-dashed border-primary/60 bg-accent/40 px-2 text-[11.5px] text-accent-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      请按组合键… <span className="ml-2 text-muted-foreground">Esc 取消</span>
+      {t("请按组合键…")} <span className="ml-2 text-muted-foreground">{t("Esc 取消")}</span>
     </button>
   );
 }

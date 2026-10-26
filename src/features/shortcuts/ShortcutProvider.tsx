@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { loadMemory, MEMORY_KEYS, saveMemory } from "@/api/memory";
+import { t, useI18n } from "@/lib/i18n";
 import { createDefaultShortcutConfig, normalizeShortcutConfig } from "./actions";
 import { setShortcutRuntimeConfig } from "./shortcutRuntime";
 import type { ShortcutConfig } from "./types";
@@ -22,6 +23,7 @@ const ShortcutContext = createContext<ShortcutContextValue | null>(null);
  * 读取失败回退默认；保存失败保留当前编辑值并暴露错误，不静默丢失。
  */
 export function ShortcutProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   const [config, setConfig] = useState<ShortcutConfig>(() => createDefaultShortcutConfig());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,7 +40,7 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
           try {
             setConfig(normalizeShortcutConfig(JSON.parse(raw)));
           } catch {
-            setLoadError("快捷键配置损坏，已恢复默认");
+            setLoadError(t("快捷键配置损坏，已恢复默认"));
             setConfig(createDefaultShortcutConfig());
           }
         }
@@ -52,7 +54,7 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     setShortcutRuntimeConfig(config);
@@ -90,6 +92,6 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
 /** 读取快捷键配置；未包裹 Provider 时直接报错，避免静默使用过期默认值。 */
 export function useShortcutConfig(): ShortcutContextValue {
   const value = useContext(ShortcutContext);
-  if (!value) throw new Error("useShortcutConfig 必须在 <ShortcutProvider> 内使用");
+  if (!value) throw new Error(t("useShortcutConfig 必须在 <ShortcutProvider> 内使用"));
   return value;
 }

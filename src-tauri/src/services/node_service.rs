@@ -1,16 +1,20 @@
 //! 文件树用例：增删改查、层级/路径维护与拖拽移动事务。
 
+use serde_json::json;
+
+use crate::domain::document::to_markdown;
 use crate::domain::{NodeType, join_node_path, replace_path_prefix, validate_node_title};
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::{
     CreateAttachmentNodeInput, CreateNodeInput, DeleteNodeResult, MoveNodeInput, NodeDto, NodeRow,
-    UpdateNodeInput,
+    RestoreNodeResult, TrashNodeDto, UpdateNodeInput,
 };
 use crate::repositories::attachment_repository;
 use crate::repositories::knowledge_base_repository as kb_repository;
 use crate::repositories::node_attachment_repository;
 use crate::repositories::node_repository as repository;
+use crate::repositories::search_repository;
 use crate::services::attachment_reference_service;
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
@@ -81,6 +85,15 @@ pub fn create_attachment_node(
         };
         let transaction = connection.unchecked_transaction()?;
         repository::insert(&transaction, &row)?;
+        search_repository::upsert(
+            &transaction,
+            &row.id,
+            &row.title,
+            "",
+            &row.knowledge_base_id,
+            row.node_type,
+            now,
+        )?;
         let registered = attachment_reference_service::register_node_object(
             &transaction,
             &row.id,
@@ -162,8 +175,41 @@ pub fn create(state: &AppState, input: CreateNodeInput) -> AppResult<NodeDto> {
             update_time: now,
         };
 
+        let table_content = (node_type == NodeType::Table).then(|| {
+            // 表格节点复用文档存储；默认给一张 3×3 空表，用户打开即可输入。
+            let cell = || json!({"type": "tableCell", "content": [{"type": "paragraph"}]});
+            let header = || json!({"type": "tableHeader", "content": [{"type": "paragraph"}]});
+            json!({
+                "type": "doc",
+                "content": [{
+                    "type": "table",
+                    "content": [
+                        {"type": "tableRow", "content": [header(), header(), header()]},
+                        {"type": "tableRow", "content": [cell(), cell(), cell()]},
+                        {"type": "tableRow", "content": [cell(), cell(), cell()]}
+                    ]
+                }]
+            })
+            .to_string()
+        });
+
         let transaction = connection.unchecked_transaction()?;
         repository::insert(&transaction, &row)?;
+        if let Some(content) = &table_content {
+            transaction.execute(
+                "UPDATE node SET content = ?2 WHERE id = ?1",
+                rusqlite::params![row.id, content],
+            )?;
+        }
+        search_repository::upsert(
+            &transaction,
+            &row.id,
+            &row.title,
+            "",
+            &row.knowledge_base_id,
+            row.node_type,
+            now,
+        )?;
         transaction.commit()?;
         logging::info(
             "node",
@@ -215,6 +261,7 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
             let transaction = connection.unchecked_transaction()?;
             if title_changed {
                 repository::update_title(&transaction, &existing.id, final_title, &new_path, now)?;
+                search_repository::update_title(&transaction, &existing.id, final_title, now)?;
                 if NodeType::from_i64(existing.node_type)? == NodeType::Attachment
                     && let Some(object_id) =
                         node_attachment_repository::first_object_id(&transaction, &existing.id)?
@@ -254,24 +301,186 @@ pub fn update(state: &AppState, input: UpdateNodeInput) -> AppResult<NodeDto> {
     })
 }
 
-/// 递归删除节点（文件夹连同全部后代）。
+/// 将节点（连同全部后代）移入回收站；附件引用与正文保留，恢复后可原样回来。
 pub fn delete(state: &AppState, id: &str) -> AppResult<DeleteNodeResult> {
     with_session(state, |session| {
         let connection = &session.connection;
         let existing = repository::find_by_id(connection, id)?
             .ok_or_else(|| AppError::not_found("内容不存在"))?;
         let deleted_count = repository::count_subtree(connection, &existing.id)?;
-        let object_ids =
-            node_attachment_repository::object_ids_for_subtree(connection, &existing.id)?;
+        let now = now_ms();
         let transaction = connection.unchecked_transaction()?;
-        repository::delete(&transaction, &existing.id)?;
-        attachment_reference_service::mark_orphans_for(&transaction, &object_ids, now_ms())?;
+        search_repository::delete_subtree(&transaction, &existing.id)?;
+        repository::soft_delete_subtree(&transaction, &existing.id, now)?;
         transaction.commit()?;
         logging::info(
             "node",
-            &format!("删除节点 id={} 含后代={deleted_count}", existing.id),
+            &format!("移入回收站 id={} 含后代={deleted_count}", existing.id),
         );
         Ok(DeleteNodeResult { deleted_count })
+    })
+}
+
+/// 列出知识库回收站根节点。
+pub fn trash_list(state: &AppState, knowledge_base_id: &str) -> AppResult<Vec<TrashNodeDto>> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        kb_repository::find_by_id(connection, knowledge_base_id)?
+            .ok_or_else(|| AppError::not_found("知识库不存在"))?;
+        let rows = repository::list_trash_roots(connection, knowledge_base_id)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| TrashNodeDto {
+                id: row.id,
+                knowledge_base_id: row.knowledge_base_id,
+                parent_id: row.parent_id,
+                node_type: row.node_type,
+                title: row.title,
+                path: row.path,
+                deleted_at: row.deleted_at,
+            })
+            .collect())
+    })
+}
+
+/// 从回收站恢复整棵子树，并按当前父级重算层级/路径与搜索索引。
+pub fn restore(state: &AppState, id: &str) -> AppResult<RestoreNodeResult> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        let trash = repository::find_trash(connection, id)?
+            .ok_or_else(|| AppError::not_found("回收站中不存在此内容"))?;
+        let parent = match trash.parent_id.as_deref() {
+            Some(parent_id) => {
+                let parent = repository::find_by_id(connection, parent_id)?
+                    .ok_or_else(|| AppError::validation("上级内容还在回收站，请先恢复上级"))?;
+                Some(parent)
+            }
+            None => None,
+        };
+        let old_rows = repository::subtree_any(connection, id)?;
+        let root_old_level = old_rows
+            .iter()
+            .find(|row| row.id == id)
+            .map_or(1, |row| row.level);
+        let old_root_path = old_rows
+            .iter()
+            .find(|row| row.id == id)
+            .map_or_else(|| trash.path.clone(), |row| row.path.clone());
+        let new_level = parent.as_ref().map_or(1, |row| row.level + 1);
+        let new_path = join_node_path(parent.as_ref().map(|row| row.path.as_str()), &trash.title);
+        let level_delta = new_level - root_old_level;
+        let now = now_ms();
+
+        let transaction = connection.unchecked_transaction()?;
+        let restored = repository::restore_subtree(&transaction, id)?;
+        repository::update_subtree_position(&transaction, id, new_level, &new_path, now)?;
+        for row in old_rows.iter().filter(|row| row.id != id) {
+            let path = replace_path_prefix(&row.path, &old_root_path, &new_path);
+            repository::update_subtree_position(
+                &transaction,
+                &row.id,
+                row.level + level_delta,
+                &path,
+                now,
+            )?;
+        }
+        for seed in repository::subtree_search_rows(&transaction, id)? {
+            let body = if matches!(seed.node_type, 2 | 4) {
+                serde_json::from_str::<serde_json::Value>(&seed.content)
+                    .map(|value| to_markdown(&value))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            search_repository::upsert(
+                &transaction,
+                &seed.id,
+                &seed.title,
+                &body,
+                &seed.knowledge_base_id,
+                seed.node_type,
+                now,
+            )?;
+        }
+        transaction.commit()?;
+        logging::info("node", &format!("从回收站恢复 id={id} 含后代={restored}"));
+        Ok(RestoreNodeResult {
+            restored_count: restored as i64,
+        })
+    })
+}
+
+fn purge_rows(
+    transaction: &rusqlite::Transaction<'_>,
+    roots: &[repository::TrashRow],
+) -> AppResult<i64> {
+    let mut object_ids = std::collections::BTreeSet::new();
+    let mut total = 0_i64;
+    for root in roots {
+        object_ids.extend(node_attachment_repository::object_ids_for_subtree(
+            transaction,
+            &root.id,
+        )?);
+        total += repository::subtree_any(transaction, &root.id)?.len() as i64;
+        search_repository::delete_subtree(transaction, &root.id)?;
+        repository::delete(transaction, &root.id)?;
+    }
+    attachment_reference_service::mark_orphans_for(transaction, &object_ids, now_ms())?;
+    Ok(total)
+}
+
+/// 永久删除单个回收站根节点及其后代。
+pub fn trash_purge(state: &AppState, id: &str) -> AppResult<DeleteNodeResult> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        let trash = repository::find_trash(connection, id)?
+            .ok_or_else(|| AppError::not_found("回收站中不存在此内容"))?;
+        let transaction = connection.unchecked_transaction()?;
+        let deleted_count = purge_rows(&transaction, &[trash])?;
+        transaction.commit()?;
+        logging::info("node", &format!("永久删除 id={id} 含后代={deleted_count}"));
+        Ok(DeleteNodeResult { deleted_count })
+    })
+}
+
+/// 清空某知识库的回收站。
+pub fn trash_empty(state: &AppState, knowledge_base_id: &str) -> AppResult<DeleteNodeResult> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        kb_repository::find_by_id(connection, knowledge_base_id)?
+            .ok_or_else(|| AppError::not_found("知识库不存在"))?;
+        let roots = repository::list_trash_roots(connection, knowledge_base_id)?;
+        if roots.is_empty() {
+            return Ok(DeleteNodeResult { deleted_count: 0 });
+        }
+        let transaction = connection.unchecked_transaction()?;
+        let deleted_count = purge_rows(&transaction, &roots)?;
+        transaction.commit()?;
+        logging::info(
+            "node",
+            &format!("清空回收站 kb={knowledge_base_id} 含后代={deleted_count}"),
+        );
+        Ok(DeleteNodeResult { deleted_count })
+    })
+}
+
+/// 启动时清理超过保留期的回收站内容；保留天数复用附件回收站设置。
+pub fn purge_expired_trash(state: &AppState, retention_days: i64) -> AppResult<i64> {
+    with_session(state, |session| {
+        let connection = &session.connection;
+        let cutoff = now_ms().saturating_sub(retention_days.max(1) * 24 * 60 * 60 * 1000);
+        let roots = repository::list_expired_trash_roots(connection, cutoff)?;
+        if roots.is_empty() {
+            return Ok(0);
+        }
+        let transaction = connection.unchecked_transaction()?;
+        let deleted_count = purge_rows(&transaction, &roots)?;
+        transaction.commit()?;
+        logging::info(
+            "node",
+            &format!("清理过期回收站 含后代={deleted_count} cutoff={cutoff}"),
+        );
+        Ok(deleted_count)
     })
 }
 

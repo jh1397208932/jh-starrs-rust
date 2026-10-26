@@ -5,6 +5,7 @@ import { toErrorMessage } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { FileTypeIcon } from "@/features/attachments/components/FileTypeIcon";
+import { useI18n } from "@/lib/i18n";
 import type { Attachment } from "@/types/attachment";
 import type { BoardAttachmentRecord } from "../hooks/useBoardFileIntake";
 
@@ -28,6 +29,7 @@ export function AttachmentPickerDialog({
   onInsert,
   onError,
 }: AttachmentPickerDialogProps) {
+  const { t } = useI18n();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [inserting, setInserting] = useState<string | null>(null);
@@ -69,20 +71,20 @@ export function AttachmentPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[560px] max-w-[92vw] gap-4 p-5">
-        <DialogHeader title="插入附件" />
+        <DialogHeader title={t("插入附件")} />
         <div className="min-h-[220px] max-h-[55vh] overflow-y-auto rounded-[12px] border border-border/60">
           {loading ? (
             <div className="flex h-[220px] items-center justify-center gap-2 text-[12.5px] text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              正在读取附件…
+              {t("正在读取附件…")}
             </div>
           ) : attachments.length === 0 ? (
             <div className="flex h-[220px] flex-col items-center justify-center gap-2 text-center">
               <Paperclip className="size-7 text-muted-foreground/60" />
-              <p className="text-[13px] font-medium text-foreground">还没有附件</p>
+              <p className="text-[13px] font-medium text-foreground">{t("还没有附件")}</p>
             </div>
           ) : (
-            <ul aria-label="附件列表">
+            <ul aria-label={t("附件列表")}>
               {attachments.map((attachment) => (
                 <li key={attachment.id} className="border-b border-border/50 last:border-b-0">
                   <Button

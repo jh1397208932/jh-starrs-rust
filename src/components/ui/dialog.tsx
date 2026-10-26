@@ -1,6 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -79,7 +80,7 @@ export function DialogContent({
         {children}
         {showClose && (
           <DialogPrimitive.Close
-            aria-label="关闭"
+            aria-label={t("关闭")}
             className="absolute top-3 right-3 grid size-8 cursor-default place-items-center rounded-md text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <X className="size-4" />

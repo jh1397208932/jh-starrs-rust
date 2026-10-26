@@ -1,6 +1,7 @@
 import { Plus, Upload } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { NodeItem, TreeNode } from "@/types/notebook";
 import { useFileTreeDrag } from "../hooks/useFileTreeDrag";
@@ -48,6 +49,7 @@ export function FileTree({
   onMove,
   onError,
 }: FileTreeProps) {
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
   const expandFolder = (id: string) => {
@@ -100,14 +102,14 @@ export function FileTree({
       <div className="flex items-center justify-between px-2.5 pt-1 pb-1.5">
         <span className="flex min-w-0 items-center gap-1.5 truncate text-[10.5px] font-semibold tracking-[0.14em] text-sidebar-muted uppercase">
           <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-primary/70" />
-          {currentKbName ?? "文件"}
+          {currentKbName ?? t("文件")}
         </span>
         <div className="flex items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="上传附件"
+                aria-label={t("上传附件")}
                 disabled={!currentKbName}
                 onClick={() => onUploadAttachment(null)}
                 className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
@@ -115,13 +117,13 @@ export function FileTree({
                 <Upload className="size-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{currentKbName ? "上传附件" : "请先新建知识库"}</TooltipContent>
+            <TooltipContent>{currentKbName ? t("上传附件") : t("请先新建知识库")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="新建内容"
+                aria-label={t("新建内容")}
                 disabled={!currentKbName}
                 onClick={onCreateRoot}
                 className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
@@ -129,22 +131,26 @@ export function FileTree({
                 <Plus className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{currentKbName ? "新建内容" : "请先新建知识库"}</TooltipContent>
+            <TooltipContent>{currentKbName ? t("新建内容") : t("请先新建知识库")}</TooltipContent>
           </Tooltip>
         </div>
       </div>
 
       <div
         role="tree"
-        aria-label="文件树"
+        aria-label={t("文件树")}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring"
       >
         {!currentKbName ? (
-          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">还没有知识库</p>
+          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">
+            {t("还没有知识库")}
+          </p>
         ) : tree.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">还没有内容</p>
+          <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">
+            {t("还没有内容")}
+          </p>
         ) : (
           tree.map((entry) => (
             <FileTreeRow
@@ -165,7 +171,7 @@ export function FileTree({
           ))
         )}
         <fieldset
-          aria-label="移动到顶层"
+          aria-label={t("移动到顶层")}
           onDragOver={drag.handleRootDragOver}
           onDrop={drag.handleRootDrop}
           className={cn(

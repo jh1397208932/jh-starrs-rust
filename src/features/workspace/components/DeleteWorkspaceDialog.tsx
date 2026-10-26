@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 import type { Workspace } from "@/types/notebook";
 
 export interface DeleteWorkspaceDialogProps {
@@ -26,6 +27,7 @@ export function DeleteWorkspaceDialog({
   isCurrent,
   onDelete,
 }: DeleteWorkspaceDialogProps) {
+  const { t } = useI18n();
   const [deleteFolder, setDeleteFolder] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +62,16 @@ export function DeleteWorkspaceDialog({
       }}
     >
       <DialogContent className="w-[400px] p-5" aria-describedby={undefined}>
-        <DialogTitle>删除工作区「{workspace?.name ?? ""}」？</DialogTitle>
+        <DialogTitle>
+          {t("删除工作区「")}
+          {workspace?.name ?? ""}」？
+        </DialogTitle>
         <DialogDescription className="mt-1.5">
-          {isCurrent ? "当前工作区，删除后将自动切换。" : "从列表中移除。"}
+          {isCurrent ? t("当前工作区，删除后将自动切换。") : t("从列表中移除。")}
         </DialogDescription>
 
         <div className="mt-3 rounded-md border border-border bg-muted/60 px-3 py-2">
-          <p className="text-[11.5px] text-muted-foreground">位置</p>
+          <p className="text-[11.5px] text-muted-foreground">{t("位置")}</p>
           <code className="mt-0.5 block truncate font-mono text-[11.5px]">{workspace?.path}</code>
         </div>
 
@@ -83,9 +88,9 @@ export function DeleteWorkspaceDialog({
             className="mt-0.5 size-4 accent-[var(--destructive)]"
           />
           <span>
-            <span className="block font-medium">同时删除本地文件夹</span>
+            <span className="block font-medium">{t("同时删除本地文件夹")}</span>
             <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
-              将永久删除文件夹中的所有内容，不可恢复。
+              {t("将永久删除文件夹中的所有内容，不可恢复。")}
             </span>
           </span>
         </label>
@@ -94,10 +99,10 @@ export function DeleteWorkspaceDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button variant="destructive" size="sm" disabled={pending} onClick={() => void confirm()}>
-            {pending ? "处理中…" : deleteFolder ? "删除文件夹" : "移除"}
+            {pending ? t("处理中…") : deleteFolder ? t("删除文件夹") : t("移除")}
           </Button>
         </div>
       </DialogContent>

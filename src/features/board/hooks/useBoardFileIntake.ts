@@ -6,6 +6,7 @@
 import { useCallback } from "react";
 import { uploadAttachmentBytes } from "@/api/attachment";
 import { toErrorMessage } from "@/api/client";
+import { t } from "@/lib/i18n";
 
 /** 画板只需要的最小 Excalidraw API 子集，避免静态 import 整个包。 */
 export interface BoardCanvasApi {
@@ -216,7 +217,7 @@ export function useBoardFileIntake({ nodeId, api, onError }: UseBoardFileIntakeO
         }
       }
       if (records.length > 0) await insertCards(records, origin);
-      if (failed > 0) onError(`${failed} 个文件上传失败，其余文件已插入画板`);
+      if (failed > 0) onError(t("{failed} 个文件上传失败，其余文件已插入画板", { failed }));
     },
     [api, insertCards, nodeId, onError],
   );

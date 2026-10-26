@@ -5,6 +5,7 @@ import { pickImportFiles } from "@/api/fileDialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ImportDocumentsParams, ImportMode, ImportResult } from "@/types/exchange";
 import type { NodeItem } from "@/types/notebook";
@@ -35,6 +36,7 @@ export function ImportDialog({
   onImport,
   onImported,
 }: ImportDialogProps) {
+  const { t } = useI18n();
   const [parentId, setParentId] = useState<string>(defaultParentId ?? ROOT_VALUE);
   const [mode, setMode] = useState<ImportMode>("files");
   const [paths, setPaths] = useState<string[]>([]);
@@ -71,7 +73,7 @@ export function ImportDialog({
   };
 
   const chooseDirectory = async () => {
-    const selected = await pickDirectory({ title: "选择要导入的文件夹" });
+    const selected = await pickDirectory({ title: t("选择要导入的文件夹") });
     if (!selected) return;
     setMode("directory");
     setPaths([selected]);
@@ -95,7 +97,7 @@ export function ImportDialog({
       setResult(imported);
       onImported?.(imported);
     } catch (caught) {
-      setError(caught instanceof Error && caught.message.trim() ? caught.message : "导入失败，请重试");
+      setError(caught instanceof Error && caught.message.trim() ? caught.message : t("导入失败，请重试"));
     } finally {
       setBusy(false);
     }
@@ -103,31 +105,35 @@ export function ImportDialog({
 
   const sourceLabel =
     paths.length === 0
-      ? "尚未选择"
+      ? t("尚未选择")
       : mode === "directory"
         ? paths[0]
-        : `${paths.length} 个文件：${paths
-            .slice(0, 3)
-            .map((path) => path.split(/[\\/]/).pop())
-            .join("、")}${paths.length > 3 ? "…" : ""}`;
+        : t("{count} 个文件：{names}{more}", {
+            count: paths.length,
+            names: paths
+              .slice(0, 3)
+              .map((path) => path.split(/[\\/]/).pop())
+              .join(", "),
+            more: paths.length > 3 ? "…" : "",
+          });
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="w-[600px] p-5" aria-describedby={undefined}>
-        <DialogTitle>导入</DialogTitle>
+        <DialogTitle>{t("导入")}</DialogTitle>
         <DialogDescription className="mt-1 text-[12.5px] text-muted-foreground">
-          支持 Markdown、Word 与 Excalidraw。
+          {t("支持 Markdown、Word 与 Excalidraw。")}
         </DialogDescription>
 
         <div className="mt-4 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-foreground">导入到</span>
+            <span className="text-[12px] font-medium text-foreground">{t("导入到")}</span>
             <Select value={parentId} onValueChange={setParentId} disabled={busy}>
-              <SelectTrigger aria-label="导入目标文件夹">
-                <SelectValue placeholder="知识库根目录" />
+              <SelectTrigger aria-label={t("导入目标文件夹")}>
+                <SelectValue placeholder={t("知识库根目录")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ROOT_VALUE}>知识库根目录</SelectItem>
+                <SelectItem value={ROOT_VALUE}>{t("知识库根目录")}</SelectItem>
                 {folders.map((folder) => (
                   <SelectItem key={folder.id} value={folder.id}>
                     {folder.path}
@@ -149,8 +155,8 @@ export function ImportDialog({
             >
               <FileUp className="size-4 text-muted-foreground" />
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-medium">选择文件</span>
-                <span className="block text-[11.5px] text-muted-foreground">可多选</span>
+                <span className="block text-[13.5px] font-medium">{t("选择文件")}</span>
+                <span className="block text-[11.5px] text-muted-foreground">{t("可多选")}</span>
               </span>
             </button>
             <button
@@ -164,14 +170,14 @@ export function ImportDialog({
             >
               <FolderOpen className="size-4 text-muted-foreground" />
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-medium">选择文件夹</span>
-                <span className="block text-[11.5px] text-muted-foreground">含子文件夹</span>
+                <span className="block text-[13.5px] font-medium">{t("选择文件夹")}</span>
+                <span className="block text-[11.5px] text-muted-foreground">{t("含子文件夹")}</span>
               </span>
             </button>
           </div>
 
           <div className="rounded-md border border-border/70 bg-secondary/45 px-3 py-2.5">
-            <p className="text-[11.5px] text-muted-foreground">来源</p>
+            <p className="text-[11.5px] text-muted-foreground">{t("来源")}</p>
             <p className="mt-0.5 min-w-0 truncate text-[12.5px] text-foreground" title={sourceLabel}>
               {sourceLabel}
             </p>
@@ -184,7 +190,7 @@ export function ImportDialog({
                   onChange={(event) => setPreserveHierarchy(event.target.checked)}
                   className="size-3.5 accent-[var(--primary)]"
                 />
-                保留文件夹结构
+                {t("保留文件夹结构")}
               </label>
             )}
           </div>
@@ -204,18 +210,18 @@ export function ImportDialog({
                 ) : (
                   <CheckCircle2 className="size-4 text-primary" />
                 )}
-                已导入 {result.imported} 项，失败 {result.failed} 项
+                {t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })}
               </p>
               {result.files
                 .filter((file) => !file.ok)
                 .slice(0, 4)
                 .map((file) => (
                   <p key={file.sourcePath} className="mt-1 truncate text-[11.5px] text-muted-foreground">
-                    {file.sourcePath.split(/[\\/]/).pop()}：{file.message ?? "导入失败"}
+                    {file.sourcePath.split(/[\\/]/).pop()}：{file.message ?? t("导入失败")}
                   </p>
                 ))}
               {result.files.some((file) => file.warnings.length > 0) && (
-                <p className="mt-1 text-[11.5px] text-muted-foreground">部分内容有格式警告。</p>
+                <p className="mt-1 text-[11.5px] text-muted-foreground">{t("部分内容有格式警告。")}</p>
               )}
             </div>
           )}
@@ -232,7 +238,7 @@ export function ImportDialog({
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onOpenChange(false)}>
-            {result ? "完成" : "取消"}
+            {result ? t("完成") : t("取消")}
           </Button>
           <Button
             size="sm"
@@ -240,7 +246,7 @@ export function ImportDialog({
             onClick={() => void run()}
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-            {busy ? "正在导入…" : "导入"}
+            {busy ? t("正在导入…") : t("导入")}
           </Button>
         </div>
       </DialogContent>

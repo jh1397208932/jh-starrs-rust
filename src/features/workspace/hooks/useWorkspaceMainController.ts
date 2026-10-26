@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { printMainWindow } from "@/api/app";
 import { uploadAttachmentToTree } from "@/api/attachment";
 import { loadBoard } from "@/api/board";
 import { toErrorMessage } from "@/api/client";
-import { pickDirectory } from "@/api/directory";
 import { exportDocument, exportKnowledgeBase, importDocuments, writeExportFile } from "@/api/exchange";
-import { pickAttachmentFiles, pickExportPath } from "@/api/fileDialog";
+import { pickAttachmentFiles, pickExportDirectory, pickExportPath } from "@/api/fileDialog";
 import {
   boardFilesToBinary,
   renderBoardPng,
@@ -12,9 +12,11 @@ import {
   textToBase64,
 } from "@/features/board/utils/exportScene";
 import { flushActivePersistence } from "@/features/editor/activeDocument";
+import type { SearchMode } from "@/features/search/components/SearchPalette";
 import { useShortcutConfig } from "@/features/shortcuts/ShortcutProvider";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import type { useToast } from "@/hooks/useToast";
+import { t } from "@/lib/i18n";
 import type { ExportFormat, ExportResult, ImportDocumentsParams, ImportResult } from "@/types/exchange";
 import type { NodeItem, NodeKind } from "@/types/notebook";
 import type { AppDialogState, NodeCreateRequest, WorkspaceDialogKind } from "../types";
@@ -27,31 +29,46 @@ import type { WorkspaceStore } from "./useWorkspaceStore";
 type ShowToast = ReturnType<typeof useToast>["showToast"];
 
 /** 全部导出后补渲染画板 PNG/SVG；单板失败只写警告，不阻断其他画板。 */
-async function renderBoardExports(result: ExportResult): Promise<void> {
+async function renderBoardExports(result: ExportResult, token: string): Promise<void> {
   for (const board of result.boards) {
     try {
       const data = await loadBoard(board.nodeId);
       if (data.elements.length === 0) {
-        result.warnings.push(`画板「${board.title}」为空，已跳过图片导出`);
+        result.warnings.push(t("画板「{title}」为空，已跳过图片导出", { title: board.title }));
         continue;
       }
       const files = boardFilesToBinary(data.files);
       const appState = data.appState as unknown as Record<string, unknown>;
       const png = await renderBoardPng(data.elements, appState, files);
-      result.files.push(await writeExportFile({ path: board.pngPath, dataBase64: png, overwrite: true }));
+      result.files.push(
+        await writeExportFile({
+          token,
+          path: board.pngPath,
+          dataBase64: png,
+          overwrite: true,
+        }),
+      );
       const svg = await renderBoardSvg(data.elements, appState, files);
       result.files.push(
         await writeExportFile({
+          token,
           path: board.svgPath,
           dataBase64: textToBase64(svg),
           overwrite: true,
         }),
       );
       if (data.missingObjectIds.length > 0) {
-        result.warnings.push(`画板「${board.title}」有 ${data.missingObjectIds.length} 个图片或附件缺失`);
+        result.warnings.push(
+          t("画板「{title}」有 {count} 个图片或附件缺失", {
+            title: board.title,
+            count: data.missingObjectIds.length,
+          }),
+        );
       }
     } catch (error) {
-      result.warnings.push(`画板「${board.title}」导出失败：${toErrorMessage(error)}`);
+      result.warnings.push(
+        t("画板「{title}」导出失败：{error}", { title: board.title, error: toErrorMessage(error) }),
+      );
     }
   }
 }
@@ -75,7 +92,10 @@ function toWorkspaceDialogKind(state: AppDialogState): WorkspaceDialogKind | nul
     state.type === "share" ||
     state.type === "exportKb" ||
     state.type === "import" ||
-    state.type === "library"
+    state.type === "library" ||
+    state.type === "backup" ||
+    state.type === "templates" ||
+    state.type === "nodeTrash"
   ) {
     return null;
   }
@@ -107,6 +127,8 @@ export function useWorkspaceMainController({
     setInfoOpen(false);
   }, [activeDocumentId]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("search");
   const [nodeCreate, setNodeCreate] = useState<NodeCreateRequest | null>(null);
   const [nodeRename, setNodeRename] = useState<NodeItem | null>(null);
   const [nodeDelete, setNodeDelete] = useState<NodeItem | null>(null);
@@ -131,23 +153,29 @@ export function useWorkspaceMainController({
   }, [store.nodes, tabSession.syncTabs]);
 
   const showMockToast = useCallback(
-    (label: string, kbd?: string) => showToast(`${label} 即将推出`, "primary", kbd),
+    (label: string, kbd?: string) => showToast(t("{label} 即将推出", { label }), "primary", kbd),
     [showToast],
   );
 
   const showError = useCallback((message: string) => showToast(message, "destructive"), [showToast]);
 
+  /** 打开搜索/快速跳转面板；两者共用同一组件与索引。 */
+  const openSearch = useCallback((mode: SearchMode) => {
+    setSearchMode(mode);
+    setSearchOpen(true);
+  }, []);
+
   /** 切换文档/标签/工作区前先落盘；失败则阻止切换并提示重试。 */
   const guardDocumentSave = useCallback(async () => {
     const saved = await flushActivePersistence();
-    if (!saved) showToast("文档未保存，请重试", "destructive");
+    if (!saved) showToast(t("文档未保存，请重试"), "destructive");
     return saved;
   }, [showToast]);
 
   const requestNodeCreate = useCallback(
     (parent: NodeItem | null, defaultKind: NodeKind = "doc", initialTitle = "") => {
       if (!store.currentKb) {
-        showToast("请先新建知识库", "destructive");
+        showToast(t("请先新建知识库"), "destructive");
         return;
       }
       setNodeCreate({ parent, defaultKind, initialTitle });
@@ -156,14 +184,14 @@ export function useWorkspaceMainController({
   );
 
   const createDoc = useCallback(() => requestNodeCreate(null), [requestNodeCreate]);
-  const createNote = useCallback(() => requestNodeCreate(null, "doc", "小记"), [requestNodeCreate]);
+  const createNote = useCallback(() => requestNodeCreate(null, "doc", t("小记")), [requestNodeCreate]);
 
   /** 从文件树直接上传附件：逐个创建 type=6 节点，部分失败不影响其余文件。 */
   const uploadAttachmentsToTree = useCallback(
     async (parent: NodeItem | null) => {
       const kb = store.currentKb;
       if (!kb) {
-        showToast("请先新建知识库", "destructive");
+        showToast(t("请先新建知识库"), "destructive");
         return;
       }
       let paths: string[];
@@ -194,8 +222,8 @@ export function useWorkspaceMainController({
         tabSession.openNode(created[0]);
         showToast(
           failures.length > 0
-            ? `已上传 ${created.length} 个附件，${failures.length} 个失败`
-            : `已上传 ${created.length} 个附件`,
+            ? t("已上传 {count} 个附件，{failed} 个失败", { count: created.length, failed: failures.length })
+            : t("已上传 {count} 个附件", { count: created.length }),
           failures.length > 0 ? "destructive" : "primary",
         );
       } else if (failures.length > 0) {
@@ -235,28 +263,41 @@ export function useWorkspaceMainController({
 
   const toggleStar = useCallback(() => {
     if (!activeNode) {
-      showToast("请先打开文档", "destructive");
+      showToast(t("请先打开文档"), "destructive");
       return;
     }
     void actions.toggleStar(activeNode).catch((error) => showToast(toErrorMessage(error), "destructive"));
   }, [actions, activeNode, showToast]);
 
+  /** 打印当前文档：先落盘，再打开系统打印面板。 */
+  const printActiveDocument = useCallback(async () => {
+    if (!(await guardDocumentSave())) return;
+    try {
+      await printMainWindow();
+    } catch (error) {
+      showToast(toErrorMessage(error), "destructive");
+    }
+  }, [guardDocumentSave, showToast]);
+
   /** 导出当前文档；返回 false 表示用户取消保存路径。 */
   const exportActiveDocument = useCallback(
     async (format: ExportFormat): Promise<boolean> => {
-      const nodeId = activeTab?.kind === "doc" ? activeTab.nodeId : null;
+      const nodeId = activeTab?.kind === "doc" || activeTab?.kind === "table" ? activeTab.nodeId : null;
       if (!activeTab || !nodeId) {
-        throw new Error("请先打开文档");
+        throw new Error(t("请先打开文档"));
       }
       if (!(await flushActivePersistence())) {
-        throw new Error("文档未保存，请重试");
+        throw new Error(t("文档未保存，请重试"));
       }
-      const dest = await pickExportPath(format, activeTab.title);
-      if (!dest) return false;
+      const grant = await pickExportPath(format, activeTab.title);
+      if (!grant) return false;
       try {
-        const result = await exportDocument({ nodeId, format, destPath: dest });
+        const result = await exportDocument({ nodeId, format, token: grant.token });
         showToast(
-          `已导出 ${result.files.length} 个文件${result.attachmentCount ? `（附件 ${result.attachmentCount} 个）` : ""}`,
+          t("已导出 {count} 个文件{extra}", {
+            count: result.files.length,
+            extra: result.attachmentCount ? t("（附件 {count} 个）", { count: result.attachmentCount }) : "",
+          }),
           "primary",
         );
         return true;
@@ -271,22 +312,27 @@ export function useWorkspaceMainController({
   const exportCurrentKnowledgeBase = useCallback(
     async (format: ExportFormat): Promise<boolean> => {
       const kb = store.currentKb;
-      if (!kb) throw new Error("请先选择知识库");
+      if (!kb) throw new Error(t("请先选择知识库"));
       if (!(await flushActivePersistence())) {
-        throw new Error("文档未保存，请重试");
+        throw new Error(t("文档未保存，请重试"));
       }
-      const destDir = await pickDirectory({ title: "选择导出位置" });
-      if (!destDir) return false;
+      const grant = await pickExportDirectory(t("选择导出位置"));
+      if (!grant) return false;
       try {
         const result = await exportKnowledgeBase({
           knowledgeBaseId: kb.id,
           format,
-          destDir,
+          token: grant.token,
         });
-        await renderBoardExports(result);
-        const warningSuffix = result.warnings.length > 0 ? `，${result.warnings.length} 个警告` : "";
+        await renderBoardExports(result, grant.token);
+        const warningSuffix =
+          result.warnings.length > 0 ? t("，{count} 个警告", { count: result.warnings.length }) : "";
         showToast(
-          `已导出 ${result.files.length} 个文件${result.attachmentCount ? `（附件 ${result.attachmentCount} 个）` : ""}${warningSuffix}`,
+          t("已导出 {count} 个文件{extra}{warnings}", {
+            count: result.files.length,
+            extra: result.attachmentCount ? t("（附件 {count} 个）", { count: result.attachmentCount }) : "",
+            warnings: warningSuffix,
+          }),
           "primary",
         );
         return true;
@@ -302,14 +348,14 @@ export function useWorkspaceMainController({
     async (params: ImportDocumentsParams): Promise<ImportResult> => {
       try {
         if (!(await flushActivePersistence())) {
-          throw new Error("文档未保存，请重试");
+          throw new Error(t("文档未保存，请重试"));
         }
         const result = await importDocuments(params);
         await store.refresh();
         showToast(
           result.failed > 0
-            ? `已导入 ${result.imported} 项，失败 ${result.failed} 项`
-            : `已导入 ${result.imported} 项`,
+            ? t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })
+            : t("已导入 {count} 项", { count: result.imported }),
           result.failed > 0 ? "destructive" : "primary",
         );
         return result;
@@ -325,7 +371,7 @@ export function useWorkspaceMainController({
     void (async () => {
       if (!(await guardDocumentSave())) return;
       tabSession.closeTab(activeTab.id);
-      showToast("标签已关闭");
+      showToast(t("标签已关闭"));
     })();
   }, [activeTab, guardDocumentSave, showToast, tabSession.closeTab]);
 
@@ -349,6 +395,20 @@ export function useWorkspaceMainController({
       })();
     },
     [guardDocumentSave, tabSession.activeTabId, tabSession.setActiveTabId],
+  );
+
+  /** 搜索结果只包含当前知识库节点；找不到说明树已过期，刷新后提示。 */
+  const openSearchHit = useCallback(
+    (nodeId: string) => {
+      const node = findNode(store.nodes, nodeId);
+      if (!node) {
+        showToast(t("内容可能已被删除"), "destructive");
+        void store.refresh();
+        return;
+      }
+      openNodeGuarded(node);
+    },
+    [store.nodes, store.refresh, showToast, openNodeGuarded],
   );
 
   const closeTabGuarded = useCallback(
@@ -385,7 +445,7 @@ export function useWorkspaceMainController({
   const submitNodeCreate = useCallback(
     async (kind: NodeKind, title: string) => {
       const kb = store.currentKb;
-      if (!kb) throw new Error("请先新建知识库");
+      if (!kb) throw new Error(t("请先新建知识库"));
       const node = await actions.createNode({
         knowledgeBaseId: kb.id,
         parentId: nodeCreate?.parent?.id ?? null,
@@ -416,16 +476,31 @@ export function useWorkspaceMainController({
       "app.sidebar": () => setSidebarOpen((value) => !value),
       "app.more": () => setMoreMenuOpen((value) => !value),
       "app.settings": () => onDialogChange({ type: "settings" }),
-      "app.quickJump": () => showMockToast("快速跳转"),
-      "app.globalSearch": () => showMockToast("全局搜索"),
+      "app.quickJump": () => openSearch("quick"),
+      "app.globalSearch": () => openSearch("search"),
+      "app.presentBoard": () => {
+        if (activeTab?.kind !== "board") {
+          showToast(t("请先打开画板"), "destructive");
+          return;
+        }
+        window.dispatchEvent(new Event("starris:present-board"));
+      },
       "app.save": () => {
         void (async () => {
-          if (await guardDocumentSave()) showToast("文档已保存", "primary");
+          if (await guardDocumentSave()) showToast(t("文档已保存"), "primary");
         })();
       },
-      "app.presentBoard": () => showMockToast("放映当前画板"),
     }),
-    [closeActiveTab, createDoc, guardDocumentSave, onDialogChange, showMockToast, showToast, toggleStar],
+    [
+      activeTab?.kind,
+      closeActiveTab,
+      createDoc,
+      guardDocumentSave,
+      onDialogChange,
+      openSearch,
+      showToast,
+      toggleStar,
+    ],
   );
   useKeyboardShortcuts(useWorkspaceShortcuts(appShortcutHandlers, shortcutConfig));
 
@@ -443,6 +518,11 @@ export function useWorkspaceMainController({
     setSidebarOpen,
     moreMenuOpen,
     setMoreMenuOpen,
+    searchOpen,
+    setSearchOpen,
+    searchMode,
+    openSearch,
+    openSearchHit,
     nodeCreate,
     setNodeCreate,
     nodeRename,
@@ -466,6 +546,7 @@ export function useWorkspaceMainController({
     handleSwitchKb,
     toggleStar,
     exportActiveDocument,
+    printActiveDocument,
     exportCurrentKnowledgeBase,
     importIntoKnowledgeBase,
     submitNodeCreate,

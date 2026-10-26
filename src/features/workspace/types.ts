@@ -11,6 +11,9 @@ export type AppDialogState =
   | { type: "exportKb" }
   | { type: "import"; parentId: string | null }
   | { type: "library" }
+  | { type: "backup" }
+  | { type: "templates" }
+  | { type: "nodeTrash" }
   | { type: WorkspaceDialogKind };
 
 /** 新建节点弹窗的入参快照 */

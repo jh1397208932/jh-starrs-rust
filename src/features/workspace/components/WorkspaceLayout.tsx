@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
+import { SearchPalette } from "@/features/search/components/SearchPalette";
 import { TRANSITION_VIEW } from "@/lib/motion";
-import { MOCK_RELATED } from "@/mocks/workspace";
 import type { WorkspaceMainController } from "../hooks/useWorkspaceMainController";
 import { InfoFloat } from "./InfoFloat";
 import { InfoPanel } from "./InfoPanel";
@@ -26,6 +26,11 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
     sidebarOpen,
     moreMenuOpen,
     setMoreMenuOpen,
+    searchOpen,
+    setSearchOpen,
+    searchMode,
+    openSearch,
+    openSearchHit,
     dialog,
     onDialogChange,
     onOpenExistingWorkspace,
@@ -39,6 +44,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
     handleSwitchWorkspace,
     handleSwitchKb,
     toggleStar,
+    printActiveDocument,
     tabSession,
     actions,
   } = controller;
@@ -70,7 +76,9 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
           onImport={() => onDialogChange({ type: "import", parentId: null })}
           onImportToFolder={(parent) => onDialogChange({ type: "import", parentId: parent.id })}
           onOpenLibrary={() => onDialogChange({ type: "library" })}
-          onMockAction={showMockToast}
+          onBackup={() => onDialogChange({ type: "backup" })}
+          onTemplates={() => onDialogChange({ type: "templates" })}
+          onNodeTrash={() => onDialogChange({ type: "nodeTrash" })}
           onShowStarred={tabSession.showStarred}
           onCreateNote={createNote}
           onCreateDoc={createDoc}
@@ -91,7 +99,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
           activeTabId={tabSession.activeTabId}
           onSelect={tabSession.setActiveTabId}
           onClose={tabSession.closeTab}
-          onSearch={() => showMockToast("全局搜索", "⌘⇧F")}
+          onSearch={() => openSearch("search")}
           trafficInset={!sidebarOpen}
           onWindowFallback={(label) => showMockToast(label)}
         />
@@ -116,11 +124,10 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
                   onToggleStar={toggleStar}
                   onToggleInfo={() => setInfoOpen((value) => !value)}
                   onShare={() => onDialogChange({ type: "share" })}
-                  onPrint={() => showMockToast("打印")}
+                  onPrint={() => void printActiveDocument()}
                   onOpenKb={() => onDialogChange({ type: "kbManage" })}
                   onOpenNode={tabSession.openNode}
                   onCreateDoc={createDoc}
-                  onMockAction={showMockToast}
                   onDocumentSaved={store.applyDocumentSaved}
                   onBoardSaved={store.applyBoardSaved}
                   onBoardExported={(message) => showToast(message, "primary")}
@@ -133,14 +140,24 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
               <InfoPanel
                 node={activeNode}
                 kb={store.currentKb}
-                related={MOCK_RELATED}
                 onBackToInfo={() => setInfoOpen(false)}
+                onOpenNode={(id) => {
+                  const target = store.nodes.find((item) => item.id === id);
+                  if (target) tabSession.openNode(target);
+                }}
               />
             </InfoFloat>
             <LibraryManagerDialog
               open={dialog?.type === "library"}
               onOpenChange={(open) => onDialogChange(open ? { type: "library" } : null)}
               onError={showError}
+            />
+            <SearchPalette
+              open={searchOpen}
+              mode={searchMode}
+              knowledgeBaseId={store.currentKb?.id ?? null}
+              onOpenChange={setSearchOpen}
+              onSelect={openSearchHit}
             />
           </div>
         </main>

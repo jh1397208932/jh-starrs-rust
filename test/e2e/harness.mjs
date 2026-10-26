@@ -173,7 +173,21 @@ export class TestContext {
 
   async press(text, options = {}) {
     await this.waitForText(text, { timeout: options.timeout ?? 8000, role: options.role });
-    this.ax.press(text, options);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        this.ax.press(text, options);
+        break;
+      } catch (error) {
+        // 应用激活/窗口切换的瞬间 AX 可能短暂找不到窗口；重试同一目标。
+        if (!/找不到应用窗口/.test(error.message) || attempt >= 5) throw error;
+        await sleep(300);
+        try {
+          this.ax.activate();
+        } catch {
+          // 下一次重试仍会重新查找窗口
+        }
+      }
+    }
     this.metrics.presses += 1;
     this.metrics.clicks += 1;
     await sleep(options.settle ?? 220);
@@ -250,7 +264,20 @@ export class TestContext {
   }
 
   async fill(query, text, note = "") {
-    this.ax.fill(query, text);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        this.ax.fill(query, text);
+        break;
+      } catch (error) {
+        if (!/找不到应用窗口/.test(error.message) || attempt >= 5) throw error;
+        await sleep(300);
+        try {
+          this.ax.activate();
+        } catch {
+          // 下一次重试仍会重新查找窗口
+        }
+      }
+    }
     this.metrics.fills += 1;
     if (note) this.notes.push(note);
     await sleep(220);
@@ -265,8 +292,19 @@ export class TestContext {
   /** 处理系统打开/保存面板：Cmd+Shift+G 输入路径，再按面板按钮。 */
   async nativePath(pathValue, { button = "Open", settle = 500 } = {}) {
     this.metrics.dialogs += 1;
-    await this.key("cmd+shift+g");
-    await this.waitForText("Go to:");
+    // 系统面板异步弹出；过早按键会被丢弃，短等后重试打开“前往文件夹”。
+    await sleep(500);
+    let opened = false;
+    for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
+      await this.key("cmd+shift+g");
+      try {
+        await this.waitForText("Go to:", { timeout: 4000 });
+        opened = true;
+      } catch {
+        await sleep(500);
+      }
+    }
+    if (!opened) throw new Error("系统面板未响应「前往文件夹」");
     await this.paste(pathValue);
     await this.key("return");
     await sleep(350);
@@ -344,6 +382,18 @@ export class TestContext {
 
   db(sql, params = []) {
     return this._query(path.join(this.workspacePath, "db/workspace.sqlite3"), sql, params);
+  }
+
+  /** 直接执行工作区 SQL；仅用于构造并发/冲突前置条件，业务操作仍走 UI。 */
+  exec(sql, params = []) {
+    const databasePath = path.join(this.workspacePath, "db/workspace.sqlite3");
+    assert.ok(fs.existsSync(databasePath), `数据库不存在：${databasePath}`);
+    const db = new DatabaseSync(databasePath);
+    try {
+      return db.prepare(sql).run(...params);
+    } finally {
+      db.close();
+    }
   }
 
   globalDb(sql, params = []) {

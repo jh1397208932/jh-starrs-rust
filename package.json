@@ -15,7 +15,10 @@
     "test:e2e": "node test/e2e/run.mjs",
     "test:backend": "cargo test --manifest-path src-tauri/Cargo.toml",
     "lint:fix": "biome check --write src",
-    "format": "biome format --write src"
+    "format": "biome format --write src",
+    "package": "tauri build",
+    "package:dmg": "tauri build --bundles dmg",
+    "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

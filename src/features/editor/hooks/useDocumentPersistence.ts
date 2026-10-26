@@ -33,9 +33,11 @@ export interface DocumentPersistence {
   /** 切换文档时重置保存器；必须在 flush 成功后调用 */
   beginDocument: (nodeId: string | null) => void;
   /** 加载完成后同步持久化读数 */
-  setBaseline: (wordCount: number, updatedAt: number) => void;
+  setBaseline: (wordCount: number, updatedAt: number, version: number) => void;
   /** 失败后手动重试 */
   retry: () => Promise<void>;
+  /** 丢弃本地 dirty 状态，供冲突后强制重新加载 */
+  discard: () => void;
   /** 立即保存所有 dirty 内容；返回是否已全部落盘 */
   flush: () => Promise<boolean>;
 }
@@ -51,6 +53,7 @@ export function useDocumentPersistence(
   const editorRef = useRef<Editor | null>(editor);
   editorRef.current = editor;
   const nodeIdRef = useRef<string | null>(null);
+  const baseVersionRef = useRef(0);
   const dirtyRef = useRef(false);
   const failedRef = useRef(false);
   const savingRef = useRef(false);
@@ -124,8 +127,9 @@ export function useDocumentPersistence(
       }
 
       try {
-        const result = await saveDocument(nodeId, document);
+        const result = await saveDocument(nodeId, document, baseVersionRef.current);
         if (generation !== generationRef.current) return;
+        baseVersionRef.current = result.version;
         setWordCount(result.wordCount);
         setUpdatedAt(result.updatedAt);
         callbacksRef.current.onSaved?.(result);
@@ -181,6 +185,7 @@ export function useDocumentPersistence(
       generationRef.current += 1;
       clearTimers();
       nodeIdRef.current = nodeId;
+      baseVersionRef.current = 0;
       dirtyRef.current = false;
       failedRef.current = false;
       setStatus("idle");
@@ -188,7 +193,8 @@ export function useDocumentPersistence(
     [clearTimers],
   );
 
-  const setBaseline = useCallback((nextWordCount: number, nextUpdatedAt: number) => {
+  const setBaseline = useCallback((nextWordCount: number, nextUpdatedAt: number, nextVersion: number) => {
+    baseVersionRef.current = nextVersion;
     setWordCount(nextWordCount);
     setUpdatedAt(nextUpdatedAt);
     setStatus("saved");
@@ -200,6 +206,15 @@ export function useDocumentPersistence(
     failedRef.current = false;
     await beginSave();
   }, [beginSave]);
+
+  /** 冲突后放弃本地修改：只清 dirty/失败标记，不触碰编辑器内容。 */
+  const discard = useCallback(() => {
+    generationRef.current += 1;
+    clearTimers();
+    dirtyRef.current = false;
+    failedRef.current = false;
+    setStatus("idle");
+  }, [clearTimers]);
 
   const flush = useCallback(async (): Promise<boolean> => {
     clearTimers();
@@ -224,6 +239,7 @@ export function useDocumentPersistence(
     beginDocument,
     setBaseline,
     retry,
+    discard,
     flush,
   };
 }

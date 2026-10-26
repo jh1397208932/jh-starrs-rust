@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAttachmentPreview } from "@/features/editor/components/nodes/useAttachmentPreview";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import type { Attachment } from "@/types/attachment";
 import type { NodeItem } from "@/types/notebook";
 import { formatAttachmentBytes } from "../utils/format";
@@ -23,6 +24,7 @@ export interface AttachmentNodeViewProps {
  * 不展示 hash/pack/物理路径等存储实现细节。
  */
 export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: AttachmentNodeViewProps) {
+  const { t } = useI18n();
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
       const target = await pickAttachmentExportPath(attachment.name);
       if (!target) return;
       await downloadAttachment({ id: attachment.id, destPath: target, overwrite: true });
-      setNotice("已下载");
+      setNotice(t("已下载"));
     } catch (error) {
       onError(toErrorMessage(error));
     } finally {
@@ -73,7 +75,7 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
     return (
       <div className="grid h-full place-items-center text-[13px] text-muted-foreground">
         <span className="inline-flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" /> 正在加载附件…
+          <Loader2 className="size-4 animate-spin" /> {t("正在加载附件…")}
         </span>
       </div>
     );
@@ -81,9 +83,9 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
 
   if (loadError || !attachment) {
     return (
-      <EmptyState glyph="!" title="附件不可用" description={loadError ?? "附件可能已被删除"}>
+      <EmptyState glyph="!" title={t("附件不可用")} description={loadError ?? t("附件可能已被删除")}>
         <Button variant="secondary" size="sm" onClick={() => setReloadToken((value) => value + 1)}>
-          重新加载
+          {t("重新加载")}
         </Button>
       </EmptyState>
     );
@@ -109,7 +111,7 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
         </div>
         <Button size="sm" variant="outline" disabled={downloading} onClick={() => void download()}>
           {downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-          下载
+          {t("下载")}
         </Button>
       </header>
 
@@ -121,13 +123,13 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
             </span>
             <div className="min-w-0">
               <h1
-                aria-label={`附件详情 ${attachment.name}`}
+                aria-label={t("附件详情 {name}", { name: attachment.name })}
                 className="truncate text-[22px] font-semibold text-foreground"
               >
                 {attachment.name}
               </h1>
               <p className="mt-0.5 text-[12px] text-muted-foreground">
-                {formatAttachmentBytes(attachment.size)} · {attachment.mime || "未知类型"}
+                {formatAttachmentBytes(attachment.size)} · {attachment.mime || t("未知类型")}
               </p>
             </div>
           </div>
@@ -137,7 +139,7 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
               {preview.loading ? (
                 <div className="grid h-48 place-items-center text-[12.5px] text-muted-foreground">
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" /> 正在加载图片…
+                    <Loader2 className="size-4 animate-spin" /> {t("正在加载图片…")}
                   </span>
                 </div>
               ) : preview.url ? (
@@ -149,9 +151,9 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
               ) : (
                 <div className="grid h-40 place-items-center text-center text-[12.5px] text-muted-foreground">
                   <div>
-                    <p>{preview.error ?? "图片无法预览"}</p>
+                    <p>{preview.error ?? t("图片无法预览")}</p>
                     <Button className="mt-3" size="sm" variant="secondary" onClick={() => void download()}>
-                      下载原文件
+                      {t("下载原文件")}
                     </Button>
                   </div>
                 </div>
@@ -159,17 +161,17 @@ export function AttachmentNodeView({ node, kbName, onOpenKb, onError }: Attachme
             </div>
           ) : (
             <div className="mt-6 rounded-[14px] border border-border/70 bg-muted/30 px-5 py-8 text-center text-[12.5px] text-muted-foreground">
-              该类型暂不支持预览，可下载后查看。
+              {t("该类型暂不支持预览，可下载后查看。")}
             </div>
           )}
 
           <dl className="mt-6 rounded-[14px] border border-border/70">
             {[
-              ["名称", attachment.name],
-              ["大小", formatAttachmentBytes(attachment.size)],
-              ["类型", attachment.mime || "未知"],
-              ["创建时间", formatTimestamp(attachment.createdAt)],
-              ["更新时间", formatTimestamp(attachment.updatedAt)],
+              [t("名称"), attachment.name],
+              [t("大小"), formatAttachmentBytes(attachment.size)],
+              [t("类型"), attachment.mime || t("未知")],
+              [t("创建时间"), formatTimestamp(attachment.createdAt)],
+              [t("更新时间"), formatTimestamp(attachment.updatedAt)],
             ].map(([label, value]) => (
               <div
                 key={label}

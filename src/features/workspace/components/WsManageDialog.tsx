@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import type { Workspace } from "@/types/notebook";
 import { DeleteWorkspaceDialog } from "./DeleteWorkspaceDialog";
 import { NameDialog } from "./NameDialog";
@@ -38,6 +39,7 @@ export function WsManageDialog({
   onRename,
   onDelete,
 }: WsManageDialogProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
   const [renaming, setRenaming] = useState<Workspace | null>(null);
@@ -69,14 +71,17 @@ export function WsManageDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="h-[440px] w-[560px] p-5" aria-describedby={undefined}>
-        <DialogHeader title="工作区管理" description={`共 ${workspaces.length} 个工作区`} />
+        <DialogHeader
+          title={t("工作区管理")}
+          description={t("共 {count} 个工作区", { count: workspaces.length })}
+        />
 
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            placeholder="搜索…"
-            aria-label="查询工作区"
+            placeholder={t("搜索…")}
+            aria-label={t("查询工作区")}
             onChange={(event) => setQuery(event.target.value)}
             className="h-8 pl-8 text-[12.5px]"
           />
@@ -87,7 +92,7 @@ export function WsManageDialog({
         <div className="mt-3 flex-1 overflow-y-auto rounded-md border border-border">
           {filtered.length === 0 && (
             <p className="px-3 py-8 text-center text-[12.5px] text-muted-foreground">
-              {workspaces.length === 0 ? "还没有工作区" : "没有匹配的工作区"}
+              {workspaces.length === 0 ? t("还没有工作区") : t("没有匹配的工作区")}
             </p>
           )}
           {filtered.map((workspace) => {
@@ -108,10 +113,10 @@ export function WsManageDialog({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2 truncate text-[13px] font-medium">
-                    {busyId === workspace.id ? "正在切换…" : workspace.name}
+                    {busyId === workspace.id ? t("正在切换…") : workspace.name}
                     {isCurrent && (
                       <Badge variant="solid" dot>
-                        当前
+                        {t("当前")}
                       </Badge>
                     )}
                   </span>
@@ -126,7 +131,7 @@ export function WsManageDialog({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`${workspace.name} 操作`}
+                      aria-label={t("{name} 操作", { name: workspace.name })}
                       className="grid size-7 cursor-default place-items-center rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                     >
                       <Ellipsis className="size-4" />
@@ -138,15 +143,15 @@ export function WsManageDialog({
                       onSelect={() => void switchTo(workspace.id)}
                     >
                       <ArrowLeftRight />
-                      切换
+                      {t("切换")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setRenaming(workspace)}>
                       <Pencil />
-                      重命名
+                      {t("重命名")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setPendingDelete(workspace)}>
                       <Trash2 />
-                      删除
+                      {t("删除")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -160,11 +165,11 @@ export function WsManageDialog({
           onOpenChange={(next) => {
             if (!next) setRenaming(null);
           }}
-          title="重命名工作区"
-          label="名称"
+          title={t("重命名工作区")}
+          label={t("名称")}
           initialValue={renaming?.name ?? ""}
           maxLength={80}
-          submitLabel="保存"
+          submitLabel={t("保存")}
           onSubmit={async (name) => {
             if (renaming) await onRename(renaming.id, name);
           }}

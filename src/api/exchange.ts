@@ -16,40 +16,40 @@ import type {
 
 /**
  * 导出单个文档。
- * @param params 文档 id、格式与用户选择的完整目标路径
+ * @param params 文档 id、格式与 Rust 签发的路径令牌
  * @returns 输出文件列表与警告
- * @example await exportDocument({ nodeId, format: "markdown", destPath: "/Users/me/a.md" });
+ * @example await exportDocument({ nodeId, format: "markdown", token });
  */
 export async function exportDocument(params: {
   nodeId: string;
   format: ExportFormat;
-  destPath: string;
+  token: string;
 }): Promise<ExportResult> {
   return invokeCommand<ExportResult>("export_document", {
     input: {
       nodeId: params.nodeId,
       format: params.format,
-      destPath: params.destPath,
+      token: params.token,
     },
   });
 }
 
 /**
  * 按文件树导出整个知识库。
- * @param params 知识库 id、格式与导出目录
+ * @param params 知识库 id、格式与目录令牌
  * @returns 根目录、文件列表与警告
- * @example await exportKnowledgeBase({ knowledgeBaseId, format: "markdown", destDir: "/Users/me/导出" });
+ * @example await exportKnowledgeBase({ knowledgeBaseId, format: "markdown", token });
  */
 export async function exportKnowledgeBase(params: {
   knowledgeBaseId: string;
   format: ExportFormat;
-  destDir: string;
+  token: string;
 }): Promise<ExportResult> {
   return invokeCommand<ExportResult>("export_knowledge_base", {
     input: {
       knowledgeBaseId: params.knowledgeBaseId,
       format: params.format,
-      destDir: params.destDir,
+      token: params.token,
     },
   });
 }
@@ -74,13 +74,14 @@ export async function importDocuments(params: ImportDocumentsParams): Promise<Im
 
 /**
  * 写入桌面端渲染的导出文件（画板 PNG/SVG/Excalidraw）。
- * @param params 绝对路径与 base64 内容
+ * @param params 路径令牌、目标路径与 base64 内容
  * @returns 已写入文件路径与类型
- * @example await writeExportFile({ path: "/Users/me/画板.png", dataBase64 });
+ * @example await writeExportFile({ token, path: "/Users/me/画板.png", dataBase64 });
  */
 export async function writeExportFile(params: WriteExportFileParams): Promise<ExportFile> {
   return invokeCommand<ExportFile>("export_write_file", {
     input: {
+      token: params.token,
       path: params.path,
       dataBase64: params.dataBase64,
       overwrite: params.overwrite ?? false,

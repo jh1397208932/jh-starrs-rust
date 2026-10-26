@@ -22,5 +22,14 @@ pub fn initialize() -> AppResult<AppState> {
     if let Err(error) = workspace_service::restore_last_workspace(&state) {
         logging::error("app", &format!("启动恢复当前工作区失败: {error}"));
     }
+    if let Ok(context) = crate::services::attachment_service::AttachmentContext::from_state(&state)
+    {
+        let days = crate::services::attachment_maintenance_service::settings(&context)
+            .map(|settings| settings.trash_retention_days)
+            .unwrap_or(30);
+        if let Err(error) = crate::services::node_service::purge_expired_trash(&state, days) {
+            logging::error("app", &format!("清理过期回收站失败: {error}"));
+        }
+    }
     Ok(state)
 }

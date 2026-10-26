@@ -10,14 +10,16 @@ use serde_json::{Value, json};
 
 use crate::domain::NodeType;
 use crate::domain::block_plan::{self, ExistingBlock};
-use crate::domain::document::{count_text_chars, prepare_document};
+use crate::domain::document::{count_text_chars, prepare_document, to_markdown};
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::SaveDocumentInput;
 use crate::models::document::{
     BlockAddDto, BlockNodeDto, DocLoadResult, DocSaveResult, OrderChangeDto,
 };
+use crate::repositories::document_history_repository;
 use crate::repositories::document_repository as repository;
+use crate::repositories::search_repository;
 use crate::services::attachment_reference_service;
 use crate::services::document_meta_service::{self, DocMetaPayload};
 use crate::state::{AppState, WorkspaceSession};
@@ -59,6 +61,7 @@ pub fn load(state: &AppState, node_id: &str) -> AppResult<DocLoadResult> {
                 })
                 .collect(),
             normalized,
+            version: node.doc_version,
         })
     })
 }
@@ -71,6 +74,9 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
         let node = repository::find_node(connection, &input.node_id)?
             .ok_or_else(|| AppError::not_found("文档不存在"))?;
         require_document(node.node_type)?;
+        if node.doc_version != input.base_version {
+            return Err(AppError::conflict("文档已在别处更新，请重新加载"));
+        }
 
         let prepared = prepare_document(&input.document)?;
         let blocks = prepared.blocks;
@@ -162,7 +168,27 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
             }
         }
 
-        repository::update_content(
+        let version = repository::update_content(
+            &transaction,
+            &input.node_id,
+            &content,
+            word_count,
+            updated_at,
+            input.base_version,
+        )?
+        .ok_or_else(|| AppError::conflict("文档已在别处更新，请重新加载"))?;
+        // 与正文同事务更新检索索引；异步元数据只用于迁移回填，不能依赖它。
+        search_repository::upsert(
+            &transaction,
+            &input.node_id,
+            &node.title,
+            &to_markdown(&prepared.document),
+            &node.knowledge_base_id,
+            node.node_type,
+            updated_at,
+        )?;
+        // 10 分钟一份快照；首次保存也保留一份，单篇最多 50 份。
+        document_history_repository::maybe_snapshot(
             &transaction,
             &input.node_id,
             &content,
@@ -220,15 +246,15 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
                 .collect(),
             word_count,
             updated_at,
+            version,
         })
     })
 }
 
 fn require_document(node_type: i64) -> AppResult<()> {
-    if NodeType::from_i64(node_type)? == NodeType::Doc {
-        Ok(())
-    } else {
-        Err(AppError::validation("只有文档节点支持正文存储"))
+    match NodeType::from_i64(node_type)? {
+        NodeType::Doc | NodeType::Table => Ok(()),
+        _ => Err(AppError::validation("只有文档或表格节点支持正文存储")),
     }
 }
 

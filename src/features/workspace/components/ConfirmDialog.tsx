@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -24,10 +25,11 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "删除",
+  confirmLabel,
   onConfirm,
   children,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +70,7 @@ export function ConfirmDialog({
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("取消")}
           </Button>
           <Button
             variant="destructive"
@@ -77,7 +79,7 @@ export function ConfirmDialog({
             disabled={pending}
             onClick={() => void handleConfirm()}
           >
-            {pending ? "处理中…" : confirmLabel}
+            {pending ? t("处理中…") : (confirmLabel ?? t("删除"))}
           </Button>
         </div>
       </DialogContent>

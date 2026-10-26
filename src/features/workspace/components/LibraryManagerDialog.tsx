@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { useI18n } from "@/lib/i18n";
 import { LIBRARY_CHANGED_EVENT, type Library } from "@/types/library";
 
 export interface LibraryManagerDialogProps {
@@ -17,6 +18,7 @@ export interface LibraryManagerDialogProps {
 
 /** 组件库管理：导入 .excalidrawlib、启用/禁用、删除导入库。 */
 export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryManagerDialogProps) {
+  const { t } = useI18n();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
       const library = await importLibrary({ path });
       await reload();
       notifyChanged();
-      setStatus(`已导入「${library.name}」，共 ${library.itemCount} 个组件`);
+      setStatus(t("已导入「{name}」，共 {count} 个组件", { name: library.name, count: library.itemCount }));
     } catch (error) {
       onError(toErrorMessage(error));
     } finally {
@@ -86,7 +88,7 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
       setPendingDelete(null);
       await reload();
       notifyChanged();
-      setStatus(`已删除「${library.name}」及 ${result.deletedItems} 个组件`);
+      setStatus(t("已删除「{name}」及 {count} 个组件", { name: library.name, count: result.deletedItems }));
     } catch (error) {
       onError(toErrorMessage(error));
     } finally {
@@ -98,12 +100,12 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[640px] max-w-[92vw] gap-4 p-5">
         <DialogHeader
-          title="组件库"
-          description="启用后可在画板中使用。"
+          title={t("组件库")}
+          description={t("启用后可在画板中使用。")}
           actions={
             <Button size="sm" onClick={() => void handleImport()} disabled={importing}>
               {importing ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-              导入组件库
+              {t("导入组件库")}
             </Button>
           }
         />
@@ -112,16 +114,16 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
           {loading ? (
             <div className="flex h-[220px] items-center justify-center gap-2 text-[12.5px] text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              正在读取组件库…
+              {t("正在读取组件库…")}
             </div>
           ) : libraries.length === 0 ? (
             <div className="flex h-[220px] flex-col items-center justify-center gap-2 text-center">
               <Package className="size-7 text-muted-foreground/60" />
-              <p className="text-[13px] font-medium text-foreground">还没有组件库</p>
-              <p className="text-[11.5px] text-muted-foreground">导入后即可在画板中使用。</p>
+              <p className="text-[13px] font-medium text-foreground">{t("还没有组件库")}</p>
+              <p className="text-[11.5px] text-muted-foreground">{t("导入后即可在画板中使用。")}</p>
             </div>
           ) : (
-            <ul aria-label="组件库列表">
+            <ul aria-label={t("组件库列表")}>
               {libraries.map((library) => (
                 <li
                   key={library.id}
@@ -134,20 +136,24 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-[13px] font-medium text-foreground">{library.name}</span>
                       <Badge variant={library.sourceType === "preset" ? "doc" : "board"}>
-                        {library.sourceType === "preset" ? "预设" : "导入"}
+                        {library.sourceType === "preset" ? t("预设") : t("导入")}
                       </Badge>
                       {library.license ? <Badge variant="board">{library.license}</Badge> : null}
                     </div>
                     <p className="truncate text-[10.5px] text-muted-foreground">
-                      {library.itemCount} 个组件
+                      {library.itemCount} {t("个组件")}
                       {library.author ? ` · ${library.author}` : ""}
-                      {!library.enabled ? " · 已停用" : ""}
+                      {!library.enabled ? t(" · 已停用") : ""}
                     </p>
                   </div>
                   <Switch
                     checked={library.enabled}
                     disabled={busyId === library.id}
-                    aria-label={`${library.enabled ? "停用" : "启用"} ${library.name}`}
+                    aria-label={
+                      library.enabled
+                        ? t("停用 {name}", { name: library.name })
+                        : t("启用 {name}", { name: library.name })
+                    }
                     onCheckedChange={(checked) => void handleToggle(library, checked)}
                   />
                   {library.sourceType === "import" ? (
@@ -156,7 +162,9 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
                       size="icon-sm"
                       disabled={busyId === library.id}
                       aria-label={
-                        pendingDelete === library.id ? `确认删除 ${library.name}` : `删除 ${library.name}`
+                        pendingDelete === library.id
+                          ? t("确认删除 {name}", { name: library.name })
+                          : t("删除 {name}", { name: library.name })
                       }
                       onClick={() => void handleDelete(library)}
                     >
@@ -174,7 +182,7 @@ export function LibraryManagerDialog({ open, onOpenChange, onError }: LibraryMan
         <div className="flex min-h-[18px] items-center justify-between gap-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <CheckCircle2 className="size-3 text-primary" />
-            预设素材来自 Excalidraw Libraries（MIT）。
+            {t("预设素材来自 Excalidraw Libraries（MIT）。")}
           </span>
           {status ? (
             <span role="status" className="truncate text-accent-foreground">

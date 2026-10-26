@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useI18n } from "@/lib/i18n";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import {
   ALL_SHORTCUT_ACTIONS,
@@ -34,6 +35,7 @@ const GROUPS: { scope: ShortcutScope; actions: ShortcutAction[]; note: string }[
 
 /** 设置 → 快捷键：总开关、作用域、搜索、录制与冲突提示。 */
 export function ShortcutsSettings() {
+  const { t } = useI18n();
   const { config, loading, saving, loadError, saveError, updateConfig, resetConfig } = useShortcutConfig();
   const [query, setQuery] = useState("");
   const [recordingId, setRecordingId] = useState<string | null>(null);
@@ -44,9 +46,9 @@ export function ShortcutsSettings() {
     if (!keyword) return GROUPS;
     return GROUPS.map((group) => ({
       ...group,
-      actions: group.actions.filter((action) => action.label.toLowerCase().includes(keyword)),
+      actions: group.actions.filter((action) => t(action.label).toLowerCase().includes(keyword)),
     })).filter((group) => group.actions.length > 0);
-  }, [query]);
+  }, [query, t]);
 
   const updateScope = (scope: ShortcutScope, enabled: boolean) => {
     updateConfig({ ...config, scopes: { ...config.scopes, [scope]: enabled } });
@@ -55,7 +57,7 @@ export function ShortcutsSettings() {
   const commitBinding = (action: ShortcutAction, binding: string): boolean => {
     const validation = validateBinding(binding, action.scope);
     if (!validation.ok) {
-      setRecorderError(validation.message ?? "组合键无效");
+      setRecorderError(validation.message ?? t("组合键无效"));
       return false;
     }
     const conflict = findSameScopeConflict(
@@ -66,7 +68,7 @@ export function ShortcutsSettings() {
       binding,
     );
     if (conflict) {
-      setRecorderError(`与「${conflict.label}」冲突`);
+      setRecorderError(t("与「{label}」冲突", { label: t(conflict.label) }));
       return false;
     }
     updateConfig({
@@ -91,16 +93,18 @@ export function ShortcutsSettings() {
     <div>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-[14px] font-semibold">快捷键</h3>
+          <h3 className="text-[14px] font-semibold">{t("快捷键")}</h3>
           <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>
-            应用内生效；基础输入与输入法组合键不受影响。
+            {t("应用内生效；基础输入与输入法组合键不受影响。")}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-muted-foreground">{config.enabled ? "已启用" : "已关闭"}</span>
+          <span className="text-[12px] text-muted-foreground">
+            {config.enabled ? t("已启用") : t("已关闭")}
+          </span>
           <Switch
             checked={config.enabled}
-            aria-label="启用快捷键"
+            aria-label={t("启用快捷键")}
             disabled={loading}
             onCheckedChange={(enabled) => updateConfig({ ...config, enabled })}
           />
@@ -117,8 +121,8 @@ export function ShortcutsSettings() {
             disabled={!config.enabled || loading}
             onClick={() => updateScope(scope, !config.scopes[scope])}
           >
-            {SCOPE_LABELS[scope]}
-            {!config.scopes[scope] ? " · 关" : ""}
+            {t(SCOPE_LABELS[scope])}
+            {!config.scopes[scope] ? t(" · 关") : ""}
           </Button>
         ))}
         <div className="relative ml-auto">
@@ -126,8 +130,8 @@ export function ShortcutsSettings() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索快捷键…"
-            aria-label="搜索快捷键"
+            placeholder={t("搜索快捷键…")}
+            aria-label={t("搜索快捷键")}
             className="h-8 w-[180px] rounded-[8px] border border-input bg-background pr-2.5 pl-8 text-[12px] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </div>
@@ -141,7 +145,7 @@ export function ShortcutsSettings() {
             setRecorderError(null);
           }}
         >
-          恢复默认
+          {t("恢复默认")}
         </Button>
       </div>
 
@@ -153,14 +157,14 @@ export function ShortcutsSettings() {
           {saveError ?? loadError}
         </p>
       )}
-      {saving && <p className="mt-2 text-[11px] text-muted-foreground">保存中…</p>}
+      {saving && <p className="mt-2 text-[11px] text-muted-foreground">{t("保存中…")}</p>}
 
       <div className="mt-4 space-y-4">
         {filtered.map((group) => (
           <section key={group.scope}>
             <div className="flex items-baseline justify-between gap-3 px-2">
-              <h4 className="text-[12.5px] font-semibold text-foreground">{SCOPE_LABELS[group.scope]}</h4>
-              <span className="text-[10.5px] text-muted-foreground">{group.note}</span>
+              <h4 className="text-[12.5px] font-semibold text-foreground">{t(SCOPE_LABELS[group.scope])}</h4>
+              <span className="text-[10.5px] text-muted-foreground">{t(group.note)}</span>
             </div>
             <ul className="mt-1">
               {group.actions.map((action) => {
@@ -186,11 +190,18 @@ export function ShortcutsSettings() {
                     binding={binding}
                     recording={recordingId === action.id}
                     error={
-                      recordingId === action.id ? recorderError : same ? `与「${same.label}」冲突` : null
+                      recordingId === action.id
+                        ? recorderError
+                        : same
+                          ? t("与「{label}」冲突", { label: t(same.label) })
+                          : null
                     }
                     warning={
                       !same && cross
-                        ? `与${SCOPE_LABELS[cross.scope]}「${cross.label}」重复，当前作用域优先`
+                        ? t("与{scope}「{label}」重复，当前作用域优先", {
+                            scope: t(SCOPE_LABELS[cross.scope]),
+                            label: t(cross.label),
+                          })
                         : null
                     }
                     onStartRecord={() => {
@@ -210,21 +221,23 @@ export function ShortcutsSettings() {
           </section>
         ))}
         {filtered.length === 0 && (
-          <p className="py-6 text-center text-[12px] text-muted-foreground">没有匹配的快捷键</p>
+          <p className="py-6 text-center text-[12px] text-muted-foreground">{t("没有匹配的快捷键")}</p>
         )}
       </div>
 
       <section className="mt-5 rounded-[10px] border border-border/70 bg-muted/25 p-3">
-        <p className="text-[12px] font-medium text-foreground">内置快捷键</p>
-        <p className="mt-0.5 text-[10.5px] text-muted-foreground">由编辑器或 Excalidraw 提供，暂不可修改。</p>
+        <p className="text-[12px] font-medium text-foreground">{t("内置快捷键")}</p>
+        <p className="mt-0.5 text-[10.5px] text-muted-foreground">
+          {t("由编辑器或 Excalidraw 提供，暂不可修改。")}
+        </p>
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
           {BUILTIN_SHORTCUTS.map((item) => (
-            <div key={`${item.group}-${item.label}`} className="flex items-center justify-between gap-2">
-              <span className="truncate text-[11.5px] text-muted-foreground">{item.label}</span>
+            <div key={`${item.group}-${t(item.label)}`} className="flex items-center justify-between gap-2">
+              <span className="truncate text-[11.5px] text-muted-foreground">{t(item.label)}</span>
               <span className={cn("flex shrink-0 gap-0.5", "text-[10px]")}>
                 {item.keys.map((key) => (
                   <span
-                    key={`${item.label}-${key}`}
+                    key={`${t(item.label)}-${key}`}
                     className="rounded-sm border border-border/60 bg-card px-1 py-0.5 font-mono"
                   >
                     {key}
@@ -237,12 +250,13 @@ export function ShortcutsSettings() {
       </section>
 
       <p className="mt-3 text-[10.5px] text-muted-foreground">
-        当前为应用内快捷键；系统级全局热键尚未启用。画板原生键位不受本页改键影响。
+        {t("当前为应用内快捷键；系统级全局热键尚未启用。画板原生键位不受本页改键影响。")}
       </p>
       {config.enabled && (
         <p className="mt-1 text-[10.5px] text-muted-foreground">
-          示例：{bindingLabel(config.bindings["app.newNode"] ?? "")} 新建，
-          {bindingLabel(config.bindings["board.save"] ?? "")} 保存画板。
+          {t("示例：")}
+          {bindingLabel(config.bindings["app.newNode"] ?? "")} {t("新建，")}
+          {bindingLabel(config.bindings["board.save"] ?? "")} {t("保存画板。")}
         </p>
       )}
     </div>

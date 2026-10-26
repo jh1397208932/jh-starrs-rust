@@ -37,6 +37,7 @@ import {
   Underline,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from "../constants";
 import { EDITOR_EMOJIS } from "../extensions/editorExtensions";
@@ -117,6 +118,7 @@ export function EditorContextMenu({
   onInsertAttachment,
   onError,
 }: EditorContextMenuProps) {
+  const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const linkInputRef = useRef<HTMLInputElement | null>(null);
   const [showLink, setShowLink] = useState(false);
@@ -165,7 +167,7 @@ export function EditorContextMenu({
       return;
     }
     if (!normalized) {
-      onError("请输入有效链接");
+      onError(t("请输入有效链接"));
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: normalized }).run();
@@ -180,7 +182,7 @@ export function EditorContextMenu({
     <div
       ref={menuRef}
       role="menu"
-      aria-label="编辑器操作"
+      aria-label={t("编辑器操作")}
       className="editor-float anim-pop-in fixed z-[60] w-[300px] overflow-hidden"
       style={{ left, top }}
       onMouseDown={(event) => {
@@ -191,20 +193,20 @@ export function EditorContextMenu({
     >
       <div className="editor-context-scroll p-1.5">
         <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
-          <span className="text-[11.5px] font-semibold text-foreground">编辑</span>
-          <span className="text-[10.5px] text-muted-foreground">Esc 关闭</span>
+          <span className="text-[11.5px] font-semibold text-foreground">{t("编辑")}</span>
+          <span className="text-[10.5px] text-muted-foreground">{t("Esc 关闭")}</span>
         </div>
 
         <div className="flex flex-wrap gap-0.5 px-1">
           {(
             [
-              ["bold", "加粗", Bold, () => run((chain) => chain.toggleBold())],
-              ["italic", "斜体", Italic, () => run((chain) => chain.toggleItalic())],
-              ["underline", "下划线", Underline, () => run((chain) => chain.toggleUnderline())],
-              ["strike", "删除线", Strikethrough, () => run((chain) => chain.toggleStrike())],
-              ["code", "行内代码", Code, () => run((chain) => chain.toggleCode())],
-              ["sub", "下标", Subscript, () => run((chain) => chain.toggleSubscript())],
-              ["sup", "上标", Superscript, () => run((chain) => chain.toggleSuperscript())],
+              ["bold", t("加粗"), Bold, () => run((chain) => chain.toggleBold())],
+              ["italic", t("斜体"), Italic, () => run((chain) => chain.toggleItalic())],
+              ["underline", t("下划线"), Underline, () => run((chain) => chain.toggleUnderline())],
+              ["strike", t("删除线"), Strikethrough, () => run((chain) => chain.toggleStrike())],
+              ["code", t("行内代码"), Code, () => run((chain) => chain.toggleCode())],
+              ["sub", t("下标"), Subscript, () => run((chain) => chain.toggleSubscript())],
+              ["sup", t("上标"), Superscript, () => run((chain) => chain.toggleSuperscript())],
             ] as const
           ).map(([id, label, Icon, onClick]) => (
             <button
@@ -223,13 +225,13 @@ export function EditorContextMenu({
           ))}
           <button
             type="button"
-            title="清除格式"
-            aria-label="清除格式"
+            title={t("清除格式")}
+            aria-label={t("清除格式")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run((chain) => chain.unsetAllMarks().clearNodes())}
             className="flex h-7 cursor-default items-center rounded-md px-2 text-[11px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            清除格式
+            {t("清除格式")}
           </button>
         </div>
 
@@ -237,7 +239,7 @@ export function EditorContextMenu({
 
         <SectionLabel>
           <span className="inline-flex items-center gap-1.5">
-            <Palette className="size-3" /> 文字颜色
+            <Palette className="size-3" /> {t("文字颜色")}
           </span>
         </SectionLabel>
         <div className="px-2 pb-1">
@@ -252,7 +254,7 @@ export function EditorContextMenu({
 
         <SectionLabel>
           <span className="inline-flex items-center gap-1.5">
-            <Highlighter className="size-3" /> 高亮
+            <Highlighter className="size-3" /> {t("高亮")}
           </span>
         </SectionLabel>
         <div className="px-2 pb-1">
@@ -267,26 +269,26 @@ export function EditorContextMenu({
 
         <div className="editor-menu-divider" />
 
-        <SectionLabel>类型</SectionLabel>
+        <SectionLabel>{t("类型")}</SectionLabel>
         <div className="grid grid-cols-2 gap-0.5">
           {BLOCK_ACTIONS.map((action) => (
             <Action
               key={action.id}
               icon={action.icon}
-              label={action.label}
+              label={t(action.label)}
               onClick={() => run(action.command)}
             />
           ))}
         </div>
 
-        <SectionLabel>对齐</SectionLabel>
+        <SectionLabel>{t("对齐")}</SectionLabel>
         <div className="flex gap-0.5 px-1">
           {ALIGN_ACTIONS.map((action) => (
             <button
               key={action.id}
               type="button"
-              title={action.label}
-              aria-label={action.label}
+              title={t(action.label)}
+              aria-label={t(action.label)}
               aria-pressed={editor.isActive({ textAlign: action.value })}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => run((chain) => chain.setTextAlign(action.value))}
@@ -300,10 +302,10 @@ export function EditorContextMenu({
 
         <div className="editor-menu-divider" />
 
-        <SectionLabel>插入</SectionLabel>
+        <SectionLabel>{t("插入")}</SectionLabel>
         <Action
           icon={ImagePlus}
-          label="图片"
+          label={t("图片")}
           onClick={() => {
             onClose();
             onInsertImage();
@@ -311,7 +313,7 @@ export function EditorContextMenu({
         />
         <Action
           icon={Paperclip}
-          label="附件"
+          label={t("附件")}
           onClick={() => {
             onClose();
             onInsertAttachment();
@@ -319,19 +321,19 @@ export function EditorContextMenu({
         />
         <Action
           icon={Table2}
-          label="表格 3×3"
+          label={t("表格 3×3")}
           onClick={() => run((chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }))}
         />
         <Action
           icon={Link2}
-          label={hasLink ? "修改链接" : "添加链接"}
+          label={hasLink ? t("修改链接") : t("添加链接")}
           onClick={() => setShowLink((value) => !value)}
           active={showLink}
         />
         {hasLink && (
           <Action
             icon={Link2Off}
-            label="移除链接"
+            label={t("移除链接")}
             onClick={() => run((chain) => chain.extendMarkRange("link").unsetLink())}
           />
         )}
@@ -348,7 +350,7 @@ export function EditorContextMenu({
               value={linkValue}
               onChange={(event) => setLinkValue(event.target.value)}
               placeholder="https://…"
-              aria-label="链接地址"
+              aria-label={t("链接地址")}
               onMouseDown={(event) => event.stopPropagation()}
               className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-background px-2 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring"
             />
@@ -356,14 +358,14 @@ export function EditorContextMenu({
               type="submit"
               className="h-7 cursor-default rounded-sm bg-accent px-2.5 text-[12px] font-medium text-accent-foreground ring-1 ring-primary/25 ring-inset transition-colors duration-150 ease-[var(--ease)] hover:bg-accent-foreground/15"
             >
-              应用
+              {t("应用")}
             </button>
           </form>
         )}
 
         <SectionLabel>
           <span className="inline-flex items-center gap-1.5">
-            <Smile className="size-3" /> 表情
+            <Smile className="size-3" /> {t("表情")}
           </span>
         </SectionLabel>
         <div className="grid grid-cols-6 gap-0.5 px-1 pb-1">
@@ -385,30 +387,42 @@ export function EditorContextMenu({
         {inTable && (
           <>
             <div className="editor-menu-divider" />
-            <SectionLabel>表格</SectionLabel>
+            <SectionLabel>{t("表格")}</SectionLabel>
             <div className="grid grid-cols-2 gap-0.5">
-              <Action icon={Rows3} label="上方加行" onClick={() => run((chain) => chain.addRowBefore())} />
-              <Action icon={Rows3} label="下方加行" onClick={() => run((chain) => chain.addRowAfter())} />
+              <Action
+                icon={Rows3}
+                label={t("上方加行")}
+                onClick={() => run((chain) => chain.addRowBefore())}
+              />
+              <Action
+                icon={Rows3}
+                label={t("下方加行")}
+                onClick={() => run((chain) => chain.addRowAfter())}
+              />
               <Action
                 icon={Columns3}
-                label="左侧加列"
+                label={t("左侧加列")}
                 onClick={() => run((chain) => chain.addColumnBefore())}
               />
               <Action
                 icon={Columns3}
-                label="右侧加列"
+                label={t("右侧加列")}
                 onClick={() => run((chain) => chain.addColumnAfter())}
               />
-              <Action icon={Rows3} label="删除行" onClick={() => run((chain) => chain.deleteRow())} />
-              <Action icon={Columns3} label="删除列" onClick={() => run((chain) => chain.deleteColumn())} />
+              <Action icon={Rows3} label={t("删除行")} onClick={() => run((chain) => chain.deleteRow())} />
+              <Action
+                icon={Columns3}
+                label={t("删除列")}
+                onClick={() => run((chain) => chain.deleteColumn())}
+              />
               <Action
                 icon={Table2}
-                label="切换表头"
+                label={t("切换表头")}
                 onClick={() => run((chain) => chain.toggleHeaderRow())}
               />
               <Action
                 icon={Trash2}
-                label="删除表格"
+                label={t("删除表格")}
                 destructive
                 onClick={() => run((chain) => chain.deleteTable())}
               />

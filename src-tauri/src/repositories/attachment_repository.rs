@@ -176,7 +176,7 @@ pub fn count_hash_rows(connection: &Connection, hash: &str) -> rusqlite::Result<
     )
 }
 
-/// 列出附件；可按逻辑目录过滤，并可包含软删除行。
+/// 列出附件；可按逻辑目录/名称过滤、分页，并可包含软删除行。
 pub fn list(
     connection: &Connection,
     query: &AttachmentListQuery,
@@ -185,12 +185,17 @@ pub fn list(
         "SELECT {ATTACHMENT_COLUMNS} FROM attachment
          WHERE (?1 IS NULL OR logical_path = ?1)
            AND (?2 = 1 OR status = 'active')
-         ORDER BY updated_at DESC, created_at DESC, id DESC"
+           AND (?3 IS NULL OR name LIKE ?3 ESCAPE '\\' OR logical_path LIKE ?3 ESCAPE '\\')
+         ORDER BY updated_at DESC, created_at DESC, id DESC
+         LIMIT ?4 OFFSET ?5"
     ))?;
     let rows = statement.query_map(
         params![
             query.logical_path.as_deref(),
-            i64::from(query.include_deleted)
+            i64::from(query.include_deleted),
+            query.search.as_deref(),
+            query.limit.unwrap_or(50),
+            query.offset.unwrap_or(0)
         ],
         map_attachment,
     )?;

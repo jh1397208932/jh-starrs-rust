@@ -7,7 +7,7 @@ use crate::domain::{
 };
 use crate::errors::{AppError, AppResult};
 use crate::logging;
-use crate::models::{SETTING_CURRENT_WORKSPACE, SETTING_MODE, SETTING_THEME};
+use crate::models::{SETTING_CURRENT_WORKSPACE, SETTING_LOCALE, SETTING_MODE, SETTING_THEME};
 use crate::repositories::settings_repository;
 use crate::state::AppState;
 use crate::utils::now_ms;
@@ -33,6 +33,9 @@ pub fn save(state: &AppState, entries: &BTreeMap<String, String>) -> AppResult<(
             }
             SETTING_THEME => validate_theme_name(value)?,
             SETTING_MODE => validate_theme_mode(value)?,
+            SETTING_LOCALE if value != "zh-CN" && value != "en-US" => {
+                return Err(AppError::validation("界面语言不受支持"));
+            }
             _ => {}
         }
     }

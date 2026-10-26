@@ -10,8 +10,9 @@ use crate::logging;
 use crate::models::attachment::{
     AttachmentDeleteResult, AttachmentDto, AttachmentLifecycleInput, AttachmentListQuery,
     AttachmentMaintenanceResult, AttachmentStatsDto, AttachmentVerifyResult,
-    DownloadAttachmentInput, DownloadAttachmentResult, SCOPE_NODE, UpdateAttachmentInput,
-    UploadAttachmentInput, UploadAttachmentNodeInput,
+    DownloadAttachmentInput, DownloadAttachmentResult, MaintenanceSettingsDto,
+    MaintenanceSettingsInput, SCOPE_NODE, UpdateAttachmentInput, UploadAttachmentInput,
+    UploadAttachmentNodeInput,
 };
 use crate::models::{CreateAttachmentNodeInput, NodeDto};
 use crate::services::attachment_maintenance_service;
@@ -181,14 +182,30 @@ pub async fn attachment_maintenance(
     state: State<'_, AppState>,
 ) -> AppResult<AttachmentMaintenanceResult> {
     let context = AttachmentContext::from_state(state.inner())?;
+    let policy = attachment_maintenance_service::load_policy(&context)?;
     run_blocking(move || {
-        attachment_maintenance_service::run(
-            &context,
-            crate::utils::now_ms(),
-            attachment_maintenance_service::MaintenancePolicy::default(),
-        )
+        attachment_maintenance_service::run(&context, crate::utils::now_ms(), policy)
     })
     .await
+}
+
+/// 读取当前工作区的附件保留策略。
+#[tauri::command(async)]
+pub fn attachment_maintenance_settings(
+    state: State<'_, AppState>,
+) -> AppResult<MaintenanceSettingsDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    attachment_maintenance_service::settings(&context)
+}
+
+/// 保存当前工作区的附件保留策略。
+#[tauri::command(async)]
+pub fn attachment_update_maintenance_settings(
+    state: State<'_, AppState>,
+    input: MaintenanceSettingsInput,
+) -> AppResult<MaintenanceSettingsDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    attachment_maintenance_service::update_settings(&context, input)
 }
 
 async fn run_blocking<T: Send + 'static>(

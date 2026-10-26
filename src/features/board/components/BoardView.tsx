@@ -5,8 +5,9 @@ import { uploadAttachmentBytes } from "@/api/attachment";
 import { toErrorMessage } from "@/api/client";
 import { listLibraryItems } from "@/api/library";
 import { registerActivePersistence, unregisterActivePersistence } from "@/features/editor/activeDocument";
+import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
-import { CAPTION_CLS } from "@/lib/utils";
+import { CAPTION_CLS, cn } from "@/lib/utils";
 import { LIBRARY_CHANGED_EVENT, type LibraryItem } from "@/types/library";
 import { useBoardExport } from "../hooks/useBoardExport";
 import { type BoardCanvasApi, useBoardFileIntake } from "../hooks/useBoardFileIntake";
@@ -47,13 +48,14 @@ const BOARD_UI_OPTIONS = {
   },
 } as const;
 
-function BoardFallback({ message = "画板加载中…" }: { message?: string }) {
+function BoardFallback({ message }: { message?: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <span aria-hidden="true" className="text-[34px] leading-none opacity-40">
         ✦
       </span>
-      <p className={`${CAPTION_CLS} text-muted-foreground`}>{message}</p>
+      <p className={`${CAPTION_CLS} text-muted-foreground`}>{message ?? t("画板加载中…")}</p>
     </div>
   );
 }
@@ -64,11 +66,13 @@ function BoardFallback({ message = "画板加载中…" }: { message?: string })
  * 非图片文件卡片与插入附件入口在后续步骤接入。
  */
 export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, onExported }: BoardViewProps) {
+  const { locale, t } = useI18n();
   const { mode } = useTheme();
   const [api, setApi] = useState<BoardCanvasApi | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[] | null>(null);
   const [attachmentPickerOpen, setAttachmentPickerOpen] = useState(false);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const [presenting, setPresenting] = useState(false);
   const lastErrorRef = useRef("");
   const showError = useCallback(
     (message: string) => {
@@ -98,6 +102,48 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
   );
   useBoardKeymap(boardShortcutHandlers);
 
+  const togglePresentation = useCallback(async () => {
+    setPresenting((current) => {
+      const next = !current;
+      void (async () => {
+        try {
+          if (next) await document.documentElement.requestFullscreen?.();
+          else if (document.fullscreenElement) await document.exitFullscreen();
+        } catch {
+          // 全屏 API 不可用时仍保留固定层放映。
+        }
+      })();
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handlePresent = () => void togglePresentation();
+    window.addEventListener("starris:present-board", handlePresent);
+    return () => window.removeEventListener("starris:present-board", handlePresent);
+  }, [togglePresentation]);
+
+  useEffect(() => {
+    if (!presenting) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void togglePresentation();
+      }
+    };
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [presenting, togglePresentation]);
+
+  // 浏览器全屏被 Esc 原生退出时，同步撤掉固定层，避免只剩半截放映状态。
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) setPresenting(false);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const loadLibraries = () => {
@@ -123,8 +169,8 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
 
   useEffect(() => {
     if (persistence.missingObjectIds.length === 0) return;
-    showError(`有 ${persistence.missingObjectIds.length} 个图片或附件缺失`);
-  }, [persistence.missingObjectIds, showError]);
+    showError(t("有 {count} 个图片或附件缺失", { count: persistence.missingObjectIds.length }));
+  }, [persistence.missingObjectIds, showError, t]);
 
   useEffect(() => {
     const owner = Symbol("board-persistence");
@@ -135,10 +181,10 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
   /** 插入组件库条目：恢复元素、重映射 id/绑定后一并写入场景。 */
   const insertLibraryItem = useCallback(
     async (item: LibraryItem) => {
-      if (!api) throw new Error("画板尚未加载完成");
+      if (!api) throw new Error(t("画板尚未加载完成"));
       const { restoreElements } = await import("@excalidraw/excalidraw");
       const restored = restoreElements(item.elements as never, null, { repairBindings: true });
-      if (restored.length === 0) throw new Error("组件为空");
+      if (restored.length === 0) throw new Error(t("组件为空"));
       const appState = api.getAppState();
       const centerX = appState.width / (2 * appState.zoom.value) - appState.scrollX;
       const centerY = appState.height / (2 * appState.zoom.value) - appState.scrollY;
@@ -199,7 +245,7 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
       });
       api.updateScene({ elements: [...api.getSceneElements(), ...elements] });
     },
-    [api],
+    [api, t],
   );
 
   /** 图片文件先进入全局对象库，返回 object_id 作为 Excalidraw fileId。 */
@@ -218,19 +264,31 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <BoardPageBar
-        kbName={kbName}
-        title={title}
-        status={persistence.status}
-        onRetry={persistence.retry}
-        onReload={persistence.reload}
-        onOpenKb={onOpenKb}
-        onInsertAttachment={() => setAttachmentPickerOpen(true)}
-        onOpenLibrary={() => setLibraryPickerOpen(true)}
-        onExport={(format) => void boardExport.exportBoard(format)}
-        exporting={boardExport.exporting}
-      />
+    <div className={cn("flex min-h-0 flex-col", presenting ? "fixed inset-0 z-50 bg-background" : "h-full")}>
+      {!presenting && (
+        <BoardPageBar
+          kbName={kbName}
+          title={title}
+          status={persistence.status}
+          onRetry={persistence.retry}
+          onReload={persistence.reload}
+          onOpenKb={onOpenKb}
+          onInsertAttachment={() => setAttachmentPickerOpen(true)}
+          onOpenLibrary={() => setLibraryPickerOpen(true)}
+          onExport={(format) => void boardExport.exportBoard(format)}
+          onPresent={() => void togglePresentation()}
+          exporting={boardExport.exporting}
+        />
+      )}
+      {presenting && (
+        <button
+          type="button"
+          onClick={() => void togglePresentation()}
+          className="absolute top-3 right-3 z-10 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-[12px] text-muted-foreground shadow-sm hover:text-foreground"
+        >
+          {t("退出放映 (Esc)")}
+        </button>
+      )}
       <div className="board-excalidraw relative min-h-0 flex-1" onDropCapture={fileIntake.onDropCapture}>
         {persistence.loadError ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -240,15 +298,16 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
               onClick={persistence.reload}
               className="rounded-[8px] border border-border bg-card px-3 py-1.5 text-[12.5px] text-foreground hover:bg-accent"
             >
-              重新加载
+              {t("重新加载")}
             </button>
           </div>
         ) : persistence.initialData && libraryItems ? (
           <Suspense fallback={<BoardFallback />}>
             <Excalidraw
               key={nodeId}
-              langCode="zh-CN"
+              langCode={locale === "en-US" ? "en" : "zh-CN"}
               theme={mode}
+              zenModeEnabled={presenting}
               initialData={persistence.initialData as unknown as ExcalidrawInitialData}
               UIOptions={BOARD_UI_OPTIONS}
               generateIdForFile={generateIdForFile}

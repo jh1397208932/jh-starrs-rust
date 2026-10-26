@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import { AlignCenter, AlignLeft, AlignRight, Download, ImageOff, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { AttachmentImageAttrs, AttachmentNodeViewOptions } from "../../extensions/attachmentTypes";
 import { exportAttachment } from "../../utils/exportAttachment";
@@ -27,9 +28,10 @@ function attrAlign(node: ProseMirrorNode): AttachmentImageAttrs["align"] {
 
 /** 图片块 NodeView：附件预览、左/中/右对齐、左右拖拽缩放、下载原图。 */
 export function AttachmentImageNodeView(props: ReactNodeViewProps) {
+  const { t } = useI18n();
   const { node, selected, updateAttributes, editor } = props;
   const attachmentId = attrString(node, "attachmentId") || null;
-  const name = attrString(node, "name") || "图片";
+  const name = attrString(node, "name") || t("图片");
   const mime = attrString(node, "mime");
   const alt = attrString(node, "alt") || name;
   const align = attrAlign(node);
@@ -141,7 +143,7 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
           <div
             className="attachment-image-toolbar"
             role="toolbar"
-            aria-label="图片操作"
+            aria-label={t("图片操作")}
             data-visible="true"
             onMouseDown={(event) => event.preventDefault()}
           >
@@ -149,8 +151,8 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "left"}
-              aria-label="图片左对齐"
-              title="左对齐"
+              aria-label={t("图片左对齐")}
+              title={t("左对齐")}
               onClick={() => setAlign("left")}
             >
               <AlignLeft className="size-3.5" />
@@ -159,8 +161,8 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "center"}
-              aria-label="图片居中"
-              title="居中"
+              aria-label={t("图片居中")}
+              title={t("居中")}
               onClick={() => setAlign("center")}
             >
               <AlignCenter className="size-3.5" />
@@ -169,8 +171,8 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "right"}
-              aria-label="图片右对齐"
-              title="右对齐"
+              aria-label={t("图片右对齐")}
+              title={t("右对齐")}
               onClick={() => setAlign("right")}
             >
               <AlignRight className="size-3.5" />
@@ -179,8 +181,8 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
             <button
               type="button"
               className="attachment-toolbar__button"
-              aria-label="下载原图"
-              title="下载原图"
+              aria-label={t("下载原图")}
+              title={t("下载原图")}
               disabled={!attachmentId || downloading}
               onClick={() => void handleDownload()}
             >
@@ -207,7 +209,7 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
           {preview.loading && (
             <div className="attachment-image-placeholder">
               <Loader2 className="size-5 animate-spin" />
-              <span>正在加载图片…</span>
+              <span>{t("正在加载图片…")}</span>
             </div>
           )}
           {!preview.loading && preview.url && (
@@ -222,10 +224,10 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
           {!preview.loading && !preview.url && (
             <div className="attachment-image-placeholder is-error">
               <ImageOff className="size-5" />
-              <span>{preview.error ?? "图片无法预览"}</span>
+              <span>{preview.error ?? t("图片无法预览")}</span>
               {attachmentId && (
                 <button type="button" className="attachment-image-retry" onClick={handleDownload}>
-                  下载原图
+                  {t("下载原图")}
                 </button>
               )}
             </div>
@@ -233,7 +235,7 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
           <button
             type="button"
             className="attachment-image-handle is-left"
-            aria-label="向左调整图片宽度"
+            aria-label={t("向左调整图片宽度")}
             tabIndex={-1}
             style={{ width: HANDLE_WIDTH }}
             onPointerDown={(event) => startResize("left", event)}
@@ -241,7 +243,7 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
           <button
             type="button"
             className="attachment-image-handle is-right"
-            aria-label="向右调整图片宽度"
+            aria-label={t("向右调整图片宽度")}
             tabIndex={-1}
             style={{ width: HANDLE_WIDTH }}
             onPointerDown={(event) => startResize("right", event)}

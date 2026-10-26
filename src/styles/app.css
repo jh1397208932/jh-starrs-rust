@@ -1986,3 +1986,47 @@ body.starris-image-resizing {
     height: 420px;
   }
 }
+
+/* 文档内查找：所有匹配用暖金底，当前项用主色实底。 */
+.search-match {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--logo-c) 32%, transparent);
+}
+
+.search-match-active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* 打印：只保留文档纸面，隐藏侧栏、顶栏、页头操作与信息浮窗。 */
+@media print {
+  .sidebar-column,
+  .window-bar,
+  .doc-page-bar,
+  .info-float,
+  .app-toast {
+    display: none !important;
+  }
+
+  .app-shell {
+    display: block !important;
+    height: auto !important;
+  }
+
+  .app-sheet {
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .doc-editor,
+  .doc-editor-scroll {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .doc-editor-page {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}

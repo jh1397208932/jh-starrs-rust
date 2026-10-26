@@ -1,6 +1,7 @@
 import { Download, FileText, Loader2, RotateCcw, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { Attachment } from "@/types/attachment";
 import { formatAttachmentBytes } from "../utils/format";
@@ -29,6 +30,7 @@ export function AttachmentRow({
   onVerify,
   onRestore,
 }: AttachmentRowProps) {
+  const { t } = useI18n();
   const deleted = item.status === "deleted";
   const referenced = item.referenceCount > 0;
   const itemBusy =
@@ -37,12 +39,12 @@ export function AttachmentRow({
     busy === `delete:${item.id}` ||
     busy === `restore:${item.id}`;
   const lifecycleLabel = deleted
-    ? "已删除 · 回收站"
+    ? t("已删除 · 回收站")
     : item.referenceCount > 0
-      ? `${item.referenceCount} 处引用`
+      ? t("{count} 处引用", { count: item.referenceCount })
       : item.expiresAt
-        ? `保留至 ${formatTimestamp(item.expiresAt)}`
-        : "未关联";
+        ? t("保留至 {time}", { time: formatTimestamp(item.expiresAt) })
+        : t("未关联");
   return (
     <li
       className={cn(
@@ -57,12 +59,14 @@ export function AttachmentRow({
             {item.name}
           </span>
           {deleted && (
-            <span className="rounded-sm bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">已删除</span>
+            <span className="rounded-sm bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+              {t("已删除")}
+            </span>
           )}
           {itemBusy && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
         </div>
         <p className="truncate text-[10.5px] text-muted-foreground">
-          {item.logicalPath || "未分类"} · {lifecycleLabel} · {formatTimestamp(item.createdAt)}
+          {item.logicalPath || t("未分类")} · {lifecycleLabel} · {formatTimestamp(item.createdAt)}
         </p>
       </div>
       <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
@@ -72,8 +76,8 @@ export function AttachmentRow({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`恢复 ${item.name}`}
-          title="恢复"
+          aria-label={t("恢复 {name}", { name: item.name })}
+          title={t("恢复")}
           disabled={disabled || itemBusy}
           onClick={() => onRestore(item)}
         >
@@ -84,8 +88,8 @@ export function AttachmentRow({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`校验 ${item.name}`}
-            title="校验"
+            aria-label={t("校验 {name}", { name: item.name })}
+            title={t("校验")}
             disabled={disabled}
             onClick={() => onVerify(item)}
           >
@@ -94,8 +98,8 @@ export function AttachmentRow({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`导出 ${item.name}`}
-            title="导出"
+            aria-label={t("导出 {name}", { name: item.name })}
+            title={t("导出")}
             disabled={disabled}
             onClick={() => onExport(item)}
           >
@@ -110,13 +114,13 @@ export function AttachmentRow({
                 disabled={disabled}
                 onClick={() => onDelete(item)}
               >
-                确认
+                {t("确认")}
               </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="取消删除"
-                title="取消"
+                aria-label={t("取消删除")}
+                title={t("取消")}
                 onClick={onCancelDelete}
               >
                 <X className="size-3.5" />
@@ -126,8 +130,8 @@ export function AttachmentRow({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`删除 ${item.name}`}
-              title={referenced ? `仍被 ${item.referenceCount} 个位置引用` : "删除"}
+              aria-label={t("删除 {name}", { name: item.name })}
+              title={referenced ? t("仍被 {count} 个位置引用", { count: item.referenceCount }) : t("删除")}
               disabled={disabled || referenced}
               onClick={() => onDelete(item)}
             >

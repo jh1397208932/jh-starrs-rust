@@ -8,6 +8,9 @@ pub struct DocumentNodeRow {
     pub content: String,
     pub word_count: i64,
     pub update_time: i64,
+    pub doc_version: i64,
+    pub title: String,
+    pub knowledge_base_id: String,
 }
 
 /// 块树行。
@@ -24,7 +27,8 @@ pub fn find_node(
 ) -> rusqlite::Result<Option<DocumentNodeRow>> {
     connection
         .query_row(
-            "SELECT type, content, word_count, update_time FROM node WHERE id = ?1",
+            "SELECT type, content, word_count, update_time, doc_version, title, knowledge_base_id
+             FROM node WHERE id = ?1 AND deleted_at IS NULL",
             [node_id],
             |row| {
                 Ok(DocumentNodeRow {
@@ -32,25 +36,37 @@ pub fn find_node(
                     content: row.get(1)?,
                     word_count: row.get(2)?,
                     update_time: row.get(3)?,
+                    doc_version: row.get(4)?,
+                    title: row.get(5)?,
+                    knowledge_base_id: row.get(6)?,
                 })
             },
         )
         .optional()
 }
 
-/// 更新正文缓存、字数与编辑时间。
+/// 更新正文缓存、字数与编辑时间，并原子递增文档版本。
+///
+/// 返回新版本；`base_version` 不匹配时返回 `None`，由服务层转成冲突错误。
 pub fn update_content(
     connection: &Connection,
     node_id: &str,
     content: &str,
     word_count: i64,
     update_time: i64,
-) -> rusqlite::Result<()> {
-    connection.execute(
-        "UPDATE node SET content = ?2, word_count = ?3, update_time = ?4 WHERE id = ?1",
-        rusqlite::params![node_id, content, word_count, update_time],
-    )?;
-    Ok(())
+    base_version: i64,
+) -> rusqlite::Result<Option<i64>> {
+    connection
+        .query_row(
+            "UPDATE node
+             SET content = ?2, word_count = ?3, update_time = ?4,
+                 doc_version = doc_version + 1
+             WHERE id = ?1 AND doc_version = ?5
+             RETURNING doc_version",
+            rusqlite::params![node_id, content, word_count, update_time, base_version],
+            |row| row.get(0),
+        )
+        .optional()
 }
 
 /// 读取文档块树，按 Fractional Index 排序。

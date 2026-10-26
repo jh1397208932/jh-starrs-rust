@@ -1,4 +1,5 @@
 import { Ban, Check } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ColorOption } from "../constants";
 
@@ -12,6 +13,7 @@ export interface ColorSwatchesProps {
 
 /** 色板：文字色显示“A”，高亮色显示实心圆；选中态用对勾与描边双提示。 */
 export function ColorSwatches({ colors, mode, activeValue, onPick, onClear }: ColorSwatchesProps) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {colors.map((color) => {
@@ -20,8 +22,8 @@ export function ColorSwatches({ colors, mode, activeValue, onPick, onClear }: Co
           <button
             key={color.value}
             type="button"
-            title={color.label}
-            aria-label={color.label}
+            title={t(color.label)}
+            aria-label={t(color.label)}
             aria-pressed={active}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onPick(color.value)}
@@ -51,8 +53,8 @@ export function ColorSwatches({ colors, mode, activeValue, onPick, onClear }: Co
       })}
       <button
         type="button"
-        title="清除颜色"
-        aria-label="清除颜色"
+        title={t("清除颜色")}
+        aria-label={t("清除颜色")}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onClear}
         className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

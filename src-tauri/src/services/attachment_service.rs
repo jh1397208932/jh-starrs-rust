@@ -502,6 +502,22 @@ pub fn list(
     let query = AttachmentListQuery {
         logical_path: normalized,
         include_deleted: query.include_deleted,
+        search: query
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| {
+                format!(
+                    "%{}%",
+                    value
+                        .replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_")
+                )
+            }),
+        limit: Some(query.limit.unwrap_or(50).clamp(1, 200)),
+        offset: Some(query.offset.unwrap_or(0).max(0)),
     };
     let connection = context.connection()?;
     let rows = repository::list(&connection, &query)?;
@@ -629,9 +645,30 @@ pub fn stats(context: &AttachmentContext) -> AppResult<AttachmentStatsDto> {
         unlinked_count: stats.unlinked_count,
         trash_count: stats.trash_count,
         disk_bytes: pack_disk_bytes + big_disk_bytes,
+        disk_free_bytes: storage_free_bytes(&context.storage_root),
         reclaimable_bytes,
         last_maintenance_at,
     })
+}
+
+/// 存储所在磁盘剩余字节；非 Unix 平台返回 None。
+fn storage_free_bytes(path: &std::path::Path) -> Option<i64> {
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let path = CString::new(path.as_os_str().as_bytes()).ok()?;
+        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(path.as_ptr(), &mut stat) } != 0 {
+            return None;
+        }
+        i64::try_from(stat.f_bavail as u64 * stat.f_frsize as u64).ok()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        None
+    }
 }
 
 /// 后台 compaction 入口；可重入地检查 pack 是否仍有压缩价值。

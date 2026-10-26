@@ -3,6 +3,7 @@ import { toErrorMessage } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/lib/i18n";
 
 export interface NameDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function NameDialog({
   submitLabel,
   onSubmit,
 }: NameDialogProps) {
+  const { t } = useI18n();
   const [value, setValue] = useState(initialValue);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export function NameDialog({
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button
             size="sm"
@@ -104,7 +106,7 @@ export function NameDialog({
             disabled={!canSubmit}
             onClick={() => void handleSubmit()}
           >
-            {pending ? "保存中…" : submitLabel}
+            {pending ? t("保存中…") : submitLabel}
           </Button>
         </div>
       </DialogContent>

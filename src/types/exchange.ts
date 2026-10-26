@@ -38,8 +38,15 @@ export interface ExportResult {
   boards: BoardExportTarget[];
 }
 
+/** 用户选择的导出位置与一次性令牌 */
+export interface ExportPathGrant {
+  token: string;
+  path: string;
+}
+
 /** 写入前端渲染的导出文件参数 */
 export interface WriteExportFileParams {
+  token: string;
   path: string;
   dataBase64: string;
   overwrite?: boolean;

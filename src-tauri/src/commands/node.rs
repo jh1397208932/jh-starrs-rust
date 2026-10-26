@@ -3,7 +3,10 @@
 use tauri::State;
 
 use crate::errors::AppResult;
-use crate::models::{CreateNodeInput, DeleteNodeResult, MoveNodeInput, NodeDto, UpdateNodeInput};
+use crate::models::{
+    CreateNodeInput, DeleteNodeResult, MoveNodeInput, NodeDto, RestoreNodeResult, TrashNodeDto,
+    UpdateNodeInput,
+};
 use crate::services::node_service;
 use crate::state::AppState;
 
@@ -29,6 +32,36 @@ pub fn node_update(state: State<'_, AppState>, input: UpdateNodeInput) -> AppRes
 #[tauri::command(async)]
 pub fn node_delete(state: State<'_, AppState>, id: String) -> AppResult<DeleteNodeResult> {
     node_service::delete(state.inner(), &id)
+}
+
+/// 读取知识库回收站。
+#[tauri::command(async)]
+pub fn node_trash_list(
+    state: State<'_, AppState>,
+    knowledge_base_id: String,
+) -> AppResult<Vec<TrashNodeDto>> {
+    node_service::trash_list(state.inner(), &knowledge_base_id)
+}
+
+/// 从回收站恢复整棵子树。
+#[tauri::command(async)]
+pub fn node_restore(state: State<'_, AppState>, id: String) -> AppResult<RestoreNodeResult> {
+    node_service::restore(state.inner(), &id)
+}
+
+/// 永久删除回收站节点。
+#[tauri::command(async)]
+pub fn node_trash_purge(state: State<'_, AppState>, id: String) -> AppResult<DeleteNodeResult> {
+    node_service::trash_purge(state.inner(), &id)
+}
+
+/// 清空知识库回收站。
+#[tauri::command(async)]
+pub fn node_trash_empty(
+    state: State<'_, AppState>,
+    knowledge_base_id: String,
+) -> AppResult<DeleteNodeResult> {
+    node_service::trash_empty(state.inner(), &knowledge_base_id)
 }
 
 /// 拖动移动节点（成为子级或同级排序）。

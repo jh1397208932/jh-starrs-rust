@@ -11,7 +11,7 @@ export default {
       ui: "文件树标题右侧 +",
       clicks: 1,
       dialogs: 1,
-      note: "根级可创建五类节点，测试三类真实节点并保留表格/流程占位。",
+      note: "新建弹窗提供文件夹/文档/画板/表格/流程图。",
     },
     {
       action: "新建文件夹 E2E Folder",
@@ -67,6 +67,8 @@ export default {
       await ctx.fill("名称", title);
       await ctx.press("创建");
       await ctx.expectText(title, { timeout: 10_000 });
+      // expectText 可能命中弹窗输入框；等树行操作出现才算创建完成。
+      await ctx.expectText(`${title} 操作`, { timeout: 10_000 });
       ctx.metrics.dialogs += 1;
     };
 
@@ -90,13 +92,15 @@ export default {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     const rows = ctx.db(
-      "SELECT title, type FROM node WHERE title IN ('E2E Folder Renamed','E2E Doc','E2E Board','E2E Delete') ORDER BY title",
+      "SELECT title, type, deleted_at FROM node WHERE title IN ('E2E Folder Renamed','E2E Doc','E2E Board','E2E Delete') ORDER BY title",
     );
     const byTitle = Object.fromEntries(rows.map((row) => [row.title, row.type]));
     assert.equal(byTitle["E2E Folder Renamed"], 1);
     assert.equal(byTitle["E2E Doc"], 2);
     assert.equal(byTitle["E2E Board"], 3);
-    assert.equal(byTitle["E2E Delete"], undefined, "临时文档应已删除");
+    const removed = rows.find((row) => row.title === "E2E Delete");
+    assert.ok(removed, "临时文档应保留在回收站");
+    assert.ok(removed.deleted_at, "临时文档应标记为已删除");
 
     ctx.shared.folderTitle = "E2E Folder Renamed";
     ctx.shared.docTitle = "E2E Doc";

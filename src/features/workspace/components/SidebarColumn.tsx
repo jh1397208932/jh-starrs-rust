@@ -11,7 +11,7 @@ export interface SidebarColumnProps {
 /** 左列容器：232px 通高侧栏的折叠动画外壳（布局宽度瞬时切换 + 内容位滑出） */
 export function SidebarColumn({ open, children }: SidebarColumnProps) {
   return (
-    <div className={cn("relative h-full shrink-0", open ? "w-[var(--sidebar-w)]" : "w-0")}>
+    <div className={cn("sidebar-column relative h-full shrink-0", open ? "w-[var(--sidebar-w)]" : "w-0")}>
       <div
         className="absolute inset-y-0 left-0 w-[var(--sidebar-w)] transition-transform ease-[var(--ease)]"
         style={{

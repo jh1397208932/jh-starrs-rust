@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import type { ShortcutAction, ShortcutScope, ShortcutValidation } from "./types";
 
 const IS_MAC = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("macintosh");
@@ -90,12 +91,12 @@ export function bindingLabel(binding: string): string {
 /** 校验组合是否可保存。 */
 export function validateBinding(binding: string, scope: ShortcutScope): ShortcutValidation {
   if (!binding) return { ok: true };
-  if (!bindingFromTokens(binding)) return { ok: false, message: "组合键格式无效" };
+  if (!bindingFromTokens(binding)) return { ok: false, message: t("组合键格式无效") };
   if (scope === "app" && !/(^|\+)Mod\+|(^|\+)(Control|Meta|Alt)\+/.test(binding)) {
-    return { ok: false, message: "应用快捷键至少需要一个修饰键" };
+    return { ok: false, message: t("应用快捷键至少需要一个修饰键") };
   }
   if (RESERVED_BINDINGS.has(binding)) {
-    return { ok: false, message: "该组合键通常被系统占用" };
+    return { ok: false, message: t("该组合键通常被系统占用") };
   }
   return { ok: true };
 }

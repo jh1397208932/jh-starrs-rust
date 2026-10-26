@@ -24,11 +24,13 @@ import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import type { Editor, Extensions } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
+import { t } from "@/lib/i18n";
 import type { OutlineItem } from "../types";
 import { AttachmentBlock } from "./attachmentBlock";
 import { AttachmentImage } from "./attachmentImage";
 import { BlockDragHighlight } from "./blockDragHighlight";
 import { ClearMarksOnEnter } from "./clearMarksOnEnter";
+import { FindHighlight } from "./findHighlight";
 import { UserKeymap } from "./userKeymap";
 
 const lowlight = createLowlight(common);
@@ -95,6 +97,7 @@ export function createEditorExtensions({
     ClearMarksOnEnter,
     BlockDragHighlight,
     UserKeymap,
+    FindHighlight,
     TextStyle,
     Color,
     Highlight.configure({ multicolor: true }),
@@ -129,7 +132,7 @@ export function createEditorExtensions({
       },
     }),
     Placeholder.configure({
-      placeholder: ({ node }) => (node.type.name === "heading" ? "标题" : "开始写作…"),
+      placeholder: ({ node }) => (node.type.name === "heading" ? t("标题") : t("开始写作…")),
     }),
     CharacterCount.configure({
       textCounter: (text) => text.replace(/\s/g, "").length,

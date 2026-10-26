@@ -21,7 +21,8 @@ export function useWorkspaceShortcuts(handlers: AppShortcutHandlers, config: Sho
     const action = APP_SHORTCUT_ACTIONS.find(
       (candidate) => (config.bindings[candidate.id] ?? "") === binding,
     );
-    if (!action) return;
+    // 未实现的动作不占用按键；设置页仍展示为“即将推出”。
+    if (!action || action.available === false) return;
     const handler = handlers[action.id];
     if (!handler) return;
     event.preventDefault();

@@ -2,6 +2,7 @@ import { FileCode2, FileDown, FileText, FileType2, Loader2 } from "lucide-react"
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ExportFormat } from "@/types/exchange";
 
@@ -29,6 +30,7 @@ export function ExportKnowledgeBaseDialog({
   docCount,
   onExport,
 }: ExportKnowledgeBaseDialogProps) {
+  const { t } = useI18n();
   const [format, setFormat] = useState<ExportFormat>("markdown");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function ExportKnowledgeBaseDialog({
       const done = await onExport(format);
       if (done) onOpenChange(false);
     } catch (caught) {
-      setError(caught instanceof Error && caught.message.trim() ? caught.message : "导出失败，请重试");
+      setError(caught instanceof Error && caught.message.trim() ? caught.message : t("导出失败，请重试"));
     } finally {
       setBusy(false);
     }
@@ -50,14 +52,16 @@ export function ExportKnowledgeBaseDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="w-[520px] p-5" aria-describedby={undefined}>
-        <DialogTitle>全部导出</DialogTitle>
+        <DialogTitle>{t("全部导出")}</DialogTitle>
         <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
-          将「{kbName}」导出，共 {docCount} 项内容。文件夹层级会保留。
+          {t("将「")}
+          {kbName}
+          {t("」导出，共")} {docCount} {t("项内容。文件夹层级会保留。")}
         </p>
-        <p className="mt-2 text-[11.5px] text-muted-foreground">画板固定导出 Excalidraw、PNG、SVG。</p>
+        <p className="mt-2 text-[11.5px] text-muted-foreground">{t("画板固定导出 Excalidraw、PNG、SVG。")}</p>
 
         <fieldset className="mt-4 grid grid-cols-2 gap-2">
-          <legend className="sr-only">全部导出格式</legend>
+          <legend className="sr-only">{t("全部导出格式")}</legend>
           {FORMATS.map(({ id, label, hint, icon: Icon }) => (
             <label
               key={id}
@@ -98,14 +102,14 @@ export function ExportKnowledgeBaseDialog({
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button size="sm" disabled={busy} onClick={() => void run()}>
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {busy ? "正在导出…" : "导出"}
+            {busy ? t("正在导出…") : t("导出")}
           </Button>
         </div>
-        <DialogDescription className="sr-only">选择格式并导出整个知识库</DialogDescription>
+        <DialogDescription className="sr-only">{t("选择格式并导出整个知识库")}</DialogDescription>
       </DialogContent>
     </Dialog>
   );

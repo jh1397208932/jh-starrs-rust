@@ -1,4 +1,4 @@
-import { Download, FileUp, LayoutTemplate, Package, Settings, Store } from "lucide-react";
+import { Download, FileUp, LayoutTemplate, Package, Settings, Store, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,6 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 
 export interface MoreMenuProps {
   open: boolean;
@@ -17,8 +18,12 @@ export interface MoreMenuProps {
   onImport: () => void;
   /** 打开组件库管理 */
   onOpenLibrary: () => void;
-  /** 未实现功能统一 toast */
-  onMockAction: (label: string) => void;
+  /** 打开备份与恢复 */
+  onBackup: () => void;
+  /** 打开模板库 */
+  onTemplates: () => void;
+  /** 打开文件回收站 */
+  onNodeTrash: () => void;
   children: React.ReactNode;
 }
 
@@ -33,41 +38,46 @@ export function MoreMenu({
   onAllExport,
   onImport,
   onOpenLibrary,
-  onMockAction,
+  onBackup,
+  onTemplates,
+  onNodeTrash,
   children,
 }: MoreMenuProps) {
+  const { t } = useI18n();
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-[260px]">
         <DropdownMenuItem onSelect={onOpenSettings}>
           <Settings />
-          设置
+          {t("设置")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onMockAction("模板库")}>
+        <DropdownMenuItem onSelect={onTemplates}>
           <LayoutTemplate />
-          模板库
-          <span className="ml-auto text-[10.5px] text-muted-foreground">即将推出</span>
+          {t("模板库")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onOpenLibrary}>
           <Package />
-          组件库
+          {t("组件库")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onAllExport}>
           <Download />
-          全部导出
+          {t("全部导出")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onImport}>
           <FileUp />
-          导入…
+          {t("导入…")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onMockAction("备份与恢复")}>
+        <DropdownMenuItem onSelect={onNodeTrash}>
+          <Trash2 />
+          {t("回收站")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onBackup}>
           <Store />
-          备份与恢复
-          <span className="ml-auto text-[10.5px] text-muted-foreground">即将推出</span>
+          {t("备份与恢复")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

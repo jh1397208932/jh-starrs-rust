@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { BlurFade } from "@/components/common/motion/BlurFade";
+import { t } from "@/lib/i18n";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 
 /** kbd 组合键徽标（原型 .kbd：border-b-2 + mono 11px） */
@@ -51,7 +52,7 @@ export function EmptyState({
           <div className="empty-art" aria-hidden="true">
             <span className="empty-art__tile">
               <svg className="empty-art__star" viewBox="0 0 48 48" fill="none">
-                <title>星屿线稿：星与岛屿</title>
+                <title>{t("星屿线稿：星与岛屿")}</title>
                 <path
                   d="M24 8.5l3.4 7.6 8.2 1-6 5.6 1.6 8.1-7.2-3.9-7.2 3.9 1.6-8.1-6-5.6 8.2-1L24 8.5Z"
                   stroke="currentColor"

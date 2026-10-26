@@ -15,6 +15,7 @@ import {
   Underline,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from "../constants";
 import { normalizeLinkHref } from "../utils/link";
 import { ColorSwatches } from "./ColorSwatches";
@@ -59,6 +60,7 @@ function BubbleButton({
 
 /** 选区气泡菜单：行内样式、颜色、高亮、链接与清除格式。 */
 export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
+  const { t } = useI18n();
   const [panel, setPanel] = useState<Panel>(null);
   const [linkValue, setLinkValue] = useState("");
   const linkInputRef = useRef<HTMLInputElement | null>(null);
@@ -97,7 +99,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       return;
     }
     if (!normalized) {
-      onError("请输入有效链接");
+      onError(t("请输入有效链接"));
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: normalized }).run();
@@ -121,35 +123,35 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       className="editor-bubble anim-pop-in relative z-50"
     >
       <BubbleButton
-        label="加粗"
+        label={t("加粗")}
         active={state.bold}
         onClick={() => editor.chain().focus().toggleBold().run()}
       >
         <Bold className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="斜体"
+        label={t("斜体")}
         active={state.italic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
       >
         <Italic className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="下划线"
+        label={t("下划线")}
         active={state.underline}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
       >
         <Underline className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="删除线"
+        label={t("删除线")}
         active={state.strike}
         onClick={() => editor.chain().focus().toggleStrike().run()}
       >
         <Strikethrough className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="行内代码"
+        label={t("行内代码")}
         active={state.code}
         onClick={() => editor.chain().focus().toggleCode().run()}
       >
@@ -159,7 +161,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       <span className="editor-bubble__divider" aria-hidden="true" />
 
       <BubbleButton
-        label="文字颜色"
+        label={t("文字颜色")}
         expanded={panel === "color"}
         active={panel === "color" || Boolean(state.color)}
         onClick={() => togglePanel("color")}
@@ -167,7 +169,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
         <Palette className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="高亮颜色"
+        label={t("高亮颜色")}
         expanded={panel === "highlight"}
         active={panel === "highlight" || Boolean(state.highlight)}
         onClick={() => togglePanel("highlight")}
@@ -175,7 +177,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
         <Highlighter className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="链接"
+        label={t("链接")}
         expanded={panel === "link"}
         active={panel === "link" || state.link}
         onClick={() => togglePanel("link")}
@@ -186,27 +188,27 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
       <span className="editor-bubble__divider" aria-hidden="true" />
 
       <BubbleButton
-        label="下标"
+        label={t("下标")}
         active={state.subscript}
         onClick={() => editor.chain().focus().toggleSubscript().run()}
       >
         <Subscript className="size-3.5" />
       </BubbleButton>
       <BubbleButton
-        label="上标"
+        label={t("上标")}
         active={state.superscript}
         onClick={() => editor.chain().focus().toggleSuperscript().run()}
       >
         <Superscript className="size-3.5" />
       </BubbleButton>
-      <BubbleButton label="清除格式" onClick={() => editor.chain().focus().unsetAllMarks().run()}>
+      <BubbleButton label={t("清除格式")} onClick={() => editor.chain().focus().unsetAllMarks().run()}>
         <Eraser className="size-3.5" />
       </BubbleButton>
 
       {panel && panel !== "link" && (
         <div className="editor-float anim-pop-in absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 p-2.5">
           <div className="mb-2 text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-            {panel === "color" ? "文字颜色" : "高亮颜色"}
+            {panel === "color" ? t("文字颜色") : t("高亮颜色")}
           </div>
           <ColorSwatches
             colors={panel === "color" ? TEXT_COLORS : HIGHLIGHT_COLORS}
@@ -238,8 +240,8 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
             ref={linkInputRef}
             value={linkValue}
             onChange={(event) => setLinkValue(event.target.value)}
-            placeholder="输入链接"
-            aria-label="链接地址"
+            placeholder={t("输入链接")}
+            aria-label={t("链接地址")}
             onMouseDown={(event) => event.stopPropagation()}
             className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring"
           />
@@ -247,7 +249,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
             type="submit"
             className="h-8 shrink-0 cursor-default rounded-md bg-accent px-3 text-[12px] font-medium text-accent-foreground ring-1 ring-primary/25 ring-inset transition-colors duration-150 ease-[var(--ease)] hover:bg-accent-foreground/15"
           >
-            应用
+            {t("应用")}
           </button>
           {state.link && (
             <button
@@ -258,7 +260,7 @@ export function EditorBubbleMenu({ editor, onError }: EditorBubbleMenuProps) {
                 setPanel(null);
               }}
             >
-              移除
+              {t("移除")}
             </button>
           )}
         </form>

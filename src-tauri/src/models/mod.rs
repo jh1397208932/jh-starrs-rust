@@ -7,10 +7,15 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub mod attachment;
+pub mod backup;
 pub mod board;
+pub mod cloud;
 pub mod document;
 pub mod exchange;
+pub mod history;
 pub mod library;
+pub mod search;
+pub mod template;
 
 pub use document::{DocLoadResult, DocSaveResult, SaveDocumentInput};
 pub use exchange::{
@@ -24,6 +29,8 @@ pub const SETTING_CURRENT_WORKSPACE: &str = "current_workspace_id";
 pub const SETTING_THEME: &str = "appearance.theme";
 /// 明暗模式记忆键。
 pub const SETTING_MODE: &str = "appearance.mode";
+/// 界面语言记忆键。
+pub const SETTING_LOCALE: &str = "appearance.locale";
 
 /// 全局库中的工作区记录。
 #[derive(Debug, Clone)]
@@ -167,6 +174,27 @@ pub struct BootstrapDto {
     pub current_workspace: Option<WorkspaceDto>,
     pub memory: BTreeMap<String, String>,
     pub default_workspace_parent: String,
+}
+
+/// 回收站根节点（其父级不在回收站，或为根级）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashNodeDto {
+    pub id: String,
+    pub knowledge_base_id: String,
+    pub parent_id: Option<String>,
+    #[serde(rename = "type")]
+    pub node_type: i64,
+    pub title: String,
+    pub path: String,
+    pub deleted_at: i64,
+}
+
+/// 恢复结果：整棵子树一起回来。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreNodeResult {
+    pub restored_count: i64,
 }
 
 /// 新建工作区入参。

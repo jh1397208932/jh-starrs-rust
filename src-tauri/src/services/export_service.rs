@@ -33,8 +33,8 @@ const MAX_EXPORT_FILE_BYTES: usize = 128 * 1024 * 1024;
 /// 单文档导出。
 pub fn export_document(state: &AppState, input: ExportDocumentInput) -> AppResult<ExportResult> {
     let node = node_service::get(state, &input.node_id)?;
-    if node.node_type != 2 {
-        return Err(AppError::validation("仅文档支持导出"));
+    if node.node_type != 2 && node.node_type != 4 {
+        return Err(AppError::validation("仅文档或表格支持导出"));
     }
     let mut dest = PathBuf::from(&input.dest_path);
     if !dest.is_absolute() {
@@ -197,7 +197,10 @@ pub fn export_knowledge_base(
             "导出知识库 kb={} format={:?} docs={} boards={} files={} attachments={} root={}",
             kb.id,
             input.format,
-            nodes.iter().filter(|node| node.node_type == 2).count(),
+            nodes
+                .iter()
+                .filter(|node| node.node_type == 2 || node.node_type == 4)
+                .count(),
             result.boards.len(),
             result.files.len(),
             result.attachment_count,
@@ -239,7 +242,7 @@ fn export_children(
                     result,
                 )?;
             }
-            2 => {
+            2 | 4 => {
                 let stem =
                     unique_file_stem(dir, &safe_component(&node.title, "文档"), "md", &mut used);
                 let file_name = format!("{stem}.{}", format.extension());
@@ -268,7 +271,7 @@ fn export_children(
                 result.attachment_count += prepared.ctx.attachments.len();
                 result.files.extend(prepared.files);
             }
-            3 => {
+            3 | 5 => {
                 export_board(
                     state,
                     attachment_context,
@@ -574,10 +577,10 @@ pub fn write_export_file(input: ExportWriteFileInput) -> AppResult<ExportFileDto
     logging::info(
         "export",
         &format!(
-            "写入导出文件 kind={} bytes={} path={}",
+            "写入导出文件 kind={} bytes={} file={}",
             kind,
             bytes.len(),
-            path.display()
+            file_name
         ),
     );
     Ok(ExportFileDto {

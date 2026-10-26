@@ -3,6 +3,7 @@ import { toErrorMessage } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
+import { useI18n } from "@/lib/i18n";
 
 export interface KbEditorDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ export function KbEditorDialog({
   initialDescription = "",
   onSubmit,
 }: KbEditorDialogProps) {
+  const { t } = useI18n();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [pending, setPending] = useState(false);
@@ -38,7 +40,7 @@ export function KbEditorDialog({
   }, [open, initialName, initialDescription]);
 
   const trimmed = name.trim();
-  const nameError = trimmed.length === 0 ? "请输入名称" : null;
+  const nameError = trimmed.length === 0 ? t("请输入名称") : null;
   const canSubmit = nameError === null && !pending;
 
   const submit = async () => {
@@ -64,17 +66,17 @@ export function KbEditorDialog({
       }}
     >
       <DialogContent className="w-[400px] p-5" aria-describedby={undefined}>
-        <DialogTitle>{mode === "create" ? "新建知识库" : "编辑知识库"}</DialogTitle>
+        <DialogTitle>{mode === "create" ? t("新建知识库") : t("编辑知识库")}</DialogTitle>
 
         <div className="mt-4">
           <label htmlFor="kb-name" className="mb-1.5 block text-[13px] font-medium">
-            名称
+            {t("名称")}
           </label>
           <Input
             id="kb-name"
             value={name}
             maxLength={80}
-            placeholder="例如：产品灵感库"
+            placeholder={t("例如：产品灵感库")}
             aria-invalid={name.length > 0 && nameError !== null}
             onChange={(event) => setName(event.target.value)}
             className={name.length > 0 && nameError ? "border-destructive" : undefined}
@@ -84,13 +86,13 @@ export function KbEditorDialog({
 
         <div className="mt-3">
           <label htmlFor="kb-desc" className="mb-1.5 block text-[13px] font-medium">
-            描述 <span className="font-normal text-muted-foreground">（选填）</span>
+            {t("描述")} <span className="font-normal text-muted-foreground">{t("（选填）")}</span>
           </label>
           <Textarea
             id="kb-desc"
             value={description}
             maxLength={500}
-            placeholder="简介"
+            placeholder={t("简介")}
             onChange={(event) => setDescription(event.target.value)}
           />
         </div>
@@ -99,14 +101,14 @@ export function KbEditorDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button size="sm" className="min-w-[72px]" disabled={!canSubmit} onClick={() => void submit()}>
-            {pending ? "保存中…" : mode === "create" ? "创建" : "保存"}
+            {pending ? t("保存中…") : mode === "create" ? t("创建") : t("保存")}
           </Button>
         </div>
         <DialogDescription className="sr-only">
-          {mode === "create" ? "新建知识库" : "编辑知识库"}
+          {mode === "create" ? t("新建知识库") : t("编辑知识库")}
         </DialogDescription>
       </DialogContent>
     </Dialog>

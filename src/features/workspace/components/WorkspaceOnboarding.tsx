@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { BrandLogo } from "@/components/common/BrandLogo";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import type { Workspace } from "@/types/notebook";
 
 export interface WorkspaceOnboardingProps {
@@ -28,6 +29,7 @@ export function WorkspaceOnboarding({
   onOpenWorkspace,
   onSwitchWorkspace,
 }: WorkspaceOnboardingProps) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +76,7 @@ export function WorkspaceOnboarding({
               id="workspace-onboarding-title"
               className="text-[length:var(--text-h2)] font-bold leading-[var(--text-h2-lh)] tracking-[var(--text-h2-ls)]"
             >
-              欢迎使用星屿
+              {t("欢迎使用星屿")}
             </h1>
           </div>
         </div>
@@ -87,7 +89,7 @@ export function WorkspaceOnboarding({
             className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-primary/25 bg-accent/60 p-4 text-left text-accent-foreground shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           >
             <Plus className="size-5" />
-            <span className="text-[14px] font-semibold">新建工作区</span>
+            <span className="text-[14px] font-semibold">{t("新建工作区")}</span>
           </button>
           <button
             type="button"
@@ -96,7 +98,9 @@ export function WorkspaceOnboarding({
             className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-border/70 bg-card/70 p-4 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
           >
             <FolderOpen className="size-5" />
-            <span className="text-[14px] font-semibold">{busy === "open" ? "正在打开…" : "打开工作区"}</span>
+            <span className="text-[14px] font-semibold">
+              {busy === "open" ? t("正在打开…") : t("打开工作区")}
+            </span>
           </button>
         </div>
 
@@ -104,7 +108,7 @@ export function WorkspaceOnboarding({
           <div className="mt-5">
             <p className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
               <HardDrive className="size-3.5" />
-              最近的工作区
+              {t("最近的工作区")}
             </p>
             <ul className="max-h-[180px] overflow-y-auto rounded-[12px] border border-border/60 bg-card/40">
               {workspaces.map((workspace) => (
@@ -124,7 +128,7 @@ export function WorkspaceOnboarding({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-medium">
-                        {busy === workspace.id ? "正在切换…" : workspace.name}
+                        {busy === workspace.id ? t("正在切换…") : workspace.name}
                       </span>
                       <span className="block truncate font-mono text-[11px] text-muted-foreground">
                         {workspace.path}

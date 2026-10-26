@@ -13,11 +13,13 @@ use serde_json::{Map, Value, json};
 
 use crate::errors::{AppError, AppResult};
 use crate::logging;
-use crate::models::attachment::{AttachmentDto, AttachmentListQuery, UploadAttachmentInput};
+use crate::models::attachment::{
+    AttachmentDto, AttachmentListQuery, SCOPE_NODE, UploadAttachmentInput,
+};
 use crate::models::board::BoardSaveInput;
 use crate::models::document::SaveDocumentInput;
 use crate::models::exchange::{ImportDocumentsInput, ImportFileResult, ImportMode, ImportResult};
-use crate::models::{CreateNodeInput, NodeDto};
+use crate::models::{CreateAttachmentNodeInput, CreateNodeInput, NodeDto};
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::import_markdown::parse_markdown;
 use crate::services::import_word::parse_word;
@@ -27,11 +29,21 @@ use crate::state::AppState;
 const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdown", "mkd"];
 const WORD_EXTENSIONS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc"];
 const EXCALIDRAW_EXTENSIONS: &[&str] = &["excalidraw"];
+/// Starris 整库导出的清单文件名；存在时可恢复附件节点。
+const MANIFEST_FILE: &str = "manifest.json";
 
 struct ParsedContent {
     blocks: Vec<Value>,
     warnings: Vec<String>,
     attachment_count: usize,
+}
+
+/// 整库导出 manifest 中的附件节点。
+struct AttachmentManifestEntry {
+    title: String,
+    path: PathBuf,
+    relative: Option<PathBuf>,
+    mime: Option<String>,
 }
 
 /// 批量导入入口。
@@ -125,6 +137,16 @@ pub fn import_documents(state: &AppState, input: ImportDocumentsInput) -> AppRes
     Ok(result)
 }
 
+/// 目录导入期间共享的上下文，避免把 9 个参数逐个传递归函数。
+struct ImportWalkContext<'a> {
+    state: &'a AppState,
+    attachment: &'a AttachmentContext,
+    kb_id: &'a str,
+    preserve_hierarchy: bool,
+    attachment_paths: &'a HashSet<PathBuf>,
+    folders: &'a mut HashMap<PathBuf, String>,
+}
+
 fn import_directory(
     state: &AppState,
     attachment: &AttachmentContext,
@@ -145,24 +167,33 @@ fn import_directory(
     } else {
         parent_id.map(str::to_string)
     };
-    walk_directory(
+    let manifest = read_attachment_manifest(root);
+    let attachment_paths: HashSet<PathBuf> = manifest
+        .iter()
+        .filter_map(|entry| entry.relative.clone())
+        .collect();
+    let mut folders: HashMap<PathBuf, String> = HashMap::new();
+    if let Some(id) = parent.as_ref() {
+        folders.insert(PathBuf::new(), id.clone());
+    }
+    let mut context = ImportWalkContext {
         state,
         attachment,
         kb_id,
-        parent.as_deref(),
-        root,
         preserve_hierarchy,
-        result,
-    )
+        attachment_paths: &attachment_paths,
+        folders: &mut folders,
+    };
+    walk_directory(&mut context, parent.as_deref(), root, Path::new(""), result)?;
+    import_attachment_manifest(&mut context, parent.as_deref(), &manifest, result);
+    Ok(())
 }
 
 fn walk_directory(
-    state: &AppState,
-    attachment: &AttachmentContext,
-    kb_id: &str,
+    context: &mut ImportWalkContext<'_>,
     parent_id: Option<&str>,
     dir: &Path,
-    preserve_hierarchy: bool,
+    relative: &Path,
     result: &mut ImportResult,
 ) -> AppResult<()> {
     let mut entries = fs::read_dir(dir)?
@@ -171,6 +202,8 @@ fn walk_directory(
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
+        let name = entry.file_name();
+        let child_relative = relative.join(&name);
         let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
             Err(error) => {
@@ -185,35 +218,25 @@ fn walk_directory(
             continue;
         }
         if metadata.is_dir() {
-            if preserve_hierarchy {
-                let title = path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("文件夹");
-                let folder = create_folder(state, kb_id, parent_id, title)?;
+            if context.preserve_hierarchy {
+                let title = name.to_str().unwrap_or("文件夹");
+                let folder = create_folder(context.state, context.kb_id, parent_id, title)?;
                 result.created_folder_ids.push(folder.id.clone());
-                walk_directory(
-                    state,
-                    attachment,
-                    kb_id,
-                    Some(&folder.id),
-                    &path,
-                    preserve_hierarchy,
-                    result,
-                )?;
+                context
+                    .folders
+                    .insert(child_relative.clone(), folder.id.clone());
+                walk_directory(context, Some(&folder.id), &path, &child_relative, result)?;
             } else {
-                walk_directory(
-                    state,
-                    attachment,
-                    kb_id,
-                    parent_id,
-                    &path,
-                    preserve_hierarchy,
-                    result,
-                )?;
+                walk_directory(context, parent_id, &path, &child_relative, result)?;
             }
-        } else if is_supported(&path) {
-            let outcome = import_file(state, attachment, kb_id, parent_id, &path)?;
+        } else if !context.attachment_paths.contains(&child_relative) && is_supported(&path) {
+            let outcome = import_file(
+                context.state,
+                context.attachment,
+                context.kb_id,
+                parent_id,
+                &path,
+            )?;
             if outcome.ok {
                 result.imported += 1;
             } else {
@@ -223,6 +246,164 @@ fn walk_directory(
         }
     }
     Ok(())
+}
+
+/// 读取整库导出清单中的 `attachmentNodes`；无清单或解析失败返回空。
+fn read_attachment_manifest(root: &Path) -> Vec<AttachmentManifestEntry> {
+    let manifest_path = root.join(MANIFEST_FILE);
+    let Ok(raw) = fs::read_to_string(&manifest_path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        logging::error("import", "整库清单解析失败，按普通目录导入");
+        return Vec::new();
+    };
+    let Some(entries) = value.get("attachmentNodes").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let title = entry.get("title").and_then(Value::as_str)?.to_string();
+            let raw_path = entry.get("path").and_then(Value::as_str)?;
+            let declared = PathBuf::from(raw_path);
+            let path = if declared.is_file() {
+                declared
+            } else {
+                let name = declared.file_name()?.to_str()?;
+                find_file_by_name(root, name)?
+            };
+            let relative = path.strip_prefix(root).ok().map(Path::to_path_buf);
+            let mime = entry
+                .get("mime")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            Some(AttachmentManifestEntry {
+                title: if title.trim().is_empty() {
+                    path.file_stem()?.to_str()?.to_string()
+                } else {
+                    title
+                },
+                path,
+                relative,
+                mime,
+            })
+        })
+        .collect()
+}
+
+/// 在导出根目录下按文件名查找附件；导出被搬移后绝对路径会失效。
+fn find_file_by_name(root: &Path, name: &str) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.file_name().and_then(|value| value.to_str()) == Some(name) && path.is_file() {
+            return Some(path);
+        }
+        if path.is_dir()
+            && !path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value.starts_with('.'))
+            && let Some(found) = find_file_by_name(&path, name)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// 从 manifest 恢复附件节点；文件缺失记失败，父文件夹找不到时回退到根级。
+fn import_attachment_manifest(
+    context: &mut ImportWalkContext<'_>,
+    parent_id: Option<&str>,
+    manifest: &[AttachmentManifestEntry],
+    result: &mut ImportResult,
+) {
+    for entry in manifest {
+        let Some(relative) = entry.relative.as_ref() else {
+            result
+                .files
+                .push(failure(&entry.path, "附件不在导入目录内".to_string()));
+            result.failed += 1;
+            continue;
+        };
+        if !entry.path.is_file() {
+            result
+                .files
+                .push(failure(&entry.path, "附件文件缺失".to_string()));
+            result.failed += 1;
+            continue;
+        }
+        let parent_relative = relative.parent().unwrap_or_else(|| Path::new(""));
+        let target_parent = if context.preserve_hierarchy {
+            context
+                .folders
+                .get(parent_relative)
+                .map(String::as_str)
+                .or(parent_id)
+        } else {
+            parent_id
+        };
+        let mut warnings = Vec::new();
+        if context.preserve_hierarchy
+            && !parent_relative.as_os_str().is_empty()
+            && target_parent == parent_id
+        {
+            warnings.push("附件原文件夹未找到，已放到当前目录".to_string());
+        }
+        let uploaded = attachment_service::upload(
+            context.attachment,
+            UploadAttachmentInput {
+                source_path: entry.path.to_string_lossy().into_owned(),
+                logical_path: String::new(),
+                name: Some(entry.title.clone()),
+                mime: entry.mime.clone(),
+                scope: Some(SCOPE_NODE.to_string()),
+                ttl_seconds: None,
+            },
+        );
+        let uploaded = match uploaded {
+            Ok(value) => value,
+            Err(error) => {
+                result
+                    .files
+                    .push(failure(&entry.path, format!("附件上传失败：{error}")));
+                result.failed += 1;
+                continue;
+            }
+        };
+        let node = node_service::create_attachment_node(
+            context.state,
+            CreateAttachmentNodeInput {
+                knowledge_base_id: context.kb_id.to_string(),
+                parent_id: target_parent.map(str::to_string),
+                object_id: uploaded.id.clone(),
+            },
+        );
+        match node {
+            Ok(node) => {
+                result.imported += 1;
+                result.files.push(ImportFileResult {
+                    source_path: entry.path.to_string_lossy().into_owned(),
+                    node_id: Some(node.id),
+                    title: node.title,
+                    ok: true,
+                    message: None,
+                    warnings,
+                    attachment_count: 0,
+                });
+            }
+            Err(error) => {
+                let _ = attachment_service::delete(context.attachment, &uploaded.id);
+                result
+                    .files
+                    .push(failure(&entry.path, format!("附件节点创建失败：{error}")));
+                result.failed += 1;
+            }
+        }
+    }
 }
 
 /// 导入 `.excalidraw`：创建画板节点，上传内嵌图片并恢复 Starris 附件映射。
@@ -698,6 +879,7 @@ fn import_file(
         SaveDocumentInput {
             node_id: node.id.clone(),
             document,
+            base_version: 0,
         },
     ) {
         let _ = node_service::delete(state, &node.id);
@@ -776,6 +958,7 @@ fn unique_attachment_name(context: &AttachmentContext, desired: &str) -> String 
         &AttachmentListQuery {
             logical_path: Some("attach".to_string()),
             include_deleted: false,
+            ..Default::default()
         },
     ) else {
         return desired.to_string();

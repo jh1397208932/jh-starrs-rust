@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 import type { KnowledgeBase } from "@/types/notebook";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { KbEditorDialog } from "./KbEditorDialog";
@@ -42,6 +43,7 @@ export function KbManageDialog({
   onUpdateKb,
   onDeleteKb,
 }: KbManageDialogProps) {
+  const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<KnowledgeBase | null>(null);
   const [editing, setEditing] = useState<KnowledgeBase | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -64,12 +66,12 @@ export function KbManageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="h-[400px] w-[560px] p-5" aria-describedby={undefined}>
         <DialogHeader
-          title="知识库管理"
+          title={t("知识库管理")}
           description={workspaceName}
           actions={
             <Button size="sm" variant="outline" onClick={onOpenNewKb}>
               <Plus className="size-3.5" />
-              新建知识库
+              {t("新建知识库")}
             </Button>
           }
         />
@@ -80,14 +82,14 @@ export function KbManageDialog({
           <div
             className={`${GRID} border-b border-border bg-muted px-3 py-2 text-[12px] font-medium text-muted-foreground`}
           >
-            <span>名称</span>
-            <span>描述</span>
-            <span className="text-right">条目数</span>
+            <span>{t("名称")}</span>
+            <span>{t("描述")}</span>
+            <span className="text-right">{t("条目数")}</span>
             <span />
           </div>
           {kbs.length === 0 && (
             <p className="px-3 py-8 text-center text-[12.5px] text-muted-foreground">
-              当前工作区还没有知识库
+              {t("当前工作区还没有知识库")}
             </p>
           )}
           {kbs.map((kb) => {
@@ -105,10 +107,10 @@ export function KbManageDialog({
                   onClick={() => void switchTo(kb.id)}
                   className="flex min-w-0 cursor-default items-center gap-1.5 truncate text-left text-[13px] font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                 >
-                  <span className="truncate">{busyId === kb.id ? "正在切换…" : kb.name}</span>
+                  <span className="truncate">{busyId === kb.id ? t("正在切换…") : kb.name}</span>
                   {isCurrent && (
                     <Badge variant="solid" dot>
-                      当前
+                      {t("当前")}
                     </Badge>
                   )}
                 </button>
@@ -120,7 +122,7 @@ export function KbManageDialog({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label={`${kb.name} 操作`}
+                      aria-label={t("{name} 操作", { name: kb.name })}
                       className="grid size-7 cursor-default place-items-center justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                     >
                       <Ellipsis className="size-4" />
@@ -128,15 +130,15 @@ export function KbManageDialog({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[150px]">
                     <DropdownMenuItem disabled={isCurrent} onSelect={() => void switchTo(kb.id)}>
-                      切换
+                      {t("切换")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setEditing(kb)}>
                       <Pencil />
-                      编辑
+                      {t("编辑")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setPendingDelete(kb)}>
                       <Trash2 />
-                      删除
+                      {t("删除")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -163,8 +165,8 @@ export function KbManageDialog({
           onOpenChange={(next) => {
             if (!next) setPendingDelete(null);
           }}
-          title={`删除知识库「${pendingDelete?.name ?? ""}」？`}
-          description="知识库中的所有内容将被永久删除，此操作不可撤销。"
+          title={t("删除知识库「{name}」？", { name: pendingDelete?.name ?? "" })}
+          description={t("知识库中的所有内容将被永久删除，此操作不可撤销。")}
           onConfirm={async () => {
             if (pendingDelete) await onDeleteKb(pendingDelete.id);
             setPendingDelete(null);

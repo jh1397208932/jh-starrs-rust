@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useI18n } from "@/lib/i18n";
 import { SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ export interface InfoFloatProps {
  * 展开 = 右滑弹簧入场 + 左缘骑缝把手（收起）；折叠 = 右缘小钮（展开）。
  */
 export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
+  const { t } = useI18n();
   return (
     <>
       <AnimatePresence initial={false}>
@@ -28,17 +30,17 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 24, opacity: 0 }}
             transition={SPRING_PANEL}
-            className="absolute top-16 right-5 bottom-5 z-20 w-[264px]"
+            className="info-float absolute top-16 right-5 bottom-5 z-20 w-[264px]"
           >
             <aside
-              aria-label="文档信息浮窗"
+              aria-label={t("文档信息浮窗")}
               className="anim-fade-in h-full w-full overflow-hidden rounded-[18px] border border-border/60 bg-card/80 shadow-lg backdrop-blur-2xl"
             >
               {children}
             </aside>
             <button
               type="button"
-              aria-label="收起信息浮窗"
+              aria-label={t("收起信息浮窗")}
               aria-expanded={true}
               onClick={onToggle}
               className="absolute top-1/2 -left-3.5 z-30 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-border/70 bg-card/75 text-muted-foreground shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -51,7 +53,7 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
       {!visible && (
         <button
           type="button"
-          aria-label="展开信息浮窗"
+          aria-label={t("展开信息浮窗")}
           aria-expanded={false}
           onClick={onToggle}
           className={cn(

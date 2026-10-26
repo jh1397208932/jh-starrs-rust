@@ -27,7 +27,7 @@ pub struct BoardViewportRow {
 pub fn find_node(connection: &Connection, node_id: &str) -> rusqlite::Result<Option<BoardNodeRow>> {
     connection
         .query_row(
-            "SELECT type, update_time FROM node WHERE id = ?1",
+            "SELECT type, update_time FROM node WHERE id = ?1 AND deleted_at IS NULL",
             [node_id],
             |row| {
                 Ok(BoardNodeRow {

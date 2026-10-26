@@ -5,6 +5,7 @@
 
 import { invokeCommand, invokeRawCommand } from "@/api/client";
 import { mapNode, type NodeDto } from "@/api/node";
+import { t } from "@/lib/i18n";
 import type {
   Attachment,
   AttachmentDeleteResult,
@@ -15,6 +16,7 @@ import type {
   AttachmentStats,
   AttachmentVerifyResult,
   DownloadAttachmentParams,
+  MaintenanceSettings,
   UpdateAttachmentParams,
   UploadAttachmentParams,
 } from "@/types/attachment";
@@ -86,7 +88,7 @@ export async function getAttachmentByNode(nodeId: string): Promise<Attachment> {
 export async function uploadAttachmentBytes(file: File, logicalPath = ""): Promise<Attachment> {
   const buffer = await file.arrayBuffer();
   return invokeRawCommand<Attachment>("attachment_upload_bytes", new Uint8Array(buffer), {
-    "x-file-name-hex": encodeHex(file.name || "附件"),
+    "x-file-name-hex": encodeHex(file.name || t("附件")),
     "x-logical-path-hex": encodeHex(logicalPath),
     "x-file-mime": file.type || "",
   });
@@ -104,14 +106,17 @@ export async function readAttachmentBytes(id: string): Promise<ArrayBuffer> {
 
 /**
  * 列出附件。
- * @param query 目录过滤与是否包含软删除
- * @returns 附件数组（默认仅活跃）
- * @example await listAttachments({ logicalPath: "docs" });
+ * @param query 目录/名称过滤、分页与是否包含软删除
+ * @returns 附件数组（默认仅活跃，最多 200 条）
+ * @example await listAttachments({ logicalPath: "docs", limit: 50, offset: 0 });
  */ export async function listAttachments(query: AttachmentListQuery = {}): Promise<Attachment[]> {
   return invokeCommand<Attachment[]>("attachment_list", {
     query: {
       logicalPath: query.logicalPath ?? null,
       includeDeleted: query.includeDeleted ?? false,
+      search: query.search ?? null,
+      limit: query.limit ?? null,
+      offset: query.offset ?? null,
     },
   });
 }
@@ -181,6 +186,27 @@ export async function setAttachmentLifecycle(params: AttachmentLifecycleParams):
  */
 export async function runAttachmentMaintenance(): Promise<AttachmentMaintenanceResult> {
   return invokeCommand<AttachmentMaintenanceResult>("attachment_maintenance");
+}
+
+/**
+ * 读取当前工作区的附件保留策略。
+ * @returns 孤儿/回收站/暂存的保留时长
+ * @example const policy = await getMaintenanceSettings();
+ */
+export async function getMaintenanceSettings(): Promise<MaintenanceSettings> {
+  return invokeCommand<MaintenanceSettings>("attachment_maintenance_settings");
+}
+
+/**
+ * 保存当前工作区的附件保留策略。
+ * @param settings 天数与小时数，范围由后端校验
+ * @returns 保存后的策略
+ * @example await updateMaintenanceSettings({ orphanGraceDays: 7, trashRetentionDays: 30, stagingMaxAgeHours: 24 });
+ */
+export async function updateMaintenanceSettings(settings: MaintenanceSettings): Promise<MaintenanceSettings> {
+  return invokeCommand<MaintenanceSettings>("attachment_update_maintenance_settings", {
+    input: settings,
+  });
 }
 
 /**

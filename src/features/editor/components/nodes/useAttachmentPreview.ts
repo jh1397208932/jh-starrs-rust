@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { readAttachmentBytes } from "@/api/attachment";
 import { toErrorMessage } from "@/api/client";
+import { t } from "@/lib/i18n";
 
 export interface AttachmentPreviewState {
   url: string | null;
@@ -18,12 +19,12 @@ export function useAttachmentPreview(attachmentId: string | null, mime: string):
   const [state, setState] = useState<AttachmentPreviewState>({
     url: null,
     loading: Boolean(attachmentId),
-    error: attachmentId ? null : "附件不可用",
+    error: attachmentId ? null : t("附件不可用"),
   });
 
   useEffect(() => {
     if (!attachmentId) {
-      setState({ url: null, loading: false, error: "附件不可用" });
+      setState({ url: null, loading: false, error: t("附件不可用") });
       return;
     }
     let cancelled = false;

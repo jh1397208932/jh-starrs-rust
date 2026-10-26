@@ -4,8 +4,12 @@ import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { NODE_KIND_LABELS, NODE_KIND_ORDER, type NodeItem, type NodeKind } from "@/types/notebook";
+
+/** 可创建的节点类型；表格/流程图分别复用文档/画板编辑器。 */
+const CREATABLE_KINDS: NodeKind[] = NODE_KIND_ORDER;
 
 export interface NodeCreateDialogProps {
   open: boolean;
@@ -21,7 +25,8 @@ export interface NodeCreateDialogProps {
 }
 
 /**
- * 新建节点弹窗：5 类节点（文件夹/文档/画板/表格/流程图）。
+ * 新建节点弹窗：文件夹/文档/画板/表格/流程图。
+ * 表格复用文档编辑器，流程图复用画板编辑器。
  * 只有文件夹会作为入口出现；父级在打开前已由调用方校验。
  */
 export function NodeCreateDialog({
@@ -32,6 +37,7 @@ export function NodeCreateDialog({
   initialTitle = "",
   onSubmit,
 }: NodeCreateDialogProps) {
+  const { t } = useI18n();
   const [kind, setKind] = useState<NodeKind>(defaultKind);
   const [title, setTitle] = useState(initialTitle);
   const [pending, setPending] = useState(false);
@@ -47,7 +53,7 @@ export function NodeCreateDialog({
 
   const trimmed = title.trim();
   const titleError =
-    trimmed.length === 0 ? "名称不能为空" : /[/\\]/.test(trimmed) ? "名称不能包含 / 或 \\" : null;
+    trimmed.length === 0 ? t("名称不能为空") : /[/\\]/.test(trimmed) ? t("名称不能包含 / 或 \\") : null;
   const canSubmit = titleError === null && !pending;
 
   const submit = async () => {
@@ -73,10 +79,10 @@ export function NodeCreateDialog({
       }}
     >
       <DialogContent className="w-[440px] p-5" aria-describedby={undefined}>
-        <DialogHeader title={parent ? `在「${parent.title}」中新建` : "新建"} />
+        <DialogHeader title={parent ? t("在「{title}」中新建", { title: parent.title }) : t("新建")} />
 
-        <fieldset aria-label="类型" className="mt-4 grid grid-cols-5 gap-1.5">
-          {NODE_KIND_ORDER.map((item) => (
+        <fieldset aria-label={t("类型")} className="mt-4 grid grid-cols-5 gap-1.5">
+          {CREATABLE_KINDS.map((item) => (
             <button
               key={item}
               type="button"
@@ -91,21 +97,22 @@ export function NodeCreateDialog({
               )}
             >
               <NodeKindIcon kind={item} className="size-4" />
-              {NODE_KIND_LABELS[item]}
+              {t(NODE_KIND_LABELS[item])}
             </button>
           ))}
         </fieldset>
 
         <div className="mt-4">
           <label htmlFor="node-title" className="mb-1.5 block text-[13px] font-medium">
-            {NODE_KIND_LABELS[kind]}名称
+            {t(NODE_KIND_LABELS[kind])}
+            {t("名称")}
           </label>
           <Input
             id="node-title"
             autoFocus
             value={title}
             maxLength={200}
-            placeholder="名称"
+            placeholder={t("名称")}
             aria-invalid={title.length > 0 && titleError !== null}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
@@ -124,10 +131,10 @@ export function NodeCreateDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button size="sm" className="min-w-[72px]" disabled={!canSubmit} onClick={() => void submit()}>
-            {pending ? "创建中…" : "创建"}
+            {pending ? t("创建中…") : t("创建")}
           </Button>
         </div>
       </DialogContent>

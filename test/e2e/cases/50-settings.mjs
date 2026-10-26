@@ -81,7 +81,7 @@ export default {
     await ctx.press("快捷键", { role: "AXRadioButton" });
     await ctx.expectText("更多菜单", { timeout: 5000 });
     await ctx.press("关于", { role: "AXRadioButton" });
-    await ctx.expectText("Starris · 本地工作区版", { timeout: 5000 });
+    await ctx.expectText("本地工作区版", { timeout: 5000 });
     await ctx.press("关闭");
     ctx.metrics.dialogs += 1;
 

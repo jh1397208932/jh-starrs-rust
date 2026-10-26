@@ -352,10 +352,10 @@ fn normalize_app_state(value: &Value) -> AppResult<String> {
 }
 
 fn require_board(node_type: i64) -> AppResult<()> {
-    if NodeType::from_i64(node_type)? != NodeType::Board {
-        return Err(AppError::validation("此内容不是画板"));
+    match NodeType::from_i64(node_type)? {
+        NodeType::Board | NodeType::Flow => Ok(()),
+        _ => Err(AppError::validation("此内容不是画板或流程图")),
     }
-    Ok(())
 }
 
 fn with_session<T>(

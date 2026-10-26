@@ -7,6 +7,7 @@ import {
   Layers,
   Loader2,
   Paperclip,
+  Play,
   RotateCcw,
   TriangleAlert,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 import type { BoardExportFormat, BoardSaveStatus } from "@/types/board";
 
 interface BoardPageBarProps {
@@ -37,6 +39,8 @@ interface BoardPageBarProps {
   onOpenLibrary: () => void;
   /** 导出当前画板 */
   onExport: (format: BoardExportFormat) => void;
+  /** 进入/退出放映 */
+  onPresent: () => void;
   /** 正在导出的格式 */
   exporting?: BoardExportFormat | null;
 }
@@ -47,13 +51,14 @@ function StatusPill({
   onRetry,
   onReload,
 }: Pick<BoardPageBarProps, "status" | "onRetry" | "onReload">) {
+  const { t } = useI18n();
   const base =
     "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap";
   if (status === "loading") {
     return (
       <span className={`${base} text-muted-foreground`}>
         <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-        加载中
+        {t("加载中")}
       </span>
     );
   }
@@ -61,7 +66,7 @@ function StatusPill({
     return (
       <span className={`${base} text-primary`}>
         <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-        保存中
+        {t("保存中")}
       </span>
     );
   }
@@ -71,10 +76,10 @@ function StatusPill({
         type="button"
         onClick={onRetry}
         className={`${base} text-destructive hover:bg-destructive/10`}
-        aria-label="保存失败，点击重试"
+        aria-label={t("保存失败，点击重试")}
       >
         <TriangleAlert className="size-3" aria-hidden="true" />
-        保存失败 · 重试
+        {t("保存失败 · 重试")}
       </button>
     );
   }
@@ -84,14 +89,14 @@ function StatusPill({
         type="button"
         onClick={onReload}
         className={`${base} text-[var(--logo-c)] hover:bg-accent`}
-        aria-label="已在别处更新，点击重新加载"
+        aria-label={t("已在别处更新，点击重新加载")}
       >
         <RotateCcw className="size-3" aria-hidden="true" />
-        已更新 · 重新加载
+        {t("已更新 · 重新加载")}
       </button>
     );
   }
-  return <span className={`${base} text-muted-foreground`}>已保存</span>;
+  return <span className={`${base} text-muted-foreground`}>{t("已保存")}</span>;
 }
 
 /** 画板页头：面包屑 + 保存状态；不重复 Excalidraw 自带的导出/菜单按钮。 */
@@ -105,8 +110,10 @@ export function BoardPageBar({
   onInsertAttachment,
   onOpenLibrary,
   onExport,
+  onPresent,
   exporting = null,
 }: BoardPageBarProps) {
+  const { t } = useI18n();
   return (
     <header className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border/50 px-4">
       <div className="flex min-w-0 items-center gap-1 text-[12.5px]">
@@ -129,19 +136,28 @@ export function BoardPageBar({
           type="button"
           onClick={onOpenLibrary}
           className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label="组件库"
+          aria-label={t("组件库")}
         >
           <Layers className="size-3.5" aria-hidden="true" />
-          <span className="hidden sm:inline">组件库</span>
+          <span className="hidden sm:inline">{t("组件库")}</span>
         </button>
         <button
           type="button"
           onClick={onInsertAttachment}
           className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label="插入附件"
+          aria-label={t("插入附件")}
         >
           <Paperclip className="size-3.5" aria-hidden="true" />
-          <span className="hidden sm:inline">附件</span>
+          <span className="hidden sm:inline">{t("附件")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onPresent}
+          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label={t("放映画板")}
+        >
+          <Play className="size-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">{t("放映")}</span>
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -149,28 +165,28 @@ export function BoardPageBar({
               type="button"
               disabled={exporting !== null}
               className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              aria-label="导出画板"
+              aria-label={t("导出画板")}
             >
               {exporting ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
               ) : (
                 <Download className="size-3.5" aria-hidden="true" />
               )}
-              <span className="hidden sm:inline">导出</span>
+              <span className="hidden sm:inline">{t("导出")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="bottom" align="end" className="w-[210px]">
             <DropdownMenuItem onSelect={() => onExport("png")}>
               <Image />
-              PNG 图片
+              {t("PNG 图片")}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onExport("svg")}>
               <FileCode2 />
-              SVG 矢量图
+              {t("SVG 矢量图")}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onExport("excalidraw")}>
               <FileJson />
-              Excalidraw 文件
+              {t("Excalidraw 文件")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

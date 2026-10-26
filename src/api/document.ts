@@ -18,8 +18,15 @@ export async function loadDocument(nodeId: string): Promise<DocLoadResult> {
  * 保存文档；调用方必须在拿到前端保存互斥锁后再取 `editor.getJSON()`。
  * @param nodeId 文档节点 id
  * @param document Tiptap JSON 根文档
- * @returns add/rm/order/tree 差量与最新字数
+ * @param baseVersion 加载/上次保存后持有的文档版本
+ * @returns add/rm/order/tree 差量与最新字数、版本
  */
-export async function saveDocument(nodeId: string, document: JSONContent): Promise<DocSaveResult> {
-  return invokeCommand<DocSaveResult>("doc_save", { input: { nodeId, document } });
+export async function saveDocument(
+  nodeId: string,
+  document: JSONContent,
+  baseVersion: number,
+): Promise<DocSaveResult> {
+  return invokeCommand<DocSaveResult>("doc_save", {
+    input: { nodeId, document, baseVersion },
+  });
 }

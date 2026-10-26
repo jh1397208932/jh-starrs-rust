@@ -16,7 +16,9 @@ use crate::models::{
 use crate::repositories::knowledge_base_repository;
 use crate::repositories::settings_repository;
 use crate::repositories::workspace_repository;
+#[cfg(not(test))]
 use crate::services::attachment_maintenance_service;
+#[cfg(not(test))]
 use crate::services::attachment_service::AttachmentContext;
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
@@ -199,6 +201,8 @@ pub fn switch_workspace(state: &AppState, workspace_id: &str) -> AppResult<Works
         let mut guard = state.workspace()?;
         *guard = Some(session);
     }
+    // 测试里不启动后台维护，避免与手写维护断言争抢同一批文件。
+    #[cfg(not(test))]
     if let Ok(context) = AttachmentContext::from_state(state) {
         attachment_maintenance_service::spawn_workspace_run(context);
     }

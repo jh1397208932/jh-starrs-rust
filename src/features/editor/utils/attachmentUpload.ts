@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { Editor } from "@tiptap/react";
 import { uploadAttachment, uploadAttachmentBytes } from "@/api/attachment";
 import { toErrorMessage } from "@/api/client";
+import { t } from "@/lib/i18n";
 import type { Attachment } from "@/types/attachment";
 import type { AttachmentNodeItem } from "../extensions/attachmentTypes";
 
@@ -128,10 +129,16 @@ export async function uploadPathsAndInsert(
       insertNodes(editor, nodes, options.pos);
     }
     if (skipped > 0) {
-      failures.push(`${skipped} 个文件不是图片，已跳过`);
+      failures.push(t("{count} 个文件不是图片，已跳过", { count: skipped }));
     }
     if (failures.length > 0) {
-      options.onError(`上传完成 ${uploaded.length} 个，${failures.length} 个失败：${failures[0]}`);
+      options.onError(
+        t("上传完成 {ok} 个，{failed} 个失败：{error}", {
+          ok: uploaded.length,
+          failed: failures.length,
+          error: failures[0],
+        }),
+      );
     }
     return { inserted: nodes.length, failed: failures.length };
   } finally {
@@ -154,7 +161,7 @@ export async function uploadFilesAndInsert(
       try {
         uploaded = [...uploaded, await uploadAttachmentBytes(file)];
       } catch (caught) {
-        failures.push(`${file.name || "文件"}：${toErrorMessage(caught)}`);
+        failures.push(t("{name}：{error}", { name: file.name || t("文件"), error: toErrorMessage(caught) }));
       }
     }
     const { nodes } = buildNodes("auto", uploaded);
@@ -162,7 +169,13 @@ export async function uploadFilesAndInsert(
       insertNodes(editor, nodes, options.pos);
     }
     if (failures.length > 0) {
-      options.onError(`上传完成 ${uploaded.length} 个，${failures.length} 个失败：${failures[0]}`);
+      options.onError(
+        t("上传完成 {ok} 个，{failed} 个失败：{error}", {
+          ok: uploaded.length,
+          failed: failures.length,
+          error: failures[0],
+        }),
+      );
     }
     return { inserted: nodes.length, failed: failures.length };
   } finally {

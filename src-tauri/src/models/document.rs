@@ -9,6 +9,9 @@ use serde_json::Value;
 pub struct SaveDocumentInput {
     pub node_id: String,
     pub document: Value,
+    /// 前端加载/上次保存后持有的文档版本；保存时用于乐观并发控制。
+    #[serde(default)]
+    pub base_version: i64,
 }
 
 /// 新增块：仅包含工作区 hash 表中原本不存在的块。
@@ -47,6 +50,8 @@ pub struct DocSaveResult {
     pub tree: Vec<BlockNodeDto>,
     pub word_count: i64,
     pub updated_at: i64,
+    /// 保存后的文档版本；前端以此更新下一次保存的基线。
+    pub version: i64,
 }
 
 /// 文档加载结果；正文缓存与块树一并返回。
@@ -59,4 +64,6 @@ pub struct DocLoadResult {
     pub tree: Vec<BlockNodeDto>,
     /// 加载时是否修复了历史脏数据（前端需要自动补一次保存）。
     pub normalized: bool,
+    /// 当前文档版本；保存时作为 baseVersion 回传。
+    pub version: i64,
 }

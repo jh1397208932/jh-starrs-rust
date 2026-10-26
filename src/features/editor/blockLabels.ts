@@ -1,3 +1,5 @@
+import { t } from "@/lib/i18n";
+
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   paragraph: "段落",
   heading: "标题",
@@ -15,6 +17,6 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
 };
 
 export function blockTypeLabel(type: string | undefined): string {
-  if (!type) return "内容";
-  return BLOCK_TYPE_LABELS[type] ?? "内容";
+  if (!type) return t("内容");
+  return t(BLOCK_TYPE_LABELS[type] ?? "内容");
 }

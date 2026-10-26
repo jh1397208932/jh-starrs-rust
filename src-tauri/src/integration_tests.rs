@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -16,13 +16,19 @@ use uuid::Uuid;
 use crate::db;
 use crate::domain::attachment::StoragePolicy;
 use crate::errors::AppError;
+use crate::models::attachment::MaintenanceSettingsInput;
 use crate::models::attachment::{
     AttachmentDto, AttachmentLifecycleInput, AttachmentListQuery, DownloadAttachmentInput,
     UpdateAttachmentInput, UploadAttachmentInput,
 };
+use crate::models::backup::{BackupWorkspaceInput, RestoreWorkspaceInput};
 use crate::models::board::{BoardSaveInput, BoardSaveViewportInput};
+use crate::models::cloud::{CloudRestoreInput, CloudSyncFolderInput};
 use crate::models::exchange::ImportMode;
+use crate::models::history::RestoreDocHistoryInput;
 use crate::models::library::{ImportLibraryInput, SetLibraryEnabledInput};
+use crate::models::search::SearchNodesInput;
+use crate::models::template::{CreateFromTemplateInput, SaveTemplateInput};
 use crate::models::{
     CreateAttachmentNodeInput, CreateKbInput, CreateNodeInput, CreateWorkspaceInput,
     DeleteWorkspaceInput, DocSaveResult, ExportDocumentInput, ExportFormat,
@@ -34,8 +40,9 @@ use crate::repositories::document_repository;
 use crate::services::attachment_maintenance_service::{self, MaintenancePolicy};
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::{
-    attachment_store, board_service, document_service, export_service, import_service,
-    knowledge_base_service, library_service, memory_service, node_service, workspace_service,
+    attachment_store, backup_service, board_service, cloud_service, document_history_service,
+    document_service, export_service, import_service, knowledge_base_service, library_service,
+    memory_service, node_service, search_service, template_service, workspace_service,
 };
 use crate::state::AppState;
 use crate::utils::now_ms;
@@ -108,11 +115,25 @@ impl TestEnv {
     }
 
     fn save_doc(&self, node_id: &str, document: Value) -> DocSaveResult {
+        // 直接读版本，避免 load 触发一次“空正文”元数据回填，干扰 wait_for_meta 的时序。
+        let base_version = {
+            let guard = self.state.workspace().expect("工作区会话");
+            let session = guard.as_ref().expect("已打开工作区");
+            session
+                .connection
+                .query_row(
+                    "SELECT doc_version FROM node WHERE id = ?1",
+                    [node_id],
+                    |row| row.get(0),
+                )
+                .expect("读取文档版本")
+        };
         document_service::save(
             &self.state,
             SaveDocumentInput {
                 node_id: node_id.to_string(),
                 document,
+                base_version,
             },
         )
         .expect("保存文档")
@@ -165,6 +186,227 @@ fn wait_for_meta(db_path: &Path, node_id: &str) -> (String, String) {
 
 fn find_node<'a>(nodes: &'a [NodeDto], id: &str) -> &'a NodeDto {
     nodes.iter().find(|node| node.id == id).expect("节点存在")
+}
+
+#[test]
+fn document_history_snapshot_and_restore() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-history", "历史");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "历史文档");
+    let first = document(vec![paragraph("第一版内容")]);
+    env.save_doc(&doc.id, first.clone());
+
+    // 让第一份快照超出 10 分钟间隔，再保存第二版。
+    db::workspace::open_existing(&workspace_db_path(&workspace))
+        .expect("打开库")
+        .execute(
+            "UPDATE doc_history SET created_at = 0 WHERE node_id = ?1",
+            [&doc.id],
+        )
+        .expect("推进快照时间");
+    env.save_doc(&doc.id, document(vec![paragraph("第二版内容")]));
+
+    let history = document_history_service::list(&env.state, &doc.id).expect("历史列表");
+    assert_eq!(history.len(), 2);
+    let first_snapshot = history.last().expect("最早快照");
+    document_history_service::restore(
+        &env.state,
+        RestoreDocHistoryInput {
+            node_id: doc.id.clone(),
+            history_id: first_snapshot.id.clone(),
+        },
+    )
+    .expect("恢复历史");
+    let loaded = document_service::load(&env.state, &doc.id).expect("加载恢复后文档");
+    assert_eq!(loaded.document, first);
+    assert!(loaded.version >= 3);
+}
+
+#[test]
+fn template_save_list_create_and_delete_document() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-template", "模板库");
+    let kb_id = env.first_kb_id();
+    let source = env.create_node(&kb_id, None, DOC, "模板源文档");
+    let content = document(vec![paragraph("模板正文"), paragraph("第二段")]);
+    env.save_doc(&source.id, content.clone());
+
+    let template = template_service::save(
+        &env.state,
+        SaveTemplateInput {
+            node_id: source.id.clone(),
+            name: "会议模板".to_string(),
+        },
+    )
+    .expect("保存模板");
+    assert_eq!(template.kind, "doc");
+    assert_eq!(
+        template_service::list(&env.state).expect("模板列表").len(),
+        1
+    );
+
+    let created = template_service::create_node(
+        &env.state,
+        CreateFromTemplateInput {
+            template_id: template.id.clone(),
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            title: "从模板创建".to_string(),
+        },
+    )
+    .expect("从模板创建");
+    let loaded = document_service::load(&env.state, &created.node.id).expect("读取模板文档");
+    assert_eq!(loaded.document, content);
+
+    template_service::delete(&env.state, &template.id).expect("删除模板");
+    assert!(
+        template_service::list(&env.state)
+            .expect("模板列表")
+            .is_empty()
+    );
+    assert!(
+        template_service::save(
+            &env.state,
+            SaveTemplateInput {
+                node_id: source.id,
+                name: " ".to_string(),
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn workspace_backup_and_restore_roundtrip() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-backup", "备份源");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "备份文档");
+    env.save_doc(&doc.id, document(vec![paragraph("备份正文")]));
+    let context = attachment_context(&env);
+    let source = write_source(&env, "backup.bin", &[0x37; 200 * 1024]);
+    let attachment = upload_file(&context, "backup.bin", &source, "");
+
+    let backup_parent = env.dir.path().join("backup-dest");
+    fs::create_dir_all(&backup_parent).expect("备份父目录");
+    let backup = backup_service::backup(
+        &env.state,
+        BackupWorkspaceInput {
+            dest_dir: backup_parent.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("备份");
+    assert!(Path::new(&backup.path).join("backup.json").is_file());
+    assert!(
+        Path::new(&backup.path)
+            .join("db/workspace.sqlite3")
+            .is_file()
+    );
+
+    let target = env.dir.path().join("restored");
+    let restored = backup_service::restore(
+        &env.state,
+        RestoreWorkspaceInput {
+            backup_dir: backup.path.clone(),
+            target_dir: target.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("恢复")
+    .workspace;
+    assert_eq!(
+        Path::new(&restored.path).canonicalize().expect("恢复路径"),
+        target.canonicalize().expect("目标路径")
+    );
+    let nodes = node_service::list(&env.state, &env.first_kb_id()).expect("恢复后节点");
+    assert!(
+        nodes.iter().any(|node| node.title == "备份文档"),
+        "恢复后文档节点必须存在"
+    );
+    let restored_context = attachment_context(&env);
+    let attachments = attachment_service::list(&restored_context, &AttachmentListQuery::default())
+        .expect("恢复附件");
+    assert!(
+        attachments.iter().any(|item| item.id == attachment.id),
+        "恢复后附件逻辑行必须存在"
+    );
+    let verified =
+        attachment_service::verify(&restored_context, &attachment.id).expect("恢复后校验附件");
+    assert!(verified.valid, "恢复后附件字节必须可读");
+
+    let non_empty = env.dir.path().join("non-empty");
+    fs::create_dir_all(&non_empty).expect("非空目录");
+    fs::write(non_empty.join("keep.txt"), b"keep").expect("非空文件");
+    assert!(
+        backup_service::restore(
+            &env.state,
+            RestoreWorkspaceInput {
+                backup_dir: backup.path,
+                target_dir: non_empty.to_string_lossy().into_owned(),
+            }
+        )
+        .is_err(),
+        "恢复目标非空必须拒绝"
+    );
+}
+
+#[test]
+fn cloud_sync_folder_uploads_and_restores_latest_snapshot() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-cloud", "云同步源");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "云同步文档");
+    env.save_doc(&doc.id, document(vec![paragraph("同步前内容")]));
+
+    let sync_folder = env.dir.path().join("cloud-drive");
+    let status = cloud_service::set_folder(
+        &env.state,
+        CloudSyncFolderInput {
+            folder: sync_folder.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("设置同步文件夹");
+    assert!(status.folder.is_some());
+    assert!(status.latest.is_none());
+
+    let synced = cloud_service::sync_now(&env.state).expect("同步");
+    let latest = synced.latest.expect("同步后应有快照");
+    assert_eq!(latest.workspace_name, "云同步源");
+    assert!(
+        Path::new(&latest.path)
+            .join("db/workspace.sqlite3")
+            .is_file()
+    );
+
+    env.save_doc(&doc.id, document(vec![paragraph("同步后内容")]));
+    let target = env.dir.path().join("cloud-restored");
+    let restored = cloud_service::restore_latest(
+        &env.state,
+        CloudRestoreInput {
+            target_dir: target.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("从同步文件夹恢复")
+    .workspace;
+    assert_eq!(
+        restored.name, "cloud-restored",
+        "恢复工作区名取目标文件夹名"
+    );
+    let loaded = document_service::load(&env.state, &doc.id).expect("恢复后加载");
+    assert!(
+        loaded.document.to_string().contains("同步前内容"),
+        "恢复必须回到同步时的快照"
+    );
+
+    let inside = Path::new(&restored.path).join("sync-inside");
+    let rejected = cloud_service::set_folder(
+        &env.state,
+        CloudSyncFolderInput {
+            folder: inside.to_string_lossy().into_owned(),
+        },
+    )
+    .expect_err("同步文件夹不能放在工作区内部");
+    assert!(matches!(rejected, AppError::Validation(_)));
 }
 
 #[test]
@@ -603,6 +845,18 @@ fn memory_config_validates_keys_and_theme_values() {
         Err(AppError::Validation(_))
     ));
 
+    let locale = BTreeMap::from([("appearance.locale".to_string(), "en-US".to_string())]);
+    memory_service::save(&env.state, &locale).expect("保存英文语言");
+    assert_eq!(
+        memory_service::load(&env.state).expect("读取语言")["appearance.locale"],
+        "en-US"
+    );
+    let bad_locale = BTreeMap::from([("appearance.locale".to_string(), "fr-FR".to_string())]);
+    assert!(matches!(
+        memory_service::save(&env.state, &bad_locale),
+        Err(AppError::Validation(_))
+    ));
+
     let invalid_key = BTreeMap::from([("bad key!".to_string(), "x".to_string())]);
     assert!(matches!(
         memory_service::save(&env.state, &invalid_key),
@@ -695,6 +949,109 @@ fn document_blocks_save_incrementally_and_roundtrip() {
 }
 
 #[test]
+fn search_indexes_titles_and_documents_and_removes_stale_rows() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-search", "检索");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "星屿检索验证");
+    env.save_doc(&doc.id, document(vec![paragraph("穿过正文的关键词")]));
+
+    let search = |query: &str| {
+        search_service::search(
+            &env.state,
+            SearchNodesInput {
+                query: query.to_string(),
+                knowledge_base_id: kb_id.clone(),
+                limit: 20,
+            },
+        )
+        .expect("搜索")
+    };
+
+    let long = search("检索验");
+    assert!(
+        long.iter().any(|hit| hit.node_id == doc.id),
+        "3 字标题必须命中"
+    );
+    let short = search("检索");
+    assert!(
+        short.iter().any(|hit| hit.node_id == doc.id),
+        "2 字必须 LIKE 回退命中"
+    );
+    let body = search("关键词");
+    assert!(
+        body.iter().any(|hit| hit.node_id == doc.id),
+        "正文必须进入索引"
+    );
+    assert!(!body[0].snippet.is_empty(), "正文命中必须返回片段");
+
+    node_service::update(
+        &env.state,
+        UpdateNodeInput {
+            id: doc.id.clone(),
+            title: Some("改名后的文档".to_string()),
+            starred: None,
+        },
+    )
+    .expect("改名");
+    assert!(
+        search("检索验").iter().all(|hit| hit.node_id != doc.id),
+        "旧标题不得残留"
+    );
+    assert!(
+        search("改名后").iter().any(|hit| hit.node_id == doc.id),
+        "新标题必须命中"
+    );
+
+    node_service::delete(&env.state, &doc.id).expect("删除文档");
+    assert!(
+        search("改名后").iter().all(|hit| hit.node_id != doc.id),
+        "删除节点后索引必须清理"
+    );
+}
+
+#[test]
+fn document_save_rejects_stale_version() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-doc-version", "文档版本");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "并发文档");
+
+    let first = env.save_doc(&doc.id, document(vec![paragraph("第一版")]));
+    assert_eq!(first.version, 1, "首次保存从 0 升到 1");
+    let loaded = document_service::load(&env.state, &doc.id).expect("加载文档");
+    assert_eq!(loaded.version, 1);
+    assert_eq!(loaded.document, document(vec![paragraph("第一版")]));
+
+    // 另一个实例仍拿着旧版本 0 保存：必须冲突，不能覆盖第一版。
+    let stale = document_service::save(
+        &env.state,
+        SaveDocumentInput {
+            node_id: doc.id.clone(),
+            document: document(vec![paragraph("旧实例覆盖")]),
+            base_version: 0,
+        },
+    )
+    .expect_err("旧版本必须冲突");
+    assert!(matches!(stale, AppError::Conflict(_)));
+
+    let still = document_service::load(&env.state, &doc.id).expect("冲突后加载");
+    assert_eq!(still.version, 1);
+    assert_eq!(still.document, document(vec![paragraph("第一版")]));
+
+    let next = document_service::save(
+        &env.state,
+        SaveDocumentInput {
+            node_id: doc.id.clone(),
+            document: document(vec![paragraph("第二版")]),
+            base_version: 1,
+        },
+    )
+    .expect("最新版本可以保存");
+    assert_eq!(next.version, 2);
+}
+
+#[test]
 fn duplicate_blocks_share_hash_and_respect_references() {
     let env = TestEnv::new();
     env.create_workspace("ws-dup", "重复块");
@@ -735,6 +1092,7 @@ fn document_save_rejects_non_document_nodes_and_invalid_documents() {
         SaveDocumentInput {
             node_id: board.id,
             document: document(Vec::new()),
+            base_version: 0,
         },
     )
     .expect_err("画板不能保存文档正文");
@@ -746,6 +1104,7 @@ fn document_save_rejects_non_document_nodes_and_invalid_documents() {
         SaveDocumentInput {
             node_id: doc.id,
             document: json!({"type": "paragraph"}),
+            base_version: 0,
         },
     )
     .expect_err("根节点必须是 doc");
@@ -1042,6 +1401,39 @@ fn attachment_tree_node_rename_delete_and_export() {
     assert_eq!(manifest["attachmentNodes"][0]["nodeId"], node.id);
     assert_eq!(manifest["attachmentNodes"][0]["title"], "重命名附件.txt");
 
+    // 导出目录重新导入：manifest 驱动恢复附件节点，而不是把文件当普通文档。
+    let second_kb = knowledge_base_service::create(
+        &env.state,
+        CreateKbInput {
+            name: "导入附件树".to_string(),
+            description: String::new(),
+        },
+    )
+    .expect("第二个知识库");
+    let imported = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: second_kb.id.clone(),
+            parent_id: None,
+            paths: vec![result.root_path.clone()],
+            mode: ImportMode::Directory,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("导入导出目录");
+    assert!(imported.imported >= 1, "附件节点必须计入导入结果");
+    let imported_nodes = node_service::list(&env.state, &second_kb.id).expect("导入节点");
+    let imported_attachment = imported_nodes
+        .iter()
+        .find(|entry| entry.node_type == 6)
+        .expect("附件节点已恢复");
+    assert_eq!(imported_attachment.title, "重命名附件.txt");
+    let restored = attachment_service::get_by_node(&context, &imported_attachment.id)
+        .expect("按附件节点读取对象");
+    assert_eq!(restored.name, "重命名附件.txt");
+    let verified = attachment_service::verify(&context, &restored.id).expect("校验恢复对象");
+    assert!(verified.valid);
+
     node_service::delete(&env.state, &node.id).expect("删除附件节点");
     let references: i64 = connection
         .query_row(
@@ -1049,7 +1441,25 @@ fn attachment_tree_node_rename_delete_and_export() {
             [&attachment.id],
             |row| row.get(0),
         )
-        .expect("删除后引用");
+        .expect("回收站引用");
+    assert_eq!(references, 1, "回收站期间保留附件引用");
+    let orphaned: Option<i64> = connection
+        .query_row(
+            "SELECT orphaned_at FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("孤儿时间");
+    assert!(orphaned.is_none(), "回收站期间不得标记孤儿");
+
+    node_service::trash_purge(&env.state, &node.id).expect("永久删除附件节点");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE object_id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("永久删除后引用");
     assert_eq!(references, 0);
     let orphaned: Option<i64> = connection
         .query_row(
@@ -1115,6 +1525,24 @@ fn document_refs_cascade_and_attachment_trash_restore() {
             |row| row.get(0),
         )
         .expect("删除后引用数");
+    assert_eq!(references, 1, "回收站期间文档引用仍在");
+    let orphaned: Option<i64> = connection
+        .query_row(
+            "SELECT orphaned_at FROM attachment WHERE id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("孤儿时间");
+    assert!(orphaned.is_none(), "回收站期间不得标记孤儿");
+
+    node_service::trash_purge(&env.state, &doc.id).expect("永久删除文档");
+    let references: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM node_attachment WHERE object_id = ?1",
+            [&attachment.id],
+            |row| row.get(0),
+        )
+        .expect("永久删除后引用数");
     assert_eq!(references, 0);
     let orphaned: Option<i64> = connection
         .query_row(
@@ -1390,6 +1818,7 @@ fn attachment_soft_delete_list_and_path_reuse() {
         &AttachmentListQuery {
             logical_path: None,
             include_deleted: true,
+            ..Default::default()
         },
     )
     .expect("全部列表");
@@ -1512,6 +1941,7 @@ fn attachment_allows_duplicate_names_and_returns_distinct_ids() {
         &AttachmentListQuery {
             logical_path: Some("docs".to_string()),
             include_deleted: false,
+            ..Default::default()
         },
     )
     .expect("按目录列出");
@@ -1874,6 +2304,227 @@ fn attachment_concurrent_same_hash_has_one_physical_object() {
         .filter_map(|entry| entry.ok())
         .collect();
     assert!(staged_left.is_empty(), "并发上传后暂存区必须清空");
+}
+
+#[test]
+fn maintenance_settings_roundtrip_validation_and_policy() {
+    let env = TestEnv::new();
+    env.create_workspace("maintenance-settings", "保留策略");
+    let context = attachment_context(&env);
+
+    let defaults = attachment_maintenance_service::settings(&context).expect("默认策略");
+    assert_eq!(defaults.orphan_grace_days, 7);
+    assert_eq!(defaults.trash_retention_days, 30);
+    assert_eq!(defaults.staging_max_age_hours, 24);
+
+    let saved = attachment_maintenance_service::update_settings(
+        &context,
+        MaintenanceSettingsInput {
+            orphan_grace_days: 3,
+            trash_retention_days: 10,
+            staging_max_age_hours: 12,
+        },
+    )
+    .expect("保存策略");
+    assert_eq!(saved.orphan_grace_days, 3);
+    assert_eq!(saved.trash_retention_days, 10);
+    assert_eq!(saved.staging_max_age_hours, 12);
+
+    let policy = attachment_maintenance_service::load_policy(&context).expect("读取策略");
+    assert_eq!(policy.orphan_grace_ms, 3 * 24 * 60 * 60 * 1000);
+    assert_eq!(policy.trash_retention_ms, 10 * 24 * 60 * 60 * 1000);
+    assert_eq!(policy.staging_max_age_ms, 12 * 60 * 60 * 1000);
+
+    let invalid = attachment_maintenance_service::update_settings(
+        &context,
+        MaintenanceSettingsInput {
+            orphan_grace_days: 0,
+            trash_retention_days: 10,
+            staging_max_age_hours: 12,
+        },
+    )
+    .expect_err("0 天必须拒绝");
+    assert!(matches!(invalid, AppError::Validation(_)));
+
+    // 损坏或非正数的历史值回退默认，不让维护线程停摆。
+    {
+        let connection = context.connection().expect("连接");
+        attachment_repository::set_meta(&connection, "attachment.orphan_grace_days", "abc")
+            .expect("写入损坏值");
+        attachment_repository::set_meta(&connection, "attachment.trash_retention_days", "0")
+            .expect("写入零值");
+    }
+    let fallback = attachment_maintenance_service::settings(&context).expect("回退策略");
+    assert_eq!(fallback.orphan_grace_days, 7);
+    assert_eq!(fallback.trash_retention_days, 30);
+    assert_eq!(fallback.staging_max_age_hours, 12);
+}
+
+#[test]
+fn maintenance_delete_serializes_with_same_hash_upload() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-race", "附件并发维护");
+    let base = attachment_context(&env);
+    let content = vec![0x99_u8; 300 * 1024];
+    let source = write_source(&env, "race-source.bin", &content);
+    // 先制造一条回收站记录，让维护线程每轮都有真实删除工作。
+    let seed = upload_file(&base, "seed.bin", &source, "");
+    attachment_service::delete(&base, &seed.id).expect("种子附件删除");
+
+    let make_context = |context: &AttachmentContext| AttachmentContext {
+        storage_root: context.storage_root.clone(),
+        db_path: context.db_path.clone(),
+        lock: context.lock.clone(),
+    };
+    let upload_context = make_context(&base);
+    let maintenance_context = make_context(&base);
+    let source_path = source.to_string_lossy().into_owned();
+
+    let uploader = std::thread::spawn(move || {
+        for index in 0..24 {
+            let item = attachment_service::upload(
+                &upload_context,
+                UploadAttachmentInput {
+                    source_path: source_path.clone(),
+                    logical_path: String::new(),
+                    name: Some(format!("race-{index}.bin")),
+                    mime: None,
+                    scope: None,
+                    ttl_seconds: None,
+                },
+            )
+            .expect("并发上传");
+            let verified =
+                attachment_service::verify(&upload_context, &item.id).expect("校验活跃对象");
+            assert!(verified.valid, "并发上传后的对象必须可读 index={index}");
+            match attachment_service::delete(&upload_context, &item.id) {
+                Ok(_) => {}
+                // 维护可能已清掉回收站行；这不是失败。
+                Err(AppError::NotFound(_)) => {}
+                Err(error) => panic!("删除并发附件失败: {error}"),
+            }
+        }
+    });
+    let maintainer = std::thread::spawn(move || {
+        for _ in 0..24 {
+            attachment_maintenance_service::run(
+                &maintenance_context,
+                now_ms(),
+                MaintenancePolicy {
+                    orphan_grace_ms: 0,
+                    trash_retention_ms: 0,
+                    // 不清理正在上传的 staging 文件；本测试只验证回收站删除与上传竞态。
+                    staging_max_age_ms: 24 * 60 * 60 * 1000,
+                    storage_policy: StoragePolicy::default(),
+                },
+            )
+            .expect("并发维护");
+        }
+    });
+
+    uploader.join().expect("上传线程");
+    maintainer.join().expect("维护线程");
+}
+
+fn set_file_age(path: &Path, age: Duration) {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("打开测试文件");
+    file.set_modified(SystemTime::now() - age)
+        .expect("设置测试文件时间");
+}
+
+#[test]
+fn maintenance_removes_unreferenced_doc_hashes() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-doc-gc", "块哈希回收");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "待删除文档");
+    env.save_doc(&doc.id, document(vec![paragraph("只属于这篇文档的块")]));
+
+    let db_path = workspace_db_path(&workspace);
+    let before: i64 = db::workspace::open_existing(&db_path)
+        .expect("打开库")
+        .query_row("SELECT COUNT(*) FROM doc_block_hash", [], |row| row.get(0))
+        .expect("hash 计数");
+    assert_eq!(before, 1);
+
+    node_service::delete(&env.state, &doc.id).expect("删除文档");
+    node_service::trash_purge(&env.state, &doc.id).expect("永久删除文档");
+    let context = attachment_context(&env);
+    let result = attachment_maintenance_service::run(
+        &context,
+        now_ms(),
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 24 * 60 * 60 * 1000,
+            storage_policy: StoragePolicy::default(),
+        },
+    )
+    .expect("维护");
+
+    assert_eq!(result.doc_hashes_removed, 1);
+    let after: i64 = db::workspace::open_existing(&db_path)
+        .expect("打开库")
+        .query_row("SELECT COUNT(*) FROM doc_block_hash", [], |row| row.get(0))
+        .expect("hash 计数");
+    assert_eq!(after, 0);
+}
+
+#[test]
+fn maintenance_quarantines_untracked_objects_and_prunes_old_quarantine() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-orphan-file", "孤儿文件");
+    let context = attachment_context(&env);
+    let source = write_source(&env, "known.bin", &[0x41; 512]);
+    upload_file(&context, "known.bin", &source, "");
+    let storage = workspace_storage_path(&workspace);
+
+    let big_dir = storage.join("objects/big/aa/aa");
+    fs::create_dir_all(&big_dir).expect("big 目录");
+    let stray_big = big_dir.join("aa".repeat(32));
+    fs::write(&stray_big, b"stray-big").expect("写入孤儿 big");
+    set_file_age(&stray_big, Duration::from_secs(25 * 60 * 60));
+
+    let recent_big = big_dir.join("bb".repeat(32));
+    fs::write(&recent_big, b"recent-big").expect("写入新 big");
+
+    let pack_dir = storage.join("objects/small/packs");
+    fs::create_dir_all(&pack_dir).expect("pack 目录");
+    let stray_pack = pack_dir.join("orphan.pack");
+    fs::write(&stray_pack, b"stray-pack").expect("写入孤儿 pack");
+    set_file_age(&stray_pack, Duration::from_secs(25 * 60 * 60));
+
+    let old_quarantine = storage.join("quarantine/1");
+    fs::create_dir_all(&old_quarantine).expect("旧隔离目录");
+    fs::write(old_quarantine.join("old.txt"), b"old").expect("旧隔离文件");
+
+    let result = attachment_maintenance_service::run(
+        &context,
+        now_ms(),
+        MaintenancePolicy {
+            orphan_grace_ms: 0,
+            trash_retention_ms: 0,
+            staging_max_age_ms: 24 * 60 * 60 * 1000,
+            storage_policy: StoragePolicy::default(),
+        },
+    )
+    .expect("维护");
+
+    assert_eq!(result.orphan_files, 2, "只隔离超过 24h 的无 DB 行文件");
+    assert_eq!(result.quarantine_removed, 1, "清理过期隔离目录");
+    assert!(!stray_big.exists(), "孤儿 big 必须移走");
+    assert!(!stray_pack.exists(), "孤儿 pack 必须移走");
+    assert!(recent_big.exists(), "新文件不得误移");
+    assert!(!old_quarantine.exists(), "过期隔离目录必须删除");
+    let known_packs = fs::read_dir(&pack_dir)
+        .expect("pack 目录")
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "pack"))
+        .count();
+    assert!(known_packs >= 1, "有 DB 行的 pack 必须保留");
 }
 
 #[test]
@@ -2505,6 +3156,235 @@ fn board_scene_roundtrip_filters_deleted_and_guards_version() {
 }
 
 #[test]
+fn node_network_lists_backlinks_and_related_from_search_index() {
+    let env = TestEnv::new();
+    env.create_workspace("node-network", "知识网络");
+    let kb_id = env.first_kb_id();
+    let target = env.create_node(&kb_id, None, DOC, "目标文档");
+    let source = env.create_node(&kb_id, None, DOC, "知识网络源文档");
+    env.save_doc(
+        &source.id,
+        document(vec![paragraph("这里引用了目标文档的内容")]),
+    );
+    let unrelated = env.create_node(&kb_id, None, DOC, "完全无关");
+    env.save_doc(&unrelated.id, document(vec![paragraph("另一件事")]));
+
+    let network = search_service::network(&env.state, &target.id).expect("知识网络");
+    assert!(
+        network.backlinks.iter().any(|item| item.id == source.id),
+        "正文提到标题必须进入反向链接"
+    );
+    assert!(
+        network.related.iter().any(|item| item.id == source.id),
+        "主题相近必须进入相关推荐"
+    );
+    assert!(
+        network
+            .backlinks
+            .iter()
+            .chain(network.related.iter())
+            .all(|item| item.id != target.id),
+        "不得推荐自身"
+    );
+    assert!(
+        network
+            .backlinks
+            .iter()
+            .chain(network.related.iter())
+            .all(|item| item.id != unrelated.id),
+        "无相似内容不得硬凑推荐"
+    );
+
+    node_service::delete(&env.state, &source.id).expect("删除来源");
+    let network = search_service::network(&env.state, &target.id).expect("删除后知识网络");
+    assert!(
+        network.backlinks.iter().all(|item| item.id != source.id),
+        "回收站内容不得出现在知识网络"
+    );
+}
+
+#[test]
+fn table_and_flow_nodes_reuse_document_and_board_services() {
+    let env = TestEnv::new();
+    env.create_workspace("table-flow", "表格流程图");
+    let kb_id = env.first_kb_id();
+
+    let table = env.create_node(&kb_id, None, 4, "测试表格");
+    let loaded = document_service::load(&env.state, &table.id).expect("加载表格");
+    let table_node = &loaded.document["content"][0];
+    assert_eq!(table_node["type"], "table", "表格默认内容应为表格");
+    let rows = table_node["content"].as_array().expect("表格行数组");
+    assert_eq!(rows.len(), 3, "默认 3 行");
+    assert!(
+        rows.iter().all(|row| row["content"]
+            .as_array()
+            .is_some_and(|cells| cells.len() == 3)),
+        "默认 3 列"
+    );
+    assert_eq!(rows[0]["content"][0]["type"], "tableHeader", "首行为表头");
+
+    let mut document = loaded.document.clone();
+    document["content"][0]["content"][0]["content"][0]["content"] = json!([paragraph("表格测试")]);
+    let saved = env.save_doc(&table.id, document);
+    assert!(saved.word_count > 0, "表格正文应计入字数");
+    let reloaded = document_service::load(&env.state, &table.id).expect("重新加载表格");
+    assert!(
+        reloaded.document.to_string().contains("表格测试"),
+        "表格内容必须可保存并读回"
+    );
+
+    let flow = env.create_node(&kb_id, None, 5, "测试流程图");
+    let saved = board_service::save(
+        &env.state,
+        BoardSaveInput {
+            node_id: flow.id.clone(),
+            base_version: 0,
+            elements: json!([{"id": "f1", "type": "rectangle", "x": 0, "y": 0}]),
+            app_state: json!({}),
+        },
+    )
+    .expect("流程图按画板保存");
+    assert_eq!(saved.element_count, 1);
+    let loaded = board_service::load(&env.state, &flow.id).expect("加载流程图");
+    assert_eq!(loaded.elements.as_array().expect("元素数组").len(), 1);
+}
+
+#[test]
+fn node_trash_restores_subtree_and_purge_releases_attachments() {
+    let env = TestEnv::new();
+    env.create_workspace("node-trash", "节点回收站");
+    let kb_id = env.first_kb_id();
+    let folder = env.create_node(&kb_id, None, FOLDER, "回收站文件夹");
+    let doc = env.create_node(&kb_id, Some(&folder.id), DOC, "回收站文档");
+    env.save_doc(&doc.id, document(vec![paragraph("回收内容")]));
+
+    let context = attachment_context(&env);
+    let source = write_source(&env, "trash-purge.bin", b"trash");
+    let attachment = attachment_service::upload(
+        &context,
+        UploadAttachmentInput {
+            source_path: source.to_string_lossy().into_owned(),
+            logical_path: String::new(),
+            name: Some("trash-purge.bin".to_string()),
+            mime: None,
+            scope: Some("node".to_string()),
+            ttl_seconds: None,
+        },
+    )
+    .expect("上传附件");
+    let attachment_node = node_service::create_attachment_node(
+        &env.state,
+        CreateAttachmentNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: Some(folder.id.clone()),
+            object_id: attachment.id.clone(),
+        },
+    )
+    .expect("附件节点");
+
+    let deleted = node_service::delete(&env.state, &folder.id).expect("移入回收站");
+    assert_eq!(deleted.deleted_count, 3);
+    let nodes = node_service::list(&env.state, &kb_id).expect("树");
+    assert!(nodes.is_empty(), "回收站内容不得出现在文件树");
+    assert!(
+        document_service::load(&env.state, &doc.id).is_err(),
+        "回收站文档不可打开"
+    );
+    let hits = search_service::search(
+        &env.state,
+        SearchNodesInput {
+            query: "回收内容".to_string(),
+            knowledge_base_id: kb_id.clone(),
+            limit: 20,
+        },
+    )
+    .expect("搜索");
+    assert!(hits.is_empty(), "回收站内容不应出现在搜索");
+
+    let trash = node_service::trash_list(&env.state, &kb_id).expect("回收站列表");
+    assert_eq!(trash.len(), 1, "只列根节点");
+    assert_eq!(trash[0].id, folder.id);
+    assert_eq!(trash[0].node_type, FOLDER);
+
+    let restored = node_service::restore(&env.state, &folder.id).expect("恢复");
+    assert_eq!(restored.restored_count, 3);
+    let nodes = node_service::list(&env.state, &kb_id).expect("恢复后树");
+    assert_eq!(nodes.len(), 3);
+    assert!(nodes.iter().any(|node| node.id == attachment_node.id));
+    let loaded = document_service::load(&env.state, &doc.id).expect("恢复后文档");
+    assert!(loaded.document.to_string().contains("回收内容"));
+    let hits = search_service::search(
+        &env.state,
+        SearchNodesInput {
+            query: "回收内容".to_string(),
+            knowledge_base_id: kb_id.clone(),
+            limit: 20,
+        },
+    )
+    .expect("恢复后搜索");
+    assert_eq!(hits.len(), 1, "恢复后必须重建正文索引");
+
+    node_service::delete(&env.state, &folder.id).expect("再次删除");
+    let trash = node_service::trash_list(&env.state, &kb_id).expect("回收站列表");
+    let purged = node_service::trash_purge(&env.state, &trash[0].id).expect("永久删除");
+    assert_eq!(purged.deleted_count, 3);
+    assert!(
+        node_service::list(&env.state, &kb_id)
+            .expect("树")
+            .is_empty()
+    );
+    let orphaned: Option<i64> = {
+        let guard = env.state.workspace().expect("工作区");
+        let connection = &guard.as_ref().expect("会话").connection;
+        connection
+            .query_row(
+                "SELECT orphaned_at FROM attachment WHERE id = ?1",
+                [&attachment.id],
+                |row| row.get(0),
+            )
+            .expect("附件行")
+    };
+    assert!(orphaned.is_some(), "永久删除后附件必须进入孤儿流程");
+}
+
+#[test]
+fn node_trash_blocks_child_restore_and_purges_expired_roots() {
+    let env = TestEnv::new();
+    env.create_workspace("node-trash-expiry", "回收站清理");
+    let kb_id = env.first_kb_id();
+    let folder = env.create_node(&kb_id, None, FOLDER, "上级文件夹");
+    let child = env.create_node(&kb_id, Some(&folder.id), DOC, "下级文档");
+
+    node_service::delete(&env.state, &child.id).expect("先删下级");
+    node_service::delete(&env.state, &folder.id).expect("再删上级");
+    let blocked = node_service::restore(&env.state, &child.id).expect_err("上级在回收站时不能恢复");
+    assert!(matches!(blocked, AppError::Validation(_)));
+
+    node_service::restore(&env.state, &folder.id).expect("恢复上级");
+    let nodes = node_service::list(&env.state, &kb_id).expect("恢复后树");
+    assert_eq!(nodes.len(), 2, "先后删除的下级也应随上级恢复");
+
+    node_service::delete(&env.state, &folder.id).expect("再次删除");
+    {
+        let guard = env.state.workspace().expect("工作区");
+        let connection = &guard.as_ref().expect("会话").connection;
+        connection
+            .execute(
+                "UPDATE node SET deleted_at = ?2 WHERE id = ?1",
+                rusqlite::params![folder.id, now_ms() - 31 * 24 * 60 * 60 * 1000],
+            )
+            .expect("回拨删除时间");
+    }
+    let purged = node_service::purge_expired_trash(&env.state, 30).expect("清理过期回收站");
+    assert_eq!(purged, 2);
+    assert!(
+        node_service::list(&env.state, &kb_id)
+            .expect("树")
+            .is_empty()
+    );
+}
+
+#[test]
 fn board_images_use_global_object_ids_and_report_missing_objects() {
     let env = TestEnv::new();
     let workspace = env.create_workspace("board-objects", "画板对象");
@@ -2597,7 +3477,7 @@ fn board_images_use_global_object_ids_and_report_missing_objects() {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读取 schema 版本")
     };
-    assert_eq!(version, 10, "工作区库必须升级到 v10");
+    assert_eq!(version, 14, "工作区库必须升级到 v14");
 
     let references: i64 = connection
         .query_row(

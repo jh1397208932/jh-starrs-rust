@@ -1,40 +1,33 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** 占位视图、全局搜索 mock、窗口最大化/还原、附件校验/导出/删除。 */
+/** 新建入口收敛、搜索禁用、窗口最大化/还原、附件校验/导出/删除。 */
 export default {
   id: "96-misc",
-  title: "表格/流程图占位 · 全局搜索 mock · 附件校验/导出/删除",
-  area: "占位视图 / 附件管理",
+  title: "新建入口收敛 · 搜索禁用 · 附件校验/导出/删除",
+  area: "入口诚实化 / 附件管理",
   steps: [
     {
-      action: "新建并打开表格 E2E Table",
-      ui: "新建内容 → 表格",
-      clicks: 3,
-      dialogs: 1,
-      typing: 1,
-      note: "验证「表格」占位。",
-    },
-    {
-      action: "新建并打开流程图 E2E Flow",
-      ui: "新建内容 → 流程图",
-      clicks: 3,
-      dialogs: 1,
-      typing: 1,
-      note: "验证「流程图」占位。",
-    },
-    {
-      action: "删除两个占位节点",
-      ui: "文件树行 ⋯ → 删除 → 确认 ×2",
-      clicks: 8,
-      dialogs: 2,
-    },
-    {
-      action: "点击顶栏全局搜索",
-      ui: "窗口右上搜索框",
+      action: "打开新建弹窗检查类型",
+      ui: "文件树标题 +",
       clicks: 1,
+      dialogs: 1,
+      note: "文件夹/文档/画板/表格/流程图五类均可创建。",
+    },
+    {
+      action: "打开并关闭全局搜索",
+      ui: "顶栏搜索胶囊",
+      clicks: 1,
+      dialogs: 1,
+      note: "搜索面板可用，Esc 关闭。",
+    },
+    {
+      action: "设置 → 存储：修改回收站保留时间为 14 天",
+      ui: "设置存储页「保留时间」",
+      clicks: 2,
       dialogs: 0,
-      note: "占位动作，点击提示「即将推出」。",
+      typing: 1,
+      note: "保存后写入工作区配置。",
     },
     {
       action: "设置 → 存储：校验/导出/删除 pixel.png",
@@ -45,59 +38,37 @@ export default {
     },
   ],
   complexity: {
-    clickTotal: 20,
-    dialogs: 6,
-    typingFields: 2,
+    clickTotal: 9,
+    dialogs: 3,
+    typingFields: 1,
     assessment:
-      "表格/流程图仍以占位视图承接，用户能打开但无法编辑；适合在入口标注“即将支持”。全局搜索点击与 ⌘⇧F 的行为需要在真实 WebView 下统一，避免“点得到、按不出”。附件管理把校验/导出/删除集中在一行，删除需二次确认；导出仍走系统保存。macOS 使用系统红绿灯，自绘窗口按钮仅在 Windows/Linux 生效，本轮未把系统窗口操作纳入应用功能判定。",
+      "表格与流程图分别复用文档编辑器与画板，创建入口保持五类并列。保留时间可在设置内调整并立即写入工作区配置。全局搜索已接入真实索引，顶栏可打开面板、Esc 关闭。附件管理把校验/导出/删除集中在一行，删除需二次确认；导出仍走系统保存。macOS 使用系统红绿灯，自绘窗口按钮仅在 Windows/Linux 生效，本轮未把系统窗口操作纳入应用功能判定。",
   },
   async run(ctx) {
-    const createPlaceholder = async (kind, title, placeholder) => {
-      await ctx.press("新建内容");
-      await ctx.expectText("创建");
-      await ctx.press(kind, { role: "AXCheckBox", settle: 180 });
-      await ctx.fill("名称", title);
-      await ctx.press("创建");
-      await ctx.expectText(placeholder, { timeout: 8000 });
-      ctx.metrics.dialogs += 1;
-      ctx.metrics.fills += 1;
-    };
-
-    await createPlaceholder("表格", "E2E Table", "即将推出");
-    await createPlaceholder("流程图", "E2E Flow", "即将推出");
-    await ctx.screenshot("placeholders");
-
-    for (const title of ["E2E Table", "E2E Flow"]) {
-      await ctx.menu(`${title} 操作`, "删除");
-      await ctx.expectText(`删除「${title}」？`);
-      await ctx.press("删除");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const remaining = ctx.db("SELECT COUNT(*) AS count FROM node WHERE title = ?", [title])[0].count;
-      if (remaining !== 0) throw new Error(`${title} 未删除`);
+    await ctx.press("新建内容");
+    await ctx.expectText("创建", { timeout: 5000 });
+    const folder = (await ctx.find("文件夹")).matches.length;
+    const doc = (await ctx.find("文档")).matches.length;
+    const board = (await ctx.find("画板")).matches.length;
+    const table = (await ctx.find("表格")).matches.length;
+    const flow = (await ctx.find("流程图")).matches.length;
+    if (folder === 0 || doc === 0 || board === 0 || table === 0 || flow === 0) {
+      throw new Error("新建弹窗缺少文件夹/文档/画板/表格/流程图类型");
     }
+    await ctx.press("取消");
+    ctx.metrics.dialogs += 1;
+    ctx.log("新建弹窗提供文件夹/文档/画板/表格/流程图");
+    await ctx.screenshot("create-kinds");
 
-    const searchButtons = (await ctx.find("全局搜索")).matches;
-    const visibleSearch = searchButtons.find((match) => match.size.width > 100);
-    if (visibleSearch) {
-      await ctx.click(
-        visibleSearch.point.x + visibleSearch.size.width / 2,
-        visibleSearch.point.y + visibleSearch.size.height / 2,
-        "点击顶栏可见搜索胶囊",
-      );
-    } else {
-      await ctx.press("全局搜索");
+    const search = (await ctx.find("全局搜索")).matches;
+    if (search.length === 0) {
+      throw new Error("顶栏搜索入口不存在");
     }
-    try {
-      await ctx.expectText("即将推出", { timeout: 3000 });
-      ctx.log("全局搜索点击出现「即将推出」toast");
-    } catch {
-      ctx.finding(
-        "low",
-        "全局搜索栏点击未见反馈",
-        "源码中点击调用 showMockToast，但黑盒点击未观察到提示；结合 ⌘⇧F 也未触发，建议检查搜索按钮的可见/隐藏双实例与快捷键冲突。",
-      );
-    }
-    await ctx.screenshot("global-search-mock");
+    await ctx.press("全局搜索");
+    await ctx.expectText("搜索标题与正文…", { timeout: 5000 });
+    await ctx.key("escape");
+    ctx.metrics.dialogs += 1;
+    ctx.log("全局搜索面板可打开并用 Esc 关闭");
 
     // 附件校验/导出/删除：上传一个独立、无引用的文件，避免与文档/画板附件重名。
     const exportDir = ctx.exportDir("attachment");
@@ -107,6 +78,15 @@ export default {
     fs.writeFileSync(source, "lifecycle");
     await ctx.menu("更多 ⌘J", "设置");
     await ctx.press("存储", { role: "AXRadioButton" });
+    await ctx.fill("回收站保留天数", "14");
+    await ctx.press("保存");
+    await ctx.expectText("已保存", { timeout: 5000 });
+    await ctx.waitForDb(
+      "SELECT value FROM workspace_meta WHERE key = 'attachment.trash_retention_days'",
+      [],
+      (rows) => rows.length === 1 && rows[0].value === "14",
+      { timeout: 8000 },
+    );
     await ctx.press("上传");
     await ctx.nativePath(source, { button: "Open" });
     ctx.metrics.dialogs += 1;
@@ -157,6 +137,6 @@ export default {
     await ctx.press("关闭");
     ctx.metrics.dialogs += 1;
 
-    ctx.log("附件校验/导出/删除/恢复/清理、占位视图、搜索 mock 完成；macOS 窗口控制为系统红绿灯，不计入应用功能。");
+    ctx.log("附件校验/导出/删除/恢复/清理、入口收敛完成；macOS 窗口控制为系统红绿灯，不计入应用功能。");
   },
 };

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { writeExportFile } from "@/api/exchange";
 import { pickBoardExportPath } from "@/api/fileDialog";
+import { t } from "@/lib/i18n";
 import type { BoardExportFormat } from "@/types/board";
 import {
   boardFilesToBinary,
@@ -37,11 +38,11 @@ export function useBoardExport({
   const exportBoard = useCallback(
     async (format: BoardExportFormat) => {
       if (!api) {
-        onError("画板尚未加载完成");
+        onError(t("画板尚未加载完成"));
         return;
       }
-      const target = await pickBoardExportPath(format, title);
-      if (!target) return;
+      const grant = await pickBoardExportPath(format, title);
+      if (!grant) return;
       setExporting(format);
       try {
         const elements = api.getSceneElements();
@@ -58,17 +59,17 @@ export function useBoardExport({
         let message: string;
         if (format === "png") {
           dataBase64 = await renderBoardPng(elements, appState, files);
-          message = "已导出 PNG 图片";
+          message = t("已导出 PNG 图片");
         } else if (format === "svg") {
           dataBase64 = textToBase64(await renderBoardSvg(elements, appState, files));
-          message = "已导出 SVG 矢量图";
+          message = t("已导出 SVG 矢量图");
         } else {
           dataBase64 = textToBase64(await serializeBoardExcalidraw(elements, appState, files));
           message = hasBoardFileCards(elements)
-            ? "已导出；文件附件请用「全部导出」"
-            : "已导出 Excalidraw 文件";
+            ? t("已导出；文件附件请用「全部导出」")
+            : t("已导出 Excalidraw 文件");
         }
-        await writeExportFile({ path: target, dataBase64, overwrite: true });
+        await writeExportFile({ token: grant.token, path: grant.path, dataBase64, overwrite: true });
         onExported?.(message);
       } catch (error) {
         onError(toErrorMessage(error));

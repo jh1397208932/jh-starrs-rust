@@ -7,8 +7,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AttachmentManager } from "@/features/attachments/components/AttachmentManager";
 import { ShortcutsSettings } from "@/features/shortcuts/components/ShortcutsSettings";
+import { LOCALE_LABELS, type Locale, useI18n } from "@/lib/i18n";
 import { THEME_LABELS, THEME_NAMES, type ThemeMode, type ThemeName, useTheme } from "@/lib/theme";
 import { CAPTION_CLS, cn } from "@/lib/utils";
+import type { Workspace } from "@/types/notebook";
+import { CloudSyncSection } from "./CloudSyncSection";
 
 type SettingsTab = "general" | "appearance" | "shortcuts" | "storage" | "cloud" | "about";
 
@@ -26,6 +29,8 @@ export interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   /** 当前工作区根目录；空串表示未连接 */
   workspacePath: string;
+  /** 从云盘恢复后切换工作区 */
+  onWorkspaceRestored: (workspace: Workspace) => Promise<void> | void;
 }
 
 /** 主题预览卡内的示意条 */
@@ -61,25 +66,26 @@ function ModeCard({ target, label }: { target: ThemeMode; label: string }) {
 
 function AppearanceSection() {
   const { theme, setTheme, mode } = useTheme();
+  const { t } = useI18n();
   return (
     <div>
-      <h3 className="text-[14px] font-semibold">外观</h3>
+      <h3 className="text-[14px] font-semibold">{t("外观")}</h3>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <ModeCard target="light" label="浅色" />
-        <ModeCard target="dark" label="深色" />
+        <ModeCard target="light" label={t("浅色")} />
+        <ModeCard target="dark" label={t("深色")} />
       </div>
 
-      <h4 className="mt-6 text-[13px] font-semibold">主题</h4>
+      <h4 className="mt-6 text-[13px] font-semibold">{t("主题")}</h4>
       <div className="mt-2 grid grid-cols-3 gap-2">
-        {THEME_NAMES.map((t) => {
-          const active = theme === t;
+        {THEME_NAMES.map((themeName) => {
+          const active = theme === themeName;
           return (
             <button
-              key={t}
+              key={themeName}
               type="button"
               aria-pressed={active}
-              onClick={() => setTheme(t as ThemeName)}
+              onClick={() => setTheme(themeName as ThemeName)}
               className={cn(
                 "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 active
@@ -88,14 +94,14 @@ function AppearanceSection() {
               )}
             >
               {/* data-theme 作用于子树 → 预览点用该主题的 logo 变量 */}
-              <span data-theme={t} data-mode={mode} className="flex items-center gap-1">
+              <span data-theme={themeName} data-mode={mode} className="flex items-center gap-1">
                 <span className="size-3.5 rounded-full" style={{ backgroundColor: "var(--logo-a)" }} />
                 <span className="size-3.5 rounded-full" style={{ backgroundColor: "var(--logo-b)" }} />
                 <span className="size-3.5 rounded-full" style={{ backgroundColor: "var(--logo-c)" }} />
               </span>
               <span className="flex min-w-0 items-center justify-between gap-1">
-                <span className="truncate text-[12px] font-medium">{THEME_LABELS[t]}</span>
-                {active && <Badge variant="solid">使用中</Badge>}
+                <span className="truncate text-[12px] font-medium">{t(THEME_LABELS[themeName])}</span>
+                {active && <Badge variant="solid">{t("使用中")}</Badge>}
               </span>
             </button>
           );
@@ -106,12 +112,15 @@ function AppearanceSection() {
 }
 
 function StorageSection({ workspacePath }: { workspacePath: string }) {
+  const { t } = useI18n();
   return (
     <div>
-      <h3 className="text-[14px] font-semibold">存储</h3>
+      <h3 className="text-[14px] font-semibold">{t("存储")}</h3>
       <div className="mt-4 rounded-md border border-border bg-muted/60 p-4">
-        <p className="text-[12px] text-muted-foreground">位置</p>
-        <code className="mt-1 block break-all font-mono text-[12px]">{workspacePath || "未连接工作区"}</code>
+        <p className="text-[12px] text-muted-foreground">{t("位置")}</p>
+        <code className="mt-1 block break-all font-mono text-[12px]">
+          {workspacePath || t("未连接工作区")}
+        </code>
       </div>
       <AttachmentManager key={workspacePath} />
     </div>
@@ -119,22 +128,21 @@ function StorageSection({ workspacePath }: { workspacePath: string }) {
 }
 
 function GeneralSection() {
-  const [lang, setLang] = useState("zh-CN");
+  const { locale, setLocale, t } = useI18n();
   return (
     <div>
-      <h3 className="text-[14px] font-semibold">通用</h3>
+      <h3 className="text-[14px] font-semibold">{t("通用")}</h3>
       <div className="mt-4 max-w-[280px]">
         <label htmlFor="lang" className="mb-1.5 block text-[13px] font-medium">
-          界面语言
+          {t("界面语言")}
         </label>
-        <Select value={lang} onValueChange={setLang}>
-          <SelectTrigger id="lang">
+        <Select value={locale} onValueChange={(value) => void setLocale(value as Locale)}>
+          <SelectTrigger id="lang" aria-label={t("界面语言")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="zh-CN">简体中文</SelectItem>
-            <SelectItem value="en-US">English (US)</SelectItem>
-            <SelectItem value="ja-JP">日本語</SelectItem>
+            <SelectItem value="zh-CN">{LOCALE_LABELS["zh-CN"]}</SelectItem>
+            <SelectItem value="en-US">{LOCALE_LABELS["en-US"]}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -142,24 +150,16 @@ function GeneralSection() {
   );
 }
 
-function CloudSection() {
-  return (
-    <div>
-      <h3 className="text-[14px] font-semibold">云同步</h3>
-      <p className={`${CAPTION_CLS} mt-2 text-muted-foreground`}>即将推出。</p>
-    </div>
-  );
-}
-
 function AboutSection() {
+  const { t } = useI18n();
   return (
     <div>
-      <h3 className="text-[14px] font-semibold">星屿</h3>
-      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>Starris · 本地工作区版</p>
+      <h3 className="text-[14px] font-semibold">{t("星屿")}</h3>
+      <p className={`${CAPTION_CLS} mt-0.5 text-muted-foreground`}>Starris · {t("本地工作区版")}</p>
       <dl className="mt-4 max-w-[320px]">
         {[
-          ["版本", "0.1.0"],
-          ["设计系统", "v2.0 · 雾光笺"],
+          [t("版本"), "0.1.0"],
+          [t("设计系统"), t("v2.0 · 雾光笺")],
         ].map(([k, v]) => (
           <div
             key={k}
@@ -175,8 +175,14 @@ function AboutSection() {
 }
 
 /** 弹窗 C · 设置：720×480 模态，左导航 160px + 右内容区 */
-export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDialogProps) {
+export function SettingsDialog({
+  open,
+  onOpenChange,
+  workspacePath,
+  onWorkspaceRestored,
+}: SettingsDialogProps) {
   const [tab, setTab] = useState<SettingsTab>("appearance");
+  const { t } = useI18n();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -184,12 +190,12 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
         <div className="flex h-full min-h-0">
           {/* 左导航 */}
           <nav
-            aria-label="设置"
+            aria-label={t("设置")}
             className="flex w-40 shrink-0 flex-col gap-0.5 border-r border-border/60 bg-sidebar/55 p-2 text-sidebar-foreground"
           >
             <div className="flex items-center gap-2 px-2 py-2">
               <Settings2 className="size-4" />
-              <DialogTitle className="text-[14px]">设置</DialogTitle>
+              <DialogTitle className="text-[14px]">{t("设置")}</DialogTitle>
             </div>
             {NAV.map(({ id, label, icon: Icon }) => (
               <button
@@ -206,7 +212,7 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
                 )}
               >
                 <Icon className="size-3.5" />
-                {label}
+                {t(label)}
               </button>
             ))}
           </nav>
@@ -217,12 +223,12 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
             {tab === "appearance" && <AppearanceSection />}
             {tab === "shortcuts" && <ShortcutsSettings />}
             {tab === "storage" && <StorageSection workspacePath={workspacePath} />}
-            {tab === "cloud" && <CloudSection />}
+            {tab === "cloud" && <CloudSyncSection onRestored={onWorkspaceRestored} />}
             {tab === "about" && <AboutSection />}
 
             <div className="mt-6 flex justify-end">
               <Button size="sm" onClick={() => onOpenChange(false)}>
-                完成
+                {t("完成")}
               </Button>
             </div>
           </ScrollArea>

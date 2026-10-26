@@ -151,6 +151,15 @@ pub struct AttachmentListQuery {
     /// 是否包含已软删除行。
     #[serde(default)]
     pub include_deleted: bool,
+    /// 名称/目录模糊搜索；None 表示不过滤。
+    #[serde(default)]
+    pub search: Option<String>,
+    /// 返回条数；None 使用默认 50，服务层限制最大 200。
+    #[serde(default)]
+    pub limit: Option<i64>,
+    /// 偏移量；None 视为 0。
+    #[serde(default)]
+    pub offset: Option<i64>,
 }
 
 /// 重命名/移动入参；至少提供一个字段。
@@ -185,6 +194,12 @@ pub struct AttachmentMaintenanceResult {
     pub orphan_blobs: i64,
     pub compacted_packs: i64,
     pub reclaimed_bytes: i64,
+    /// 本轮删除的无引用文档块哈希数。
+    pub doc_hashes_removed: i64,
+    /// 本轮移入 quarantine 的孤儿文件数。
+    pub orphan_files: i64,
+    /// 本轮清理的过期 quarantine 目录数。
+    pub quarantine_removed: i64,
 }
 
 /// 下载入参。
@@ -258,8 +273,31 @@ pub struct AttachmentStatsDto {
     pub trash_count: i64,
     /// storage 目录中可统计的实际文件字节数。
     pub disk_bytes: i64,
+    /// 存储所在磁盘剩余字节；无法读取时为 None。
+    pub disk_free_bytes: Option<i64>,
     /// 孤儿/回收站/死 pack 的可回收字节估算。
     pub reclaimable_bytes: i64,
     /// 最近一次维护时间（Unix 毫秒）。
     pub last_maintenance_at: Option<i64>,
+}
+
+/// 当前工作区的附件保留策略；默认值与原硬编码一致。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaintenanceSettingsDto {
+    /// 未关联附件进入可回收状态的宽限天数。
+    pub orphan_grace_days: i64,
+    /// 回收站附件保留天数。
+    pub trash_retention_days: i64,
+    /// 上传暂存文件最长保留小时数。
+    pub staging_max_age_hours: i64,
+}
+
+/// 修改保留策略；字段缺省由前端传完整值。
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaintenanceSettingsInput {
+    pub orphan_grace_days: i64,
+    pub trash_retention_days: i64,
+    pub staging_max_age_hours: i64,
 }

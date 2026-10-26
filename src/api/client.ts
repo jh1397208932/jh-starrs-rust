@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "@/lib/i18n";
 
 /**
  * IPC 调用统一错误：优先使用 Rust 返回的中文消息，便于直接 toast。
@@ -20,10 +21,10 @@ export class ApiError extends Error {
  * @example toErrorMessage(new ApiError("kb_list", "知识库不存在")) // "知识库不存在"
  */
 export function toErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "操作失败，请稍后重试";
+  if (error instanceof ApiError) return t(error.message);
+  if (error instanceof Error && error.message.trim()) return t(error.message);
+  if (typeof error === "string" && error.trim()) return t(error);
+  return t("操作失败，请稍后重试");
 }
 
 /**
@@ -70,5 +71,5 @@ export async function invokeRawCommand<T>(
 function resolveMessage(_command: string, cause: unknown): string {
   if (typeof cause === "string" && cause.trim()) return cause;
   if (cause instanceof Error && cause.message.trim()) return cause.message;
-  return "操作失败，请稍后重试";
+  return t("操作失败，请稍后重试");
 }

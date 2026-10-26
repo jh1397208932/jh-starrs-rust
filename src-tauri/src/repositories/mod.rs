@@ -2,10 +2,12 @@
 
 pub mod attachment_repository;
 pub mod board_repository;
+pub mod document_history_repository;
 pub mod document_repository;
 pub mod knowledge_base_repository;
 pub mod library_repository;
 pub mod node_attachment_repository;
 pub mod node_repository;
+pub mod search_repository;
 pub mod settings_repository;
 pub mod workspace_repository;

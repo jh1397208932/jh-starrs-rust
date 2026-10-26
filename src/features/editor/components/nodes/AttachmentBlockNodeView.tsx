@@ -3,6 +3,7 @@ import { AlignCenter, AlignLeft, AlignRight, Download, LayoutGrid, Loader2, Rows
 import { useCallback, useEffect, useState } from "react";
 import { FileTypeIcon } from "@/features/attachments/components/FileTypeIcon";
 import { formatAttachmentBytes } from "@/features/attachments/utils/format";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   type AttachmentBlockAttrs,
@@ -25,6 +26,7 @@ function readAlign(node: ReactNodeViewProps["node"]): AttachmentBlockAttrs["alig
 
 /** 附件块 NodeView：卡片/长条、组级对齐、逐项下载与移除。 */
 export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
+  const { t } = useI18n();
   const { node, selected, updateAttributes, deleteNode, editor } = props;
   const options = props.extension.options as unknown as AttachmentNodeViewOptions;
   const items = readItems(node);
@@ -88,7 +90,7 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
           <div
             className="attachment-block-toolbar"
             role="toolbar"
-            aria-label="附件布局"
+            aria-label={t("附件布局")}
             data-visible="true"
             onMouseDown={(event) => event.preventDefault()}
           >
@@ -96,8 +98,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "left"}
-              aria-label="附件左对齐"
-              title="左对齐"
+              aria-label={t("附件左对齐")}
+              title={t("左对齐")}
               onClick={() => setAlign("left")}
             >
               <AlignLeft className="size-3.5" />
@@ -106,8 +108,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "center"}
-              aria-label="附件居中"
-              title="居中"
+              aria-label={t("附件居中")}
+              title={t("居中")}
               onClick={() => setAlign("center")}
             >
               <AlignCenter className="size-3.5" />
@@ -116,8 +118,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={align === "right"}
-              aria-label="附件右对齐"
-              title="右对齐"
+              aria-label={t("附件右对齐")}
+              title={t("右对齐")}
               onClick={() => setAlign("right")}
             >
               <AlignRight className="size-3.5" />
@@ -127,8 +129,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={variant === "grid"}
-              aria-label="卡片布局"
-              title="卡片布局"
+              aria-label={t("卡片布局")}
+              title={t("卡片布局")}
               onClick={() => setVariant("grid")}
             >
               <LayoutGrid className="size-3.5" />
@@ -137,8 +139,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
               type="button"
               className="attachment-toolbar__button"
               data-active={variant === "list"}
-              aria-label="长条布局"
-              title="长条布局"
+              aria-label={t("长条布局")}
+              title={t("长条布局")}
               onClick={() => setVariant("list")}
             >
               <Rows3 className="size-3.5" />
@@ -147,7 +149,7 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
         )}
 
         {items.length === 0 ? (
-          <div className="attachment-block-empty">附件不可用</div>
+          <div className="attachment-block-empty">{t("附件不可用")}</div>
         ) : (
           <div className="attachment-block-items" data-variant={variant}>
             {items.map((item, index) => (
@@ -160,7 +162,7 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
                 <button
                   type="button"
                   className="attachment-item__select"
-                  aria-label={`选择附件 ${item.name}`}
+                  aria-label={t("选择附件 {name}", { name: item.name })}
                   onMouseDown={(event) => {
                     if (event.button !== 0) return;
                     event.preventDefault();
@@ -183,8 +185,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
                   <button
                     type="button"
                     className="attachment-item__action"
-                    aria-label={`下载 ${item.name}`}
-                    title="下载"
+                    aria-label={t("下载 {name}", { name: item.name })}
+                    title={t("下载")}
                     disabled={busyKey !== null}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => void downloadItem(item)}
@@ -198,8 +200,8 @@ export function AttachmentBlockNodeView(props: ReactNodeViewProps) {
                   <button
                     type="button"
                     className="attachment-item__action"
-                    aria-label={`移除附件 ${item.name}`}
-                    title="移除"
+                    aria-label={t("移除附件 {name}", { name: item.name })}
+                    title={t("移除")}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => removeItem(index)}
                   >

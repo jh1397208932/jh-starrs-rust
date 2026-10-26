@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadBoard, saveBoard, saveBoardViewport } from "@/api/board";
 import { toErrorMessage } from "@/api/client";
+import { t } from "@/lib/i18n";
 import type { BoardAppState, BoardFile, BoardSaveStatus, BoardViewport } from "@/types/board";
 
 const SCENE_DEBOUNCE_MS = 800;
@@ -217,11 +218,11 @@ export function useBoardPersistence({
         const message = toErrorMessage(error);
         if (message.includes("画板已在别处更新")) {
           updateStatus("conflict");
-          onErrorRef.current(message);
+          onErrorRef.current(t(message));
           return false;
         }
         updateStatus("error");
-        onErrorRef.current(message);
+        onErrorRef.current(t(message));
         const delay = retryDelayRef.current;
         retryDelayRef.current = Math.min(delay * 2, RETRY_MAX_MS);
         if (retryTimerRef.current === null) {

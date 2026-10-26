@@ -4,8 +4,8 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -16,7 +16,11 @@ use crate::logging;
 use crate::utils::now_ms;
 
 /// 工作区库结构版本。
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 14;
+/// 迁移前备份目录（相对工作区 `db/`）。
+const BACKUP_DIR: &str = "backups";
+/// 保留的迁移备份份数。
+const BACKUP_KEEP: usize = 3;
 /// v1 → v2：节点时间列对齐需求字段名 `create_time/update_time`。
 const MIGRATION_V1_TO_V2: &str = r#"
 ALTER TABLE node RENAME COLUMN created_at TO create_time;
@@ -264,6 +268,85 @@ CREATE TABLE IF NOT EXISTS workspace_meta (
 );
 "#;
 
+/// v10 → v11：文档正文版本号，用于保存时的乐观并发控制。
+///
+/// 只增加列，不重建表；旧文档默认 0，首次保存即可写为 1。
+const MIGRATION_V10_TO_V11: &str = r#"
+ALTER TABLE node ADD COLUMN doc_version INTEGER NOT NULL DEFAULT 0;
+"#;
+
+/// v11 → v12：工作区检索索引。
+///
+/// `search_index` 是普通表（便于按 node_id 唯一维护），`node_search` 是
+/// external-content FTS5 表；触发器保证两者同步。trigram tokenizer 支持
+/// 中文子串检索（3 字以上），1–2 字由服务层走 LIKE 回退。
+const MIGRATION_V11_TO_V12: &str = r#"
+CREATE TABLE IF NOT EXISTS search_index (
+    node_id     TEXT PRIMARY KEY NOT NULL,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
+    kb_id       TEXT NOT NULL,
+    node_type   INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_search_index_kb_updated
+    ON search_index(kb_id, updated_at DESC);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS node_search USING fts5(
+    title,
+    body,
+    content='search_index',
+    content_rowid='rowid',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS search_index_ai AFTER INSERT ON search_index BEGIN
+    INSERT INTO node_search(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+END;
+CREATE TRIGGER IF NOT EXISTS search_index_ad AFTER DELETE ON search_index BEGIN
+    INSERT INTO node_search(node_search, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
+END;
+CREATE TRIGGER IF NOT EXISTS search_index_au AFTER UPDATE ON search_index BEGIN
+    INSERT INTO node_search(node_search, rowid, title, body)
+    VALUES ('delete', old.rowid, old.title, old.body);
+    INSERT INTO node_search(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+END;
+
+INSERT INTO search_index(node_id, title, body, kb_id, node_type, updated_at)
+SELECT n.id, n.title, COALESCE(m.markdown, ''), n.knowledge_base_id, n.type, n.update_time
+FROM node n LEFT JOIN doc_block_meta m ON m.id = n.id
+ON CONFLICT(node_id) DO UPDATE SET
+    title = excluded.title,
+    body = excluded.body,
+    kb_id = excluded.kb_id,
+    node_type = excluded.node_type,
+    updated_at = excluded.updated_at;
+
+INSERT INTO node_search(node_search) VALUES('rebuild');
+"#;
+
+/// v12 → v13：文档历史快照。
+const MIGRATION_V12_TO_V13: &str = r#"
+CREATE TABLE IF NOT EXISTS doc_history (
+    id          TEXT PRIMARY KEY NOT NULL,
+    node_id     TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    word_count  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_doc_history_node_created
+    ON doc_history(node_id, created_at DESC);
+"#;
+
+/// v13 → v14：节点回收站。软删除只打时间戳，附件引用与正文继续保留。
+const MIGRATION_V13_TO_V14: &str = r#"
+ALTER TABLE node ADD COLUMN deleted_at INTEGER;
+CREATE INDEX IF NOT EXISTS idx_node_deleted
+    ON node(deleted_at) WHERE deleted_at IS NOT NULL;
+"#;
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_base (
     id          TEXT PRIMARY KEY NOT NULL,
@@ -379,10 +462,102 @@ pub fn open(path: &Path) -> AppResult<Connection> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
+    let existed = path.is_file();
     let mut connection = Connection::open(path)?;
     configure(&connection)?;
+    let version = current_version(&connection)?;
+    // 只有“已存在的旧库”才需要备份；新建库或已是最新版本直接跳过。
+    if existed && version > 0 && version < SCHEMA_VERSION {
+        backup_before_migrate(&connection, path, version)?;
+    }
     migrate(&mut connection)?;
     Ok(connection)
+}
+
+/// 读取当前 schema 版本。
+fn current_version(connection: &Connection) -> AppResult<i64> {
+    connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(AppError::from)
+}
+
+/// 迁移前把数据库复制到 `db/backups/`，保留最近三份。
+///
+/// 复制前执行 WAL checkpoint，保证主库文件包含最新事务；复制失败会中止迁移，
+/// 避免在“没有恢复点”的情况下修改用户数据。
+fn backup_before_migrate(connection: &Connection, path: &Path, version: i64) -> AppResult<()> {
+    let parent = path.parent().ok_or(AppError::FileSystem)?;
+    let backup_dir = parent.join(BACKUP_DIR);
+    fs::create_dir_all(&backup_dir)?;
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+
+    let file_name = format!("workspace-v{version}-{}.sqlite3", crate::utils::now_ms());
+    let backup_path = unique_backup_path(&backup_dir, &file_name);
+    fs::copy(path, &backup_path)?;
+    prune_backups(&backup_dir, BACKUP_KEEP)?;
+    logging::info(
+        "db.workspace",
+        &format!(
+            "迁移前备份完成 version={version} file={} bytes={}",
+            backup_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown"),
+            fs::metadata(&backup_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+        ),
+    );
+    Ok(())
+}
+
+/// 同名备份已存在时追加序号，避免同一毫秒内覆盖。
+fn unique_backup_path(directory: &Path, file_name: &str) -> PathBuf {
+    let candidate = directory.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let stem = file_name.trim_end_matches(".sqlite3");
+    for index in 1..1000 {
+        let next = directory.join(format!("{stem}-{index}.sqlite3"));
+        if !next.exists() {
+            return next;
+        }
+    }
+    directory.join(format!("{stem}-overflow.sqlite3"))
+}
+
+/// 只保留最近 `keep` 份迁移备份；删除失败只记日志，不阻塞迁移。
+fn prune_backups(directory: &Path, keep: usize) -> AppResult<()> {
+    let mut backups: Vec<(SystemTime, PathBuf)> = fs::read_dir(directory)?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_str()?;
+            if !name.starts_with("workspace-v") || !name.ends_with(".sqlite3") {
+                return None;
+            }
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((modified, path))
+        })
+        .collect();
+    backups.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    while backups.len() > keep {
+        let (_, oldest) = backups.remove(0);
+        if let Err(error) = fs::remove_file(&oldest) {
+            logging::error(
+                "db.workspace",
+                &format!(
+                    "清理旧迁移备份失败 file={} error={error}",
+                    oldest
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("unknown")
+                ),
+            );
+        }
+    }
+    Ok(())
 }
 
 /// 打开已存在的工作区库，不创建目录或文件，也不执行迁移。
@@ -467,6 +642,18 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
         if version <= 9 {
             transaction.execute_batch(MIGRATION_V9_TO_V10)?;
             backfill_attachment_relations(&transaction)?;
+        }
+        if version <= 10 {
+            transaction.execute_batch(MIGRATION_V10_TO_V11)?;
+        }
+        if version <= 11 {
+            transaction.execute_batch(MIGRATION_V11_TO_V12)?;
+        }
+        if version <= 12 {
+            transaction.execute_batch(MIGRATION_V12_TO_V13)?;
+        }
+        if version <= 13 {
+            transaction.execute_batch(MIGRATION_V13_TO_V14)?;
         }
         transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         transaction.commit()?;
@@ -644,7 +831,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 10, "迁移必须停在 v10");
+        assert_eq!(version, 14, "迁移必须停在 v14");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(node)")
@@ -777,6 +964,53 @@ mod tests {
         assert_eq!(title, "旧数据");
     }
 
+    /// 创建一个最小 v9 工作区库，供迁移备份测试复用。
+    fn create_v9_database(path: &Path) {
+        let connection = Connection::open(path).expect("创建 v9 库");
+        connection.execute_batch(SCHEMA).expect("基础表");
+        for migration in [
+            MIGRATION_V4_TO_V5,
+            MIGRATION_V5_TO_V6,
+            MIGRATION_V6_TO_V7,
+            MIGRATION_V7_TO_V8,
+            MIGRATION_V8_TO_V9,
+        ] {
+            connection.execute_batch(migration).expect("v9 迁移");
+        }
+        connection
+            .pragma_update(None, "user_version", 9)
+            .expect("写 v9 版本");
+        connection
+            .execute_batch(
+                r#"INSERT INTO knowledge_base (id, name, description, sort_order, created_at, updated_at)
+                 VALUES ('kb1', 'KB', '', 0, 1, 1);
+                 INSERT INTO node
+                     (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+                      starred, word_count, content, create_time, update_time)
+                 VALUES ('doc1', 2, '备份文档', 'kb1', NULL, 1, '/备份文档', 0, 0, 0, '', 1, 1);"#,
+            )
+            .expect("写入 v9 数据");
+    }
+
+    #[test]
+    fn bundled_sqlite_supports_fts5_trigram() {
+        let connection = Connection::open_in_memory().expect("内存库");
+        connection
+            .execute_batch("CREATE VIRTUAL TABLE search_probe USING fts5(body, tokenize='trigram')")
+            .expect("bundled SQLite 必须支持 FTS5 trigram");
+        connection
+            .execute("INSERT INTO search_probe(body) VALUES ('星屿检索验证')", [])
+            .expect("写入检索探针");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM search_probe WHERE search_probe MATCH '检索验'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("trigram 子串检索");
+        assert_eq!(count, 1);
+    }
+
     #[test]
     fn migrates_v9_to_v10_and_backfills_attachment_refs() {
         let directory = tempdir().expect("临时目录");
@@ -824,7 +1058,29 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 10);
+        assert_eq!(version, 14);
+
+        let doc_version: i64 = connection
+            .query_row(
+                "SELECT doc_version FROM node WHERE id = 'doc1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("v11 文档版本列");
+        assert_eq!(doc_version, 0, "旧文档默认版本为 0");
+
+        let indexed: i64 = connection
+            .query_row("SELECT COUNT(*) FROM search_index", [], |row| row.get(0))
+            .expect("检索索引回填");
+        assert_eq!(indexed, 2, "迁移必须为已有节点建立索引");
+        let matched: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM node_search WHERE node_search MATCH 'Doc'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("FTS 索引可检索");
+        assert_eq!(matched, 1);
 
         let refs: Vec<(String, String)> = connection
             .prepare("SELECT node_id, object_id FROM node_attachment ORDER BY node_id, object_id")
@@ -878,6 +1134,82 @@ mod tests {
     }
 
     #[test]
+    fn migration_backup_is_created_once_and_remains_readable() {
+        let directory = tempdir().expect("临时目录");
+        let db_dir = directory.path().join("db");
+        fs::create_dir_all(&db_dir).expect("db 目录");
+        let path = db_dir.join("workspace.sqlite3");
+        create_v9_database(&path);
+
+        let connection = open(&path).expect("迁移打开");
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("读版本");
+        assert_eq!(version, 14);
+
+        let backup_dir = db_dir.join(BACKUP_DIR);
+        let backups: Vec<PathBuf> = fs::read_dir(&backup_dir)
+            .expect("备份目录")
+            .map(|entry| entry.expect("备份项").path())
+            .collect();
+        assert_eq!(backups.len(), 1, "旧库升级必须生成一份备份");
+        let backup = Connection::open(&backups[0]).expect("备份可打开");
+        let title: String = backup
+            .query_row("SELECT title FROM node WHERE id = 'doc1'", [], |row| {
+                row.get(0)
+            })
+            .expect("备份保留旧数据");
+        assert_eq!(title, "备份文档");
+
+        // 已是 v11 再打开不重复备份。
+        drop(backup);
+        drop(connection);
+        drop(open(&path).expect("再次打开"));
+        assert_eq!(
+            fs::read_dir(&backup_dir).expect("备份目录").count(),
+            1,
+            "最新版本不得重复备份"
+        );
+    }
+
+    #[test]
+    fn migration_backup_failure_aborts_upgrade() {
+        let directory = tempdir().expect("临时目录");
+        let db_dir = directory.path().join("db");
+        fs::create_dir_all(&db_dir).expect("db 目录");
+        let path = db_dir.join("workspace.sqlite3");
+        create_v9_database(&path);
+        // 用普通文件占住 backups 路径，让备份目录创建失败。
+        fs::write(db_dir.join(BACKUP_DIR), b"not a directory").expect("占位文件");
+
+        assert!(open(&path).is_err(), "备份失败必须中止迁移");
+        let connection = Connection::open(&path).expect("原库仍可打开");
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("读版本");
+        assert_eq!(version, 9, "备份失败不得修改原库版本");
+    }
+
+    #[test]
+    fn prune_backups_keeps_latest_three() {
+        let directory = tempdir().expect("临时目录");
+        for index in 0..5 {
+            fs::write(
+                directory
+                    .path()
+                    .join(format!("workspace-v9-{index}.sqlite3")),
+                b"backup",
+            )
+            .expect("写入备份");
+        }
+        prune_backups(directory.path(), BACKUP_KEEP).expect("清理备份");
+        assert_eq!(
+            fs::read_dir(directory.path()).expect("备份目录").count(),
+            BACKUP_KEEP
+        );
+    }
+
+    #[test]
     fn migrates_v6_blob_rows_to_v7_without_losing_objects() {
         let directory = tempdir().expect("临时目录");
         let path = directory.path().join("workspace.sqlite3");
@@ -921,7 +1253,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 10, "v8 库必须升到 v10");
+        assert_eq!(version, 14, "v8 库必须升到 v14");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(attachment_blob)")

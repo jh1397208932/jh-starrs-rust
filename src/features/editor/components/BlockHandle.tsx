@@ -1,5 +1,6 @@
 import { GripVertical, Plus } from "lucide-react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import { useI18n } from "@/lib/i18n";
 import { blockTypeLabel } from "../blockLabels";
 
 export interface BlockHandleProps {
@@ -34,8 +35,9 @@ export function BlockHandle({
   onAddBelow,
   onGripPointerDown,
 }: BlockHandleProps) {
+  const { t } = useI18n();
   const typeLabel = blockTypeLabel(targetType);
-  const targetLabel = `拖动${typeLabel}`;
+  const targetLabel = t("拖动{type}", { type: typeLabel });
   const style: CSSProperties = { top, left };
   return (
     <div
@@ -48,8 +50,8 @@ export function BlockHandle({
       <button
         type="button"
         className="editor-block-handle__button"
-        aria-label="在下方插入"
-        title="在下方插入"
+        aria-label={t("在下方插入")}
+        title={t("在下方插入")}
         tabIndex={-1}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onAddBelow}
@@ -60,7 +62,7 @@ export function BlockHandle({
         type="button"
         className="editor-block-handle__grip"
         aria-label={targetLabel}
-        title="拖动排序"
+        title={t("拖动排序")}
         tabIndex={-1}
         data-block-drag-grip=""
         onPointerDown={onGripPointerDown}

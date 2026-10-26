@@ -41,6 +41,14 @@ impl ExportFormat {
     }
 }
 
+/// 用户选择的导出位置与一次性令牌。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPathGrantDto {
+    pub token: String,
+    pub path: String,
+}
+
 /// 单文档导出入参；`dest_path` 是用户在保存对话框中选择的完整文件路径。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,0 +1,38 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "星屿数据安全：关闭保存与旧库迁移",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "user", "label": "用户" },
+    { "id": "frontend", "label": "前端" },
+    { "id": "backend", "label": "Rust / SQLite" },
+    { "id": "startup", "label": "启动与迁移" }
+  ],
+  "phases": [
+    { "id": "close", "label": "关闭前保存", "fromCol": 0, "toCol": 2, "variant": "emphasis" },
+    { "id": "migrate", "label": "打开旧库前备份", "fromCol": 3, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["close", "intercept", "flush", "confirm", "exit"],
+  "nodes": [
+    { "id": "close", "lane": "user", "col": 0, "type": "external", "label": "关闭 / ⌘Q", "sublabel": "红绿灯或应用退出", "width": 120 },
+    { "id": "intercept", "lane": "frontend", "col": 1, "type": "frontend", "label": "拦截关闭", "sublabel": "onCloseRequested", "width": 132 },
+    { "id": "flush", "lane": "frontend", "col": 2, "type": "frontend", "label": "保存当前文档", "sublabel": "flush 防抖队列", "width": 132 },
+    { "id": "confirm", "lane": "backend", "col": 3, "type": "backend", "label": "确认退出", "sublabel": "允许 ExitRequested", "width": 132 },
+    { "id": "exit", "lane": "backend", "col": 4, "type": "backend", "label": "退出应用", "sublabel": "不再拦截", "width": 116 },
+    { "id": "openOld", "lane": "startup", "col": 3, "type": "database", "label": "打开旧工作区", "sublabel": "user_version < 当前", "width": 148 },
+    { "id": "backup", "lane": "startup", "col": 4, "type": "database", "label": "复制数据库", "sublabel": "db/backups + 保留 3 份", "width": 148 },
+    { "id": "migrate", "lane": "startup", "col": 5, "type": "database", "label": "执行迁移", "sublabel": "事务 + 外键检查", "width": 132 }
+  ],
+  "edges": [
+    { "id": "close-intercept", "from": "close", "to": "intercept", "variant": "emphasis" },
+    { "id": "intercept-flush", "from": "intercept", "to": "flush", "variant": "emphasis" },
+    { "id": "flush-confirm", "from": "flush", "to": "confirm", "label": "成功才继续；失败留在窗口", "variant": "emphasis" },
+    { "id": "confirm-exit", "from": "confirm", "to": "exit", "variant": "emphasis" },
+    { "id": "open-backup", "from": "openOld", "to": "backup", "variant": "emphasis" },
+    { "id": "backup-migrate", "from": "backup", "to": "migrate", "label": "成功才迁移；失败中止", "variant": "emphasis" }
+  ]
+}

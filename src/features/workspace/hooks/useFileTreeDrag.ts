@@ -1,5 +1,6 @@
 import { type DragEvent, useState } from "react";
 import { toErrorMessage } from "@/api/client";
+import { t } from "@/lib/i18n";
 import type { NodeItem } from "@/types/notebook";
 import { resolveDropTarget, resolveRootDrop } from "../utils/tree";
 
@@ -113,7 +114,7 @@ export function useFileTreeDrag({
     const resolved = resolveDropTarget(nodes, movingId, target.id, hint.position);
     clear();
     if (!resolved) {
-      onError("不能放到这里");
+      onError(t("不能放到这里"));
       return;
     }
     void runMove(movingId, resolved.parentId, resolved.index);

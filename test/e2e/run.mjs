@@ -59,17 +59,88 @@ function compileHelper() {
   }
 }
 
-function startApp() {
-  const log = fs.openSync(APP_LOG, "w");
-  const child = spawn("pnpm", ["exec", "tauri", "dev"], {
+const APP_BUNDLE = path.join(RUN_DIR, "Starris E2E.app");
+const APP_EXECUTABLE = path.join(APP_BUNDLE, "Contents/MacOS/starris-e2e");
+const APP_BINARY = path.join(ROOT, "src-tauri/target/debug/starris-rust");
+
+/** shell 单引号转义；路径只在本机测试目录内使用。 */
+function shellQuote(value) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * macOS 裸二进制没有 bundle，无法被 NSRunningApplication 激活，AX 树会为空。
+ * 测试时用临时 .app 包装启动，产品构建方式不受影响。
+ */
+function prepareAppBundle() {
+  const contents = path.join(APP_BUNDLE, "Contents");
+  fs.mkdirSync(path.dirname(APP_EXECUTABLE), { recursive: true });
+  fs.writeFileSync(
+    path.join(contents, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.jh.starris</string>
+<key>CFBundleName</key><string>Starris E2E</string>
+<key>CFBundleDisplayName</key><string>Starris E2E</string>
+<key>CFBundleExecutable</key><string>starris-e2e</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>LSMinimumSystemVersion</key><string>12.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>
+`,
+  );
+  fs.writeFileSync(
+    APP_EXECUTABLE,
+    `#!/bin/zsh
+export STARRIS_HOME=${shellQuote(HOME)}
+export STARRIS_LOG_LEVEL=info
+exec ${shellQuote(APP_BINARY)} >> ${shellQuote(APP_LOG)} 2>&1
+`,
+  );
+  fs.chmodSync(APP_EXECUTABLE, 0o755);
+}
+
+async function waitForVite() {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch("http://localhost:1420/");
+      if (response.ok) return;
+    } catch {
+      // 继续等待
+    }
+    await sleep(300);
+  }
+  throw new Error("Vite 未在 60s 内启动");
+}
+
+async function startApp() {
+  const build = spawnSync(
+    "cargo",
+    ["build", "--manifest-path", "src-tauri/Cargo.toml"],
+    { cwd: ROOT, encoding: "utf8", timeout: 180_000 },
+  );
+  if (build.status !== 0) {
+    failSetup(`cargo build 失败：\n${build.stderr || build.stdout}`);
+  }
+  const viteLogPath = path.join(RUN_DIR, "vite.log");
+  const viteLog = fs.openSync(viteLogPath, "w");
+  const child = spawn("npm", ["run", "dev"], {
     cwd: ROOT,
-    env: { ...process.env, STARRIS_HOME: HOME, STARRIS_LOG_LEVEL: "info" },
     detached: true,
-    stdio: ["ignore", log, log],
+    stdio: ["ignore", viteLog, viteLog],
   });
   child.on("error", (error) => {
-    console.error(`[测试启动失败] 无法启动 tauri dev：${error.message}`);
+    console.error(`[测试启动失败] 无法启动 Vite：${error.message}`);
   });
+  await waitForVite();
+  prepareAppBundle();
+  const opened = spawnSync("open", ["-n", APP_BUNDLE], { encoding: "utf8" });
+  if (opened.status !== 0) {
+    failSetup(`启动测试应用失败：\n${opened.stderr || opened.stdout}`);
+  }
   return child;
 }
 
@@ -122,6 +193,9 @@ function stopApp(child, ax) {
     } catch {
       // 已退出
     }
+  } else {
+    // 应用窗口未建立时按测试二进制兜底；测试前已检查无其他实例。
+    spawnSync("pkill", ["-f", APP_BINARY]);
   }
   try {
     process.kill(-child.pid, "SIGTERM");
@@ -231,7 +305,7 @@ noOtherApp();
 compileHelper();
 
 const ax = new NativeAX(HELPER_BIN);
-const child = startApp();
+const child = await startApp();
 const startedAt = new Date().toISOString();
 const results = [];
 const shared = {};

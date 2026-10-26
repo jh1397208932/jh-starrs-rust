@@ -6,6 +6,7 @@ import { BrandLogo } from "@/components/common/BrandLogo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { t, useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export interface CreateWorkspaceWizardProps {
@@ -33,16 +34,16 @@ const AVATAR_COLORS = [
 /** 名称校验：与后端 1~80 字符规则一致（前端只做即时反馈） */
 function validateName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed.length === 0) return "请输入名称";
-  if (trimmed.length > 80) return "名称不能超过 80 个字符";
+  if (trimmed.length === 0) return t("请输入名称");
+  if (trimmed.length > 80) return t("名称不能超过 80 个字符");
   return null;
 }
 
 /** 路径校验：必须是绝对路径；后端仍会做最终校验 */
 function validatePath(path: string): string | null {
   const trimmed = path.trim();
-  if (trimmed.length === 0) return "请选择位置";
-  if (!/^([A-Za-z]:[\\/]|[\\/])/.test(trimmed)) return "请输入完整路径";
+  if (trimmed.length === 0) return t("请选择位置");
+  if (!/^([A-Za-z]:[\\/]|[\\/])/.test(trimmed)) return t("请输入完整路径");
   return null;
 }
 
@@ -53,7 +54,7 @@ function derivePath(parent: string, name: string): string {
     Array.from(name.trim())
       .map((char) => (char.charCodeAt(0) < 32 || /[\\/:*?"<>|]/.test(char) ? "-" : char))
       .join("")
-      .replace(/^[.\s]+|[.\s]+$/g, "") || "新工作区";
+      .replace(/^[.\s]+|[.\s]+$/g, "") || t("新工作区");
   return `${parent.replace(/[\\/]+$/, "")}/${safeName}`;
 }
 
@@ -75,6 +76,7 @@ export function CreateWorkspaceWizard({
   onPickDirectory,
   onCreate,
 }: CreateWorkspaceWizardProps) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [pathTouched, setPathTouched] = useState(false);
@@ -144,17 +146,17 @@ export function CreateWorkspaceWizard({
       <DialogContent className="w-[440px] p-6">
         <div className="flex items-center gap-3">
           <BrandLogo size={32} />
-          <DialogHeader title="创建工作区" />
+          <DialogHeader title={t("创建工作区")} />
         </div>
 
         <div className="mt-4">
           <label htmlFor="ws-name" className="mb-1.5 block text-[13px] font-medium">
-            名称
+            {t("名称")}
           </label>
           <Input
             id="ws-name"
             value={name}
-            placeholder="名称"
+            placeholder={t("名称")}
             aria-invalid={name.trim().length > 0 && nameError !== null}
             onChange={(event) => updateName(event.target.value)}
             className={name.trim().length > 0 && nameError ? "border-destructive" : undefined}
@@ -166,13 +168,13 @@ export function CreateWorkspaceWizard({
 
         <div className="mt-4">
           <label htmlFor="ws-path" className="mb-1.5 block text-[13px] font-medium">
-            位置
+            {t("位置")}
           </label>
           <div className="flex items-center gap-2">
             <Input
               id="ws-path"
               value={path}
-              placeholder="选择文件夹"
+              placeholder={t("选择文件夹")}
               onChange={(event) => {
                 setPath(event.target.value);
                 setPathTouched(true);
@@ -184,21 +186,21 @@ export function CreateWorkspaceWizard({
             />
             <Button variant="outline" size="sm" disabled={pending} onClick={() => void chooseFolder()}>
               <FolderOpen className="size-3.5" />
-              选择…
+              {t("选择…")}
             </Button>
           </div>
           {pathTouched && pathError && <p className="mt-1.5 text-[12px] text-destructive">{pathError}</p>}
-          <p className="mt-1.5 text-[11.5px] text-muted-foreground">目录需为空</p>
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">{t("目录需为空")}</p>
         </div>
 
         <div className="mt-4">
-          <span className="mb-1.5 block text-[13px] font-medium">颜色</span>
+          <span className="mb-1.5 block text-[13px] font-medium">{t("颜色")}</span>
           <div className="flex gap-2">
             {AVATAR_COLORS.map((color, index) => (
               <button
                 key={color}
                 type="button"
-                aria-label={`颜色 ${index + 1}`}
+                aria-label={t("颜色 {index}", { index: index + 1 })}
                 aria-pressed={avatar === color}
                 disabled={pending}
                 onClick={() => setAvatar(color)}
@@ -216,10 +218,10 @@ export function CreateWorkspaceWizard({
 
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={resetAndClose}>
-            取消
+            {t("取消")}
           </Button>
           <Button className="min-w-[96px]" disabled={!canCreate} onClick={() => void submit()}>
-            {pending ? "创建中…" : "创建"}
+            {pending ? t("创建中…") : t("创建")}
           </Button>
         </div>
       </DialogContent>

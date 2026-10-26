@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "星屿检索索引与查询数据流",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1070, 520]
+  },
+  "stages": [
+    { "label": "写入" },
+    { "label": "提取" },
+    { "label": "索引" },
+    { "label": "检索" },
+    { "label": "消费" }
+  ],
+  "nodes": [
+    { "id": "node", "type": "frontend", "label": "节点/文档保存", "sublabel": "标题与正文", "stage": 0, "row": 1 },
+    { "id": "extract", "type": "backend", "label": "提取纯文本", "sublabel": "标题 + 正文", "stage": 1, "row": 1 },
+    { "id": "fts", "type": "database", "label": "FTS5 索引", "sublabel": "trigram 3 字以上", "stage": 2, "row": 0, "tag": "主路径" },
+    { "id": "like", "type": "database", "label": "LIKE 回退", "sublabel": "1–2 字查询", "stage": 2, "row": 2, "tag": "短词" },
+    { "id": "query", "type": "backend", "label": "搜索服务", "sublabel": "当前知识库 + 限流", "stage": 3, "row": 1 },
+    { "id": "palette", "type": "frontend", "label": "搜索 / 跳转面板", "sublabel": "标题 + 片段 + 键盘", "stage": 4, "row": 1 }
+  ],
+  "flows": [
+    { "id": "save-extract", "from": "node", "to": "extract", "label": "保存事务", "classification": "写入", "variant": "emphasis" },
+    { "id": "extract-fts", "from": "extract", "to": "fts", "label": "upsert", "classification": "长词", "variant": "emphasis" },
+    { "id": "extract-like", "from": "extract", "to": "like", "label": "回退索引", "classification": "短词", "variant": "dashed" },
+    { "id": "fts-query", "from": "fts", "to": "query", "label": "MATCH", "classification": "3 字以上", "variant": "emphasis" },
+    { "id": "like-query", "from": "like", "to": "query", "label": "LIKE", "classification": "1–2 字", "variant": "default" },
+    { "id": "query-palette", "from": "query", "to": "palette", "label": "结果", "classification": "标题 + 片段", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "索引维护", "items": ["文档保存、改名、移动、删除同步更新", "旧工作区迁移时从节点与派生 Markdown 回填"] },
+    { "dot": "cyan", "title": "查询体验", "items": ["空查询展示最近节点，供快速跳转", "文档内查找使用当前文档高亮，不新建第二套索引"] }
+  ]
+}

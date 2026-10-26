@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { ExportFormat } from "@/types/exchange";
 
@@ -45,6 +46,7 @@ export function ShareExportDialog({
   updatedAt,
   onExport,
 }: ShareExportDialogProps) {
+  const { t } = useI18n();
   const [format, setFormat] = useState<ExportFormat>("markdown");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export function ShareExportDialog({
       const done = await onExport(format);
       if (done) onOpenChange(false);
     } catch (caught) {
-      setError(caught instanceof Error && caught.message.trim() ? caught.message : "导出失败，请重试");
+      setError(caught instanceof Error && caught.message.trim() ? caught.message : t("导出失败，请重试"));
     } finally {
       setBusy(false);
     }
@@ -66,20 +68,20 @@ export function ShareExportDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="w-[520px] p-5" aria-describedby={undefined}>
-        <DialogTitle>导出文档</DialogTitle>
+        <DialogTitle>{t("导出文档")}</DialogTitle>
 
         <div className="mt-4 flex items-start gap-3 rounded-md bg-accent p-4 text-accent-foreground">
           <FileText className="mt-0.5 size-5 shrink-0" />
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold">{title}</p>
             <p className="mt-0.5 text-[12px] opacity-80">
-              {kbName} · {wordCount} 字 · 编辑于 {formatTimestamp(updatedAt)}
+              {kbName} · {wordCount} {t("字 · 编辑于")} {formatTimestamp(updatedAt)}
             </p>
           </div>
         </div>
 
         <fieldset className="mt-4 grid grid-cols-2 gap-2">
-          <legend className="sr-only">导出格式</legend>
+          <legend className="sr-only">{t("导出格式")}</legend>
           {FORMATS.map(({ id, label, hint, icon: Icon }) => (
             <label
               key={id}
@@ -102,7 +104,7 @@ export function ShareExportDialog({
               <span className="min-w-0">
                 <span className="block text-[13.5px] font-medium">{label}</span>
                 <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-foreground">
-                  {hint}
+                  {t(hint)}
                 </span>
               </span>
             </label>
@@ -120,14 +122,14 @@ export function ShareExportDialog({
 
         <div className="mt-5 flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onOpenChange(false)}>
-            取消
+            {t("取消")}
           </Button>
           <Button size="sm" disabled={busy} onClick={() => void runExport()}>
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {busy ? "正在导出…" : "导出"}
+            {busy ? t("正在导出…") : t("导出")}
           </Button>
         </div>
-        <DialogDescription className="sr-only">选择格式并导出当前文档</DialogDescription>
+        <DialogDescription className="sr-only">{t("选择格式并导出当前文档")}</DialogDescription>
       </DialogContent>
     </Dialog>
   );

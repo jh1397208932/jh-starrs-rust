@@ -59,9 +59,23 @@ export default {
 
     await ctx.press("新建工作区");
     await ctx.expectText("创建工作区");
+    // 等弹窗打开后的重置 effect 完成，避免它清掉随后填入的路径/名称。
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
+    const readPath = async () => {
+      const field = (await ctx.find("选择文件夹", { role: "AXTextField" })).matches[0];
+      return field?.value ?? "";
+    };
+    let pathValue = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await ctx.fill("选择文件夹", ctx.workspacePath);
+      pathValue = await readPath();
+      if (pathValue === ctx.workspacePath) break;
+    }
+    if (pathValue !== ctx.workspacePath) {
+      throw new Error(`工作区路径填写异常：期望 ${ctx.workspacePath}，实际 ${pathValue}`);
+    }
     await ctx.fill("名称", "E2E 工作区");
-    await ctx.fill("选择文件夹", ctx.workspacePath);
     await ctx.expectText("创建");
     await ctx.press("创建");
 

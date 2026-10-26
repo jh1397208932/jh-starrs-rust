@@ -11,7 +11,11 @@ import {
 } from "@/api/attachment";
 import { toErrorMessage } from "@/api/client";
 import { pickAttachmentExportPath, pickAttachmentFiles } from "@/api/fileDialog";
+import { t } from "@/lib/i18n";
 import type { Attachment, AttachmentStats } from "@/types/attachment";
+
+/** 附件列表每页条数（服务端另多取 1 条判断是否还有下一页）。 */
+const PAGE_SIZE = 50;
 
 /**
  * 附件管理器数据与动作：加载、上传、导出、校验、删除。
@@ -22,6 +26,9 @@ export function useAttachmentManager() {
   const [stats, setStats] = useState<AttachmentStats | null>(null);
   const [items, setItems] = useState<Attachment[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [search, setSearch] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [logicalPath, setLogicalPath] = useState("");
   /** 上传时声明的临时保留秒数；null 表示永久。 */
   const [ttlSeconds, setTtlSeconds] = useState<number | null>(null);
@@ -49,11 +56,17 @@ export function useAttachmentManager() {
     try {
       const [nextStats, nextItems] = await Promise.all([
         getAttachmentStats(),
-        listAttachments({ includeDeleted }),
+        listAttachments({
+          includeDeleted,
+          search: search.trim() || null,
+          limit: PAGE_SIZE + 1,
+          offset: 0,
+        }),
       ]);
       if (!mountedRef.current || request !== requestRef.current) return;
       setStats(nextStats);
-      setItems(nextItems);
+      setItems(nextItems.slice(0, PAGE_SIZE));
+      setHasMore(nextItems.length > PAGE_SIZE);
     } catch (caught) {
       if (mountedRef.current && request === requestRef.current) {
         setError(toErrorMessage(caught));
@@ -63,11 +76,37 @@ export function useAttachmentManager() {
         setLoading(false);
       }
     }
-  }, [includeDeleted]);
+  }, [includeDeleted, search]);
 
   useEffect(() => {
-    void fetchData();
+    const timer = setTimeout(() => {
+      void fetchData();
+    }, 200);
+    return () => clearTimeout(timer);
   }, [fetchData]);
+
+  const loadMore = useCallback(() => {
+    if (!hasMore || loading || loadingMore) return;
+    const request = requestRef.current;
+    setLoadingMore(true);
+    void (async () => {
+      try {
+        const next = await listAttachments({
+          includeDeleted,
+          search: search.trim() || null,
+          limit: PAGE_SIZE + 1,
+          offset: items.length,
+        });
+        if (!mountedRef.current || request !== requestRef.current) return;
+        setItems((current) => [...current, ...next.slice(0, PAGE_SIZE)]);
+        setHasMore(next.length > PAGE_SIZE);
+      } catch (caught) {
+        if (mountedRef.current) setError(toErrorMessage(caught));
+      } finally {
+        if (mountedRef.current) setLoadingMore(false);
+      }
+    })();
+  }, [hasMore, includeDeleted, items.length, loading, loadingMore, search]);
 
   const run = useCallback(async (key: string, action: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -91,6 +130,13 @@ export function useAttachmentManager() {
 
   const upload = useCallback(() => {
     if (busyRef.current) return;
+    // 本地优先也要避免写满磁盘；阈值只拦截明显不足的剩余空间。
+    if (stats?.diskFreeBytes !== null && stats?.diskFreeBytes !== undefined) {
+      if (stats.diskFreeBytes < 256 * 1024 * 1024) {
+        setError(t("磁盘剩余空间不足 256 MB，请先清理空间"));
+        return;
+      }
+    }
     void (async () => {
       let paths: string[] = [];
       try {
@@ -118,13 +164,19 @@ export function useAttachmentManager() {
         await fetchData();
         if (!mountedRef.current) return;
         if (failures.length > 0) {
-          setError(`已上传 ${uploaded} 个，${failures.length} 个失败：${failures[0]}`);
+          setError(
+            t("已上传 {ok} 个，{failed} 个失败：{error}", {
+              ok: uploaded,
+              failed: failures.length,
+              error: failures[0],
+            }),
+          );
         } else {
-          setNotice(`已上传 ${uploaded} 个附件`);
+          setNotice(t("已上传 {count} 个附件", { count: uploaded }));
         }
       });
     })();
-  }, [fetchData, logicalPath, run, ttlSeconds]);
+  }, [fetchData, logicalPath, run, stats, ttlSeconds]);
 
   const exportItem = useCallback(
     (item: Attachment) => {
@@ -140,7 +192,7 @@ export function useAttachmentManager() {
         const destination = target;
         await run(`export:${item.id}`, async () => {
           await downloadAttachment({ id: item.id, destPath: destination, overwrite: true });
-          if (mountedRef.current) setNotice(`已导出「${item.name}」`);
+          if (mountedRef.current) setNotice(t("已导出「{name}」", { name: item.name }));
         });
       })();
     },
@@ -153,7 +205,7 @@ export function useAttachmentManager() {
         await restoreAttachment(item.id);
         if (!mountedRef.current) return;
         await fetchData();
-        if (mountedRef.current) setNotice(`已恢复「${item.name}」`);
+        if (mountedRef.current) setNotice(t("已恢复「{name}」", { name: item.name }));
       });
     },
     [fetchData, run],
@@ -166,7 +218,22 @@ export function useAttachmentManager() {
       await fetchData();
       if (mountedRef.current) {
         const reclaimed = Math.round(result.reclaimedBytes / 1024);
-        setNotice(`已清理 ${result.purged + result.expired + result.orphaned} 项，释放约 ${reclaimed} KB`);
+        const details = [
+          result.orphanFiles > 0 ? t("隔离 {count} 个孤儿文件", { count: result.orphanFiles }) : "",
+          result.docHashesRemoved > 0 ? t("移除 {count} 个块哈希", { count: result.docHashesRemoved }) : "",
+          result.quarantineRemoved > 0
+            ? t("清理 {count} 个隔离目录", { count: result.quarantineRemoved })
+            : "",
+        ]
+          .filter(Boolean)
+          .join("，");
+        setNotice(
+          t("已清理 {count} 项{details}，释放约 {kb} KB", {
+            count: result.purged + result.expired + result.orphaned,
+            details: details ? `，${details}` : "",
+            kb: reclaimed,
+          }),
+        );
       }
     });
   }, [fetchData, run]);
@@ -177,9 +244,14 @@ export function useAttachmentManager() {
         const result = await verifyAttachment(item.id);
         if (!mountedRef.current) return;
         if (result.valid) {
-          setNotice(`「${item.name}」校验通过`);
+          setNotice(t("「{name}」校验通过", { name: item.name }));
         } else {
-          setError(`「${item.name}」校验失败：${result.message ?? "校验未通过"}`);
+          setError(
+            t("「{name}」校验失败：{message}", {
+              name: item.name,
+              message: result.message ?? t("校验未通过"),
+            }),
+          );
         }
       });
     },
@@ -198,7 +270,7 @@ export function useAttachmentManager() {
         setPendingDelete(null);
         await fetchData();
         if (!mountedRef.current) return;
-        setNotice(`已删除「${item.name}」`);
+        setNotice(t("已删除「{name}」", { name: item.name }));
       });
     },
     [fetchData, pendingDelete, run],
@@ -209,6 +281,11 @@ export function useAttachmentManager() {
     items,
     includeDeleted,
     setIncludeDeleted,
+    search,
+    setSearch,
+    hasMore,
+    loadingMore,
+    loadMore,
     logicalPath,
     setLogicalPath,
     ttlSeconds,

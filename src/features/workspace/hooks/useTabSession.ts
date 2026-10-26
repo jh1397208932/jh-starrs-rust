@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { t } from "@/lib/i18n";
 import type { NodeItem, TabItem } from "@/types/notebook";
 
 /**
@@ -31,7 +32,7 @@ export function useTabSession() {
     setTabs((prev) =>
       prev.some((tab) => tab.kind === "starred")
         ? prev
-        : [...prev, { id: "tab-starred", kind: "starred", title: "收藏列表", nodeId: null }],
+        : [...prev, { id: "tab-starred", kind: "starred", title: t("收藏列表"), nodeId: null }],
     );
     setActiveTabId("tab-starred");
   }, []);

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -10,7 +11,7 @@ export function BrandLogo({ size = 20, className }: { size?: number; className?:
       width={size}
       height={size}
       viewBox="0 0 64 64"
-      aria-label="星屿品牌标志"
+      aria-label={t("星屿品牌标志")}
       role="img"
       className={cn("shrink-0", className)}
     >

@@ -18,15 +18,15 @@ export default {
       action: "点击「模板库」",
       ui: "更多菜单第二项",
       clicks: 1,
-      dialogs: 0,
-      note: "菜单项标注「即将推出」，点击后同样提示。",
+      dialogs: 1,
+      note: "打开模板库弹窗，关闭。",
     },
     {
       action: "点击「备份与恢复」",
       ui: "更多菜单最后一项",
       clicks: 1,
-      dialogs: 0,
-      note: "菜单项标注「即将推出」，点击后同样提示。",
+      dialogs: 1,
+      note: "打开备份/恢复弹窗，关闭。",
     },
     {
       action: "打开左上角工作区切换浮层",
@@ -48,17 +48,21 @@ export default {
     dialogs: 1,
     typingFields: 0,
     assessment:
-      "主入口集中在侧栏底部，一次打开即可看到全部全局动作。「模板库」「备份与恢复」已带「即将推出」标记，点击后同样提示，不会让用户误以为可用。设置与工作区管理需要两次以上点击，符合低频配置类操作。",
+      "主入口集中在侧栏底部，一次打开即可看到全部全局动作。「模板库」与「备份与恢复」均已接入真实弹窗；设置与工作区管理需要两次以上点击，符合低频配置类操作。",
   },
   async run(ctx) {
     await ctx.expectText("默认知识库");
 
     await ctx.menu("更多 ⌘J", "模板库");
-    await ctx.expectText("即将推出");
-    await ctx.screenshot("shell-mock-template");
+    await ctx.expectText("另存为模板");
+    await ctx.press("关闭");
+    ctx.metrics.dialogs += 1;
+    await ctx.screenshot("shell-template-library");
 
     await ctx.menu("更多 ⌘J", "备份与恢复");
-    await ctx.expectText("即将推出");
+    await ctx.expectText("备份当前工作区");
+    await ctx.press("关闭");
+    ctx.metrics.dialogs += 1;
 
     await ctx.press("切换工作区");
     await ctx.expectText("新建工作区");
@@ -78,6 +82,6 @@ export default {
     await ctx.expectText("关于");
     await ctx.screenshot("shell-settings");
     await ctx.press("关闭");
-    ctx.log("模板库/备份与恢复标注并提示「即将推出」；其余入口可达。");
+    ctx.log("模板库/备份与恢复弹窗可达；其余入口可达。");
   },
 };

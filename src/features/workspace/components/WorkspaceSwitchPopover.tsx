@@ -7,12 +7,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 import type { KnowledgeBase, Workspace } from "@/types/notebook";
 
 export interface WorkspaceSwitchPopoverProps {
   workspaces: Workspace[];
   kbs: KnowledgeBase[];
-  /** 当前知识库 id；null = 工作区还没有知识库 */
+  /** 当前知识库 id；null = 工作区{t("还没有知识库")} */
   currentKbId: string | null;
   onSwitchWorkspace: (id: string) => void;
   onSwitchKb: (id: string) => void;
@@ -42,13 +43,14 @@ export function WorkspaceSwitchPopover({
   onManageWorkspaces,
   children,
 }: WorkspaceSwitchPopoverProps) {
+  const { t } = useI18n();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="start" className="w-[300px]">
-        <DropdownMenuLabel>工作区</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("工作区")}</DropdownMenuLabel>
         {workspaces.length === 0 && (
-          <p className="px-2 py-1.5 text-[12px] text-muted-foreground">还没有工作区</p>
+          <p className="px-2 py-1.5 text-[12px] text-muted-foreground">{t("还没有工作区")}</p>
         )}
         {workspaces.map((workspace) => (
           <DropdownMenuItem
@@ -74,8 +76,10 @@ export function WorkspaceSwitchPopover({
         ))}
 
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>知识库</DropdownMenuLabel>
-        {kbs.length === 0 && <p className="px-2 py-1.5 text-[12px] text-muted-foreground">还没有知识库</p>}
+        <DropdownMenuLabel>{t("知识库")}</DropdownMenuLabel>
+        {kbs.length === 0 && (
+          <p className="px-2 py-1.5 text-[12px] text-muted-foreground">{t("还没有知识库")}</p>
+        )}
         {kbs.map((kb) => (
           <DropdownMenuItem key={kb.id} className="gap-2.5 py-2" onSelect={() => onSwitchKb(kb.id)}>
             <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
@@ -92,23 +96,23 @@ export function WorkspaceSwitchPopover({
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onCreateWorkspace}>
           <Plus />
-          新建工作区
+          {t("新建工作区")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onOpenWorkspace}>
           <FolderOpen />
-          打开已有工作区…
+          {t("打开已有工作区…")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onCreateKb}>
           <Database />
-          新建知识库
+          {t("新建知识库")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onManageKbs}>
           <FolderKanban />
-          管理知识库
+          {t("管理知识库")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onManageWorkspaces}>
           <Settings2 />
-          管理工作区
+          {t("管理工作区")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

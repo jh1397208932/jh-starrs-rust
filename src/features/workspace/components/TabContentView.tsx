@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AttachmentNodeView } from "@/features/attachments/components/AttachmentNodeView";
 import { BoardView } from "@/features/board/components/BoardView";
 import { DocEditor } from "@/features/editor/components/DocEditor";
+import { useI18n } from "@/lib/i18n";
 import type { NodeItem, TabItem } from "@/types/notebook";
 import { StarredList } from "./StarredList";
 
@@ -31,8 +32,6 @@ export interface TabContentViewProps {
   onOpenKb: () => void;
   onOpenNode: (node: NodeItem) => void;
   onCreateDoc: (title: string) => void;
-  /** mock 未实现动作统一提示 */
-  onMockAction: (label: string, kbd?: string) => void;
   /** 文档保存成功后同步树节点元信息 */
   onDocumentSaved?: (nodeId: string, info: { wordCount: number; updatedAt: number }) => void;
   /** 画板保存成功后同步树节点编辑时间 */
@@ -45,7 +44,7 @@ export interface TabContentViewProps {
 
 /**
  * 标签内容路由：按激活标签类型选择视图——
- * 无标签 → 空状态引导；board → 画板；starred → 收藏列表；table → 占位空状态；doc → 编辑器。
+ * 无标签 → 空状态引导；flow → 画板；starred → 收藏列表；table → 文档编辑器；doc → 编辑器。
  */
 export function TabContentView({
   activeTab,
@@ -61,26 +60,26 @@ export function TabContentView({
   onOpenKb,
   onOpenNode,
   onCreateDoc,
-  onMockAction,
   onDocumentSaved,
   onBoardSaved,
   onBoardExported,
   onError,
 }: TabContentViewProps) {
+  const { t } = useI18n();
   if (!activeTab) {
     return (
-      <EmptyState variant="hero" glyph="✦" title="开始记录">
-        <button type="button" onClick={() => onCreateDoc("未命名文档")} className="empty-cta">
+      <EmptyState variant="hero" glyph="✦" title={t("开始记录")}>
+        <button type="button" onClick={() => onCreateDoc(t("未命名文档"))} className="empty-cta">
           <Plus className="size-4" />
-          新建文档
+          {t("新建文档")}
           <span className="empty-cta__kbd">⌘N</span>
         </button>
       </EmptyState>
     );
   }
-  if (activeTab.kind === "board") {
+  if (activeTab.kind === "board" || activeTab.kind === "flow") {
     if (!activeNode) {
-      return <EmptyState glyph="✦" title="画板未找到" description="画板可能已被删除" />;
+      return <EmptyState glyph="✦" title={t("画板未找到")} description={t("画板可能已被删除")} />;
     }
     return (
       <BoardView
@@ -96,7 +95,7 @@ export function TabContentView({
   }
   if (activeTab.kind === "attachment") {
     if (!activeNode) {
-      return <EmptyState glyph="!" title="附件未找到" description="附件可能已被删除" />;
+      return <EmptyState glyph="!" title={t("附件未找到")} description={t("附件可能已被删除")} />;
     }
     return (
       <AttachmentNodeView
@@ -108,17 +107,11 @@ export function TabContentView({
     );
   }
   if (activeTab.kind === "starred") {
-    return <StarredList nodes={starredNodes} onOpenNode={onOpenNode} onMockAction={onMockAction} />;
+    return <StarredList nodes={starredNodes} onOpenNode={onOpenNode} />;
   }
-  if (activeTab.kind === "table") {
-    return <EmptyState glyph="⊞" title="表格" description="即将推出" />;
-  }
-  if (activeTab.kind === "flow") {
-    return <EmptyState glyph="⌘" title="流程图" description="即将推出" />;
-  }
-
   return (
     <DocEditor
+      kind={activeTab.kind === "table" ? "table" : "doc"}
       node={activeNode}
       title={activeTab.title}
       kbName={kbName}

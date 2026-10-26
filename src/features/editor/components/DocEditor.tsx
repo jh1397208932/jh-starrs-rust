@@ -22,6 +22,7 @@ import {
   Table2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { onFindRequested } from "@/api/app";
 import { toErrorMessage } from "@/api/client";
 import { loadDocument } from "@/api/document";
 import { onNativeFileDrop } from "@/api/dragDrop";
@@ -30,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { setEditorShortcutHandlers } from "@/features/shortcuts/shortcutRuntime";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
+import { useI18n } from "@/lib/i18n";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import type { NodeItem } from "@/types/notebook";
 import { registerActivePersistence, unregisterActivePersistence } from "../activeDocument";
@@ -45,7 +47,10 @@ import {
   uploadFilesAndInsert,
   uploadPathsAndInsert,
 } from "../utils/attachmentUpload";
+import { clearDraft, type DocumentDraft, readDraft, saveDraft } from "../utils/documentDraft";
 import { BlockHandle } from "./BlockHandle";
+import { DocFindBar } from "./DocFindBar";
+import { DocHistoryDialog } from "./DocHistoryDialog";
 import { DocPageBar } from "./DocPageBar";
 import { EditorBubbleMenu } from "./EditorBubbleMenu";
 import { EditorContextMenu } from "./EditorContextMenu";
@@ -63,13 +68,14 @@ interface SlashState {
 }
 
 function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  const { t } = useI18n();
   const pill =
     "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap";
   if (status === "saving") {
     return (
       <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
         <Loader2 className="size-3.5 animate-spin" />
-        正在保存…
+        {t("正在保存…")}
       </span>
     );
   }
@@ -77,7 +83,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
     return (
       <span className={cn(pill, "text-primary")} aria-live="polite">
         <CheckCircle2 className="size-3.5" />
-        已保存
+        {t("已保存")}
       </span>
     );
   }
@@ -85,13 +91,13 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
     return (
       <span className={cn(pill, "text-destructive")} aria-live="polite">
         <AlertCircle className="size-3.5" />
-        保存失败
+        {t("保存失败")}
         <button
           type="button"
           onClick={onRetry}
           className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          重试
+          {t("重试")}
         </button>
       </span>
     );
@@ -100,19 +106,21 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
     return (
       <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
         <Circle className="size-3.5" />
-        未保存
+        {t("未保存")}
       </span>
     );
   }
   return (
     <span className={cn(pill, "text-muted-foreground")} aria-live="polite">
       <Circle className="size-3.5" />
-      自动保存
+      {t("自动保存")}
     </span>
   );
 }
 
 export interface DocEditorProps {
+  /** 节点类型：表格复用同一编辑器，仅页头标识不同 */
+  kind?: "doc" | "table";
   node: NodeItem | null;
   title: string;
   /** 所在知识库名（页头面包屑上级） */
@@ -137,6 +145,7 @@ export interface DocEditorProps {
 
 /** 文档编辑器：加载正文、块级自动保存、气泡/右键/Slash 菜单与拖拽手柄。 */
 export function DocEditor({
+  kind = "doc",
   node,
   title,
   kbName,
@@ -150,10 +159,16 @@ export function DocEditor({
   onError,
   onDocumentSaved,
 }: DocEditorProps) {
+  const { t } = useI18n();
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState<DocumentDraft | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -194,7 +209,7 @@ export function DocEditor({
     editorProps: {
       attributes: {
         class: "tiptap min-h-full focus:outline-none",
-        "aria-label": "文档正文",
+        "aria-label": kind === "table" ? t("表格正文") : t("文档正文"),
       },
       handleKeyDown: (_view, event) => keyDownRef.current(event),
     },
@@ -204,14 +219,25 @@ export function DocEditor({
 
   const persistence = useDocumentPersistence(editor, {
     onSaved: (result) => {
+      setConflict(null);
+      setDraftPrompt(null);
       if (node?.id) {
+        clearDraft(node.id);
         onDocumentSaved?.(node.id, {
           wordCount: result.wordCount,
           updatedAt: result.updatedAt,
         });
       }
     },
-    onError: (error) => onErrorRef.current?.(toErrorMessage(error)),
+    onError: (error) => {
+      const message = toErrorMessage(error);
+      // 冲突不是普通网络错误：保留编辑器内容，提示用户主动重新加载。
+      if (message.includes("文档已在别处更新")) {
+        setConflict(t(message));
+        return;
+      }
+      onErrorRef.current?.(message);
+    },
   });
 
   // 切换文档时回到页头：否则沿用上一篇的滚动位置，面包屑会被藏到视口上方。
@@ -220,6 +246,38 @@ export function DocEditor({
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [node?.id, editor]);
+
+  // 原生菜单「查找」（⌘F）比 WKWebView 内部快捷键可靠。
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: () => void = () => undefined;
+    void onFindRequested(() => {
+      if (!disposed) setFindOpen(true);
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
+  // 切换文档时关闭查找并清除高亮，避免把上一篇的匹配带到新文档。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: node?.id 仅作为“切换文档”触发器
+  useEffect(() => {
+    setFindOpen(false);
+    setDraftPrompt(null);
+    editor?.commands.clearFind();
+  }, [node?.id, editor]);
+
+  // 卸载时取消尚未落盘的草稿定时器。
+  useEffect(
+    () => () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    },
+    [],
+  );
 
   const closeSlash = useCallback(() => {
     slashRef.current = null;
@@ -337,6 +395,7 @@ export function DocEditor({
       "editor.redo": (current) => current.chain().focus().redo().run(),
       "editor.image": (current) => pickImages(currentInsertPos(current)),
       "editor.attachment": (current) => pickAttachments(currentInsertPos(current)),
+      "editor.find": () => setFindOpen(true),
     });
     return () => setEditorShortcutHandlers({});
   }, [editor, pickAttachments, pickImages]);
@@ -441,108 +500,108 @@ export function DocEditor({
     () => [
       {
         id: "paragraph",
-        label: "正文",
-        group: "基础",
-        description: "普通文本",
+        label: t("正文"),
+        group: t("基础"),
+        description: t("普通文本"),
         icon: Pilcrow,
         keywords: ["text", "paragraph"],
         run: (current) => current.chain().focus().setParagraph().run(),
       },
       {
         id: "h1",
-        label: "标题 H1",
-        group: "基础",
-        description: "大标题",
+        label: t("标题 H1"),
+        group: t("基础"),
+        description: t("大标题"),
         icon: Heading1,
         keywords: ["heading", "title"],
         run: (current) => current.chain().focus().toggleHeading({ level: 1 }).run(),
       },
       {
         id: "h2",
-        label: "标题 H2",
-        group: "基础",
-        description: "章节标题",
+        label: t("标题 H2"),
+        group: t("基础"),
+        description: t("章节标题"),
         icon: Heading2,
         keywords: ["heading", "title"],
         run: (current) => current.chain().focus().toggleHeading({ level: 2 }).run(),
       },
       {
         id: "h3",
-        label: "标题 H3",
-        group: "基础",
-        description: "小节标题",
+        label: t("标题 H3"),
+        group: t("基础"),
+        description: t("小节标题"),
         icon: Heading3,
         keywords: ["heading", "title"],
         run: (current) => current.chain().focus().toggleHeading({ level: 3 }).run(),
       },
       {
         id: "bullet",
-        label: "无序列表",
-        group: "列表",
-        description: "圆点列表",
+        label: t("无序列表"),
+        group: t("列表"),
+        description: t("圆点列表"),
         icon: List,
         keywords: ["bullet", "list"],
         run: (current) => current.chain().focus().toggleBulletList().run(),
       },
       {
         id: "ordered",
-        label: "有序列表",
-        group: "列表",
-        description: "编号列表",
+        label: t("有序列表"),
+        group: t("列表"),
+        description: t("编号列表"),
         icon: ListOrdered,
         keywords: ["ordered", "list"],
         run: (current) => current.chain().focus().toggleOrderedList().run(),
       },
       {
         id: "task",
-        label: "任务列表",
-        group: "列表",
-        description: "待办事项",
+        label: t("任务列表"),
+        group: t("列表"),
+        description: t("待办事项"),
         icon: ListChecks,
         keywords: ["task", "todo", "check"],
         run: (current) => current.chain().focus().toggleTaskList().run(),
       },
       {
         id: "quote",
-        label: "引用",
-        group: "内容",
-        description: "摘录",
+        label: t("引用"),
+        group: t("内容"),
+        description: t("摘录"),
         icon: Quote,
         keywords: ["quote", "blockquote"],
         run: (current) => current.chain().focus().toggleBlockquote().run(),
       },
       {
         id: "code",
-        label: "代码块",
-        group: "内容",
-        description: "代码",
+        label: t("代码块"),
+        group: t("内容"),
+        description: t("代码"),
         icon: SquareCode,
         keywords: ["code", "pre"],
         run: (current) => current.chain().focus().toggleCodeBlock().run(),
       },
       {
         id: "details",
-        label: "折叠块",
-        group: "内容",
-        description: "折叠内容",
+        label: t("折叠块"),
+        group: t("内容"),
+        description: t("折叠内容"),
         icon: Code2,
         keywords: ["details", "fold", "toggle"],
         run: (current) => current.chain().focus().setDetails().run(),
       },
       {
         id: "divider",
-        label: "分隔线",
-        group: "内容",
-        description: "分割内容",
+        label: t("分隔线"),
+        group: t("内容"),
+        description: t("分割内容"),
         icon: Minus,
         keywords: ["hr", "divider"],
         run: (current) => current.chain().focus().setHorizontalRule().run(),
       },
       {
         id: "table",
-        label: "表格 3×3",
-        group: "插入",
-        description: "3×3 表格",
+        label: t("表格 3×3"),
+        group: t("插入"),
+        description: t("3×3 表格"),
         icon: Table2,
         keywords: ["table", "grid"],
         run: (current) =>
@@ -550,33 +609,33 @@ export function DocEditor({
       },
       {
         id: "image",
-        label: "图片",
-        group: "插入",
-        description: "本地图片",
+        label: t("图片"),
+        group: t("插入"),
+        description: t("本地图片"),
         icon: ImagePlus,
         keywords: ["image", "photo", "picture"],
         run: (current) => pickImages(currentInsertPos(current)),
       },
       {
         id: "attachment",
-        label: "附件",
-        group: "插入",
-        description: "任意文件",
+        label: t("附件"),
+        group: t("插入"),
+        description: t("任意文件"),
         icon: Paperclip,
         keywords: ["file", "attachment", "attach"],
         run: (current) => pickAttachments(currentInsertPos(current)),
       },
       {
         id: "emoji",
-        label: "表情",
-        group: "插入",
-        description: "符号",
+        label: t("表情"),
+        group: t("插入"),
+        description: t("符号"),
         icon: Smile,
         keywords: ["emoji", "smile"],
         run: (current) => current.chain().focus().setEmoji("sparkles").run(),
       },
     ],
-    [pickAttachments, pickImages],
+    [pickAttachments, pickImages, t],
   );
 
   const slashItems = slash ? filterSlashCommands(slashCommands, slash.query) : [];
@@ -598,6 +657,13 @@ export function DocEditor({
     setLiveCount(current.storage.characterCount.characters());
     syncSlash(current, true);
     persistence.markDirty();
+    if (node?.id) {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = setTimeout(() => {
+        draftTimerRef.current = null;
+        saveDraft(node.id, current.getJSON());
+      }, 500);
+    }
   };
   onSelectionUpdateRef.current = (current) => {
     if (suppressRef.current) return;
@@ -675,6 +741,7 @@ export function DocEditor({
 
     const load = async () => {
       setLoadError(null);
+      setConflict(null);
       setLoading(true);
       hideHandle();
       // setEditable 默认会 emit update，加载/切换期间必须关闭，否则会把旧文档误标脏。
@@ -682,7 +749,7 @@ export function DocEditor({
       const flushed = await persistence.flush();
       if (cancelled || sequence !== docSeqRef.current) return;
       if (!flushed) {
-        setLoadError("上一份文档尚未保存，请重试");
+        setLoadError(t("上一份文档尚未保存，请重试"));
         setLoading(false);
         return;
       }
@@ -694,7 +761,7 @@ export function DocEditor({
         suppressRef.current = false;
         editor.commands.updateTableOfContents();
         persistence.beginDocument(null);
-        persistence.setBaseline(0, 0);
+        persistence.setBaseline(0, 0, 0);
         setLiveCount(0);
         setLoading(false);
         requestAnimationFrame(() => {
@@ -707,7 +774,7 @@ export function DocEditor({
         const loaded = await loadDocument(nodeId);
         if (cancelled || sequence !== docSeqRef.current) return;
         if (loaded.document.type !== "doc" || !Array.isArray(loaded.document.content)) {
-          throw new Error("文档内容无法读取");
+          throw new Error(t("文档内容无法读取"));
         }
         const hasContent = loaded.document.content.length > 0;
         suppressRef.current = true;
@@ -716,7 +783,14 @@ export function DocEditor({
         });
         suppressRef.current = false;
         persistence.beginDocument(nodeId);
-        persistence.setBaseline(loaded.wordCount, loaded.updatedAt);
+        persistence.setBaseline(loaded.wordCount, loaded.updatedAt, loaded.version);
+        const draft = readDraft(nodeId);
+        if (draft && draft.savedAt > loaded.updatedAt) {
+          setDraftPrompt(draft);
+        } else {
+          clearDraft(nodeId);
+          setDraftPrompt(null);
+        }
         setLiveCount(loaded.wordCount);
         editor.setEditable(true, false);
         setLoading(false);
@@ -778,7 +852,7 @@ export function DocEditor({
       <div className="grid h-full place-items-center text-[13px] text-muted-foreground">
         <span className="inline-flex items-center gap-2">
           <Loader2 className="size-4 animate-spin" />
-          正在初始化编辑器…
+          {t("正在初始化编辑器…")}
         </span>
       </div>
     );
@@ -801,28 +875,91 @@ export function DocEditor({
               onToggleInfo={onToggleInfo}
               onShare={onShare}
               onPrint={onPrint}
+              onHistory={() => setHistoryOpen(true)}
               onOpenKb={onOpenKb}
             />
             <div className="mb-3 flex items-center gap-2">
-              <Badge variant="doc">文档</Badge>
+              <Badge variant="doc">{kind === "table" ? t("表格") : t("文档")}</Badge>
               <SaveIndicator status={persistence.status} onRetry={() => void persistence.retry()} />
             </div>
+            {findOpen && <DocFindBar editor={editor} onClose={() => setFindOpen(false)} />}
             <h1 className="doc-editor-title">{title}</h1>
             <div className={cn(CAPTION_CLS, "doc-editor-meta")}>
-              <span>{displayCount} 字</span>
+              <span>
+                {displayCount} {t("字")}
+              </span>
               <span aria-hidden="true">·</span>
-              <span>最近编辑 {displayUpdatedAt ? formatTimestamp(displayUpdatedAt) : "刚刚"}</span>
+              <span>
+                {t("最近编辑")} {displayUpdatedAt ? formatTimestamp(displayUpdatedAt) : t("刚刚")}
+              </span>
               {uploadingCount > 0 && (
                 <span
                   className="ml-auto inline-flex items-center gap-1 text-muted-foreground"
                   aria-live="polite"
                 >
                   <Loader2 className="size-3.5 animate-spin" />
-                  正在上传附件…
+                  {t("正在上传附件…")}
                 </span>
               )}
             </div>
           </header>
+
+          {draftPrompt && (
+            <div
+              role="alert"
+              className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-primary/35 bg-accent/45 px-3.5 py-2.5 text-[12.5px] text-foreground"
+            >
+              <span>{t("检测到未保存的草稿，可恢复到编辑器。")}</span>
+              <span className="flex shrink-0 gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!editor) return;
+                    suppressRef.current = true;
+                    editor.commands.setContent(draftPrompt.document, { emitUpdate: false });
+                    suppressRef.current = false;
+                    persistence.markDirty();
+                    setDraftPrompt(null);
+                  }}
+                >
+                  {t("恢复草稿")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (node?.id) clearDraft(node.id);
+                    setDraftPrompt(null);
+                  }}
+                >
+                  {t("忽略")}
+                </Button>
+              </span>
+            </div>
+          )}
+
+          {conflict && (
+            <div
+              role="alert"
+              className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3.5 py-2.5 text-[12.5px] text-foreground"
+            >
+              <span className="inline-flex items-center gap-2">
+                <AlertCircle className="size-4 text-destructive" />
+                {t("文档已在别处更新；重新加载会丢失当前修改。")}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  persistence.discard();
+                  setConflict(null);
+                  setReloadToken((value) => value + 1);
+                }}
+              >
+                {t("放弃修改并重新加载")}
+              </Button>
+            </div>
+          )}
 
           {loadError && (
             <div
@@ -834,13 +971,13 @@ export function DocEditor({
                 {loadError}
               </span>
               <Button variant="outline" size="sm" onClick={() => setReloadToken((value) => value + 1)}>
-                重新加载
+                {t("重新加载")}
               </Button>
             </div>
           )}
 
           <div ref={containerRef} className="doc-editor-body">
-            <EditorContent editor={editor} className="doc-content focus-visible:outline-none" />
+            <EditorContent editor={editor} className="doc-content focus-visible:outline-none" />{" "}
             {blockAnchor && (
               <BlockHandle
                 targetPos={blockAnchor.pos}
@@ -856,7 +993,7 @@ export function DocEditor({
               <div className="doc-editor-loading">
                 <span className="inline-flex items-center gap-2 text-[12.5px] text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
-                  正在加载正文…
+                  {t("正在加载正文…")}
                 </span>
               </div>
             )}
@@ -890,6 +1027,20 @@ export function DocEditor({
           onInsertImage={insertImagesAtSelection}
           onInsertAttachment={insertAttachmentsAtSelection}
           onError={reportError}
+        />
+      )}
+
+      {node?.id && (
+        <DocHistoryDialog
+          open={historyOpen}
+          nodeId={node.id}
+          onOpenChange={setHistoryOpen}
+          onRestored={() => {
+            persistence.discard();
+            setConflict(null);
+            setDraftPrompt(null);
+            setReloadToken((value) => value + 1);
+          }}
         />
       )}
     </div>

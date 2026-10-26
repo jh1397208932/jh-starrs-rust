@@ -2,6 +2,7 @@ import { Minus, Search, Square, X } from "lucide-react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { runWindowAction, windowActions } from "@/lib/window";
 import { NODE_KIND_LABELS, type TabItem } from "@/types/notebook";
@@ -37,10 +38,11 @@ export function WindowBar({
   trafficInset = false,
   onWindowFallback,
 }: WindowBarProps) {
-  const minimize = () => runWindowAction(windowActions.minimize, "最小化窗口", onWindowFallback);
+  const { t } = useI18n();
+  const minimize = () => runWindowAction(windowActions.minimize, t("最小化窗口"), onWindowFallback);
   const toggleMaximize = () =>
-    runWindowAction(windowActions.toggleMaximize, "最大化 / 还原窗口", onWindowFallback);
-  const close = () => runWindowAction(windowActions.close, "关闭窗口", onWindowFallback);
+    runWindowAction(windowActions.toggleMaximize, t("最大化 / 还原窗口"), onWindowFallback);
+  const close = () => runWindowAction(windowActions.close, t("关闭窗口"), onWindowFallback);
 
   const iconBtn =
     "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-card/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
@@ -50,16 +52,16 @@ export function WindowBar({
   return (
     <header
       data-tauri-drag-region
-      className="relative z-10 flex h-[var(--winbar-h)] shrink-0 items-center gap-0.5 bg-transparent pr-2 select-none"
+      className="window-bar relative z-10 flex h-[var(--winbar-h)] shrink-0 items-center gap-0.5 bg-transparent pr-2 select-none"
     >
       {/* macOS 侧栏折叠时回补红绿灯 Overlay 注入区；常态由通高侧栏承载 */}
       {isMac && trafficInset ? <TrafficLightSlot className="h-full" /> : null}
 
       {/* 标签页组：无边框药丸，激活态以 bg-background 顺接内容区 */}
-      <div role="tablist" aria-label="标签页" className="flex min-w-0 items-center gap-0.5 pl-2">
+      <div role="tablist" aria-label={t("标签页")} className="flex min-w-0 items-center gap-0.5 pl-2">
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
-          const kindLabel = tab.kind === "starred" ? "收藏" : NODE_KIND_LABELS[tab.kind];
+          const kindLabel = tab.kind === "starred" ? t("收藏") : t(NODE_KIND_LABELS[tab.kind]);
           return (
             <div
               key={tab.id}
@@ -95,7 +97,7 @@ export function WindowBar({
               </button>
               <button
                 type="button"
-                aria-label={`关闭标签页 ${tab.title}`}
+                aria-label={t("关闭标签页 {title}", { title: tab.title })}
                 onClick={() => onClose(tab.id)}
                 className={cn(
                   "grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-opacity duration-150 ease-[var(--ease)] hover:bg-foreground/10 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring",
@@ -120,29 +122,29 @@ export function WindowBar({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label="全局搜索"
+              aria-label={t("全局搜索")}
               onClick={onSearch}
               className="hidden h-[30px] w-[236px] cursor-default items-center gap-2 rounded-full border border-border/60 bg-card/55 px-3 text-left shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-card/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-[900px]:flex"
             >
               <Search className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate text-[12.5px] text-muted-foreground">搜索…</span>
+              <span className="flex-1 truncate text-[12.5px] text-muted-foreground">{t("搜索…")}</span>
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground/80">⌘⇧F</span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>全局搜索</TooltipContent>
+          <TooltipContent>{t("全局搜索")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label="全局搜索"
+              aria-label={t("全局搜索")}
               onClick={onSearch}
               className={cn(iconBtn, "min-[900px]:hidden")}
             >
               <Search className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>全局搜索</TooltipContent>
+          <TooltipContent>{t("全局搜索")}</TooltipContent>
         </Tooltip>
       </div>
 
@@ -151,30 +153,30 @@ export function WindowBar({
         <div className="ml-0.5 flex items-center">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" aria-label="最小化" onClick={minimize} className={cn(controlBtn)}>
+              <button type="button" aria-label={t("最小化")} onClick={minimize} className={cn(controlBtn)}>
                 <Minus className="size-3.5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>最小化</TooltipContent>
+            <TooltipContent>{t("最小化")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="最大化 / 还原"
+                aria-label={t("最大化 / 还原")}
                 onClick={toggleMaximize}
                 className={cn(controlBtn)}
               >
                 <Square className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>最大化 / 还原</TooltipContent>
+            <TooltipContent>{t("最大化 / 还原")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="关闭"
+                aria-label={t("关闭")}
                 onClick={close}
                 className={cn(
                   "grid size-7 cursor-default place-items-center rounded-[9px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:bg-destructive hover:text-destructive-foreground",
@@ -183,7 +185,7 @@ export function WindowBar({
                 <X className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>关闭</TooltipContent>
+            <TooltipContent>{t("关闭")}</TooltipContent>
           </Tooltip>
         </div>
       )}
