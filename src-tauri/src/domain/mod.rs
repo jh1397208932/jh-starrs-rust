@@ -9,8 +9,9 @@ pub mod attachment_refs;
 pub mod block_plan;
 pub mod document;
 pub mod fractional_index;
+pub mod mindmap;
 
-/// 文件树节点类型；数据库存储 1~6，禁止在其他层散落裸数字。
+/// 文件树节点类型；数据库存储 1~7，禁止在其他层散落裸数字。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i64)]
 pub enum NodeType {
@@ -20,6 +21,7 @@ pub enum NodeType {
     Table = 4,
     Flow = 5,
     Attachment = 6,
+    Mindmap = 7,
 }
 
 impl NodeType {
@@ -32,6 +34,7 @@ impl NodeType {
             4 => Ok(Self::Table),
             5 => Ok(Self::Flow),
             6 => Ok(Self::Attachment),
+            7 => Ok(Self::Mindmap),
             _ => Err(AppError::validation("内容类型无效")),
         }
     }
@@ -212,8 +215,9 @@ mod tests {
         assert!(NodeType::from_i64(1).is_ok());
         assert!(NodeType::from_i64(5).is_ok());
         assert!(NodeType::from_i64(6).is_ok());
+        assert!(NodeType::from_i64(7).is_ok());
         assert!(NodeType::from_i64(0).is_err());
-        assert!(NodeType::from_i64(7).is_err());
+        assert!(NodeType::from_i64(8).is_err());
     }
 
     #[test]

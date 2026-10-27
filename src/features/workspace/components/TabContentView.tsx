@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AttachmentNodeView } from "@/features/attachments/components/AttachmentNodeView";
 import { BoardView } from "@/features/board/components/BoardView";
 import { DocEditor } from "@/features/editor/components/DocEditor";
+import { MindmapView } from "@/features/mindmap/components/MindmapView";
 import { useI18n } from "@/lib/i18n";
 import type { NodeItem, TabItem } from "@/types/notebook";
 import { StarredList } from "./StarredList";
@@ -83,6 +84,22 @@ export function TabContentView({
     }
     return (
       <BoardView
+        nodeId={activeNode.id}
+        title={activeTab.title}
+        kbName={kbName}
+        onSaved={(updatedAt) => onBoardSaved?.(activeNode.id, updatedAt)}
+        onError={onError ?? (() => undefined)}
+        onOpenKb={onOpenKb}
+        onExported={onBoardExported}
+      />
+    );
+  }
+  if (activeTab.kind === "mindmap") {
+    if (!activeNode) {
+      return <EmptyState glyph="✦" title={t("思维导图未找到")} description={t("思维导图可能已被删除")} />;
+    }
+    return (
+      <MindmapView
         nodeId={activeNode.id}
         title={activeTab.title}
         kbName={kbName}

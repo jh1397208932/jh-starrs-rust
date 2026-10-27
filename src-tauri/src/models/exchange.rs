@@ -92,6 +92,21 @@ pub struct BoardExportTarget {
     pub svg_path: String,
 }
 
+/// 思维导图在整库导出中的落点；PNG/SVG 由桌面端渲染后写入。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MindmapExportTarget {
+    pub node_id: String,
+    pub title: String,
+    pub dir_path: String,
+    pub base_name: String,
+    pub native_path: String,
+    pub xmind_path: String,
+    pub markdown_path: String,
+    pub svg_path: String,
+    pub png_path: String,
+}
+
 /// 整库导出中的附件节点落点。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,6 +131,9 @@ pub struct ExportResult {
     /// 整库导出中的画板目标；单文件与文档导出为空。
     #[serde(default)]
     pub boards: Vec<BoardExportTarget>,
+    /// 整库导出中的思维导图目标；单文件导出为空。
+    #[serde(default)]
+    pub mindmaps: Vec<MindmapExportTarget>,
     /// 树中附件节点的落点；供 manifest 与前端核对。
     #[serde(default)]
     pub attachment_nodes: Vec<ExportedAttachmentNode>,

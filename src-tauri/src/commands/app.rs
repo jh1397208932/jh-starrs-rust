@@ -30,6 +30,13 @@ pub fn mark_exit_allowed() {
 }
 
 /// 前端确认落盘完成：允许退出并触发应用退出。
+/// 启动初始化进度：前端据此决定何时发起工作区查询。
+#[tauri::command]
+pub fn app_bootstrap_status(state: tauri::State<'_, crate::state::AppState>) -> serde_json::Value {
+    let (ready, error) = state.bootstrap.status();
+    serde_json::json!({ "ready": ready, "error": error })
+}
+
 #[tauri::command]
 pub fn app_confirm_exit(app: AppHandle) {
     mark_exit_allowed();

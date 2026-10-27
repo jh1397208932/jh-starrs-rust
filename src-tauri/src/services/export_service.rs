@@ -18,11 +18,14 @@ use crate::logging;
 use crate::models::attachment::{AttachmentDto, AttachmentListQuery, DownloadAttachmentInput};
 use crate::models::{
     BoardExportTarget, ExportDocumentInput, ExportFileDto, ExportFormat, ExportKnowledgeBaseInput,
-    ExportResult, ExportWriteFileInput, NodeDto,
+    ExportResult, ExportWriteFileInput, MindmapExportTarget, NodeDto,
 };
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::export_render::{self, RenderAttachment, RenderContext};
-use crate::services::{board_service, document_service, knowledge_base_service, node_service};
+use crate::services::mindmap_format::{self, MindmapFormat};
+use crate::services::{
+    board_service, document_service, knowledge_base_service, mindmap_service, node_service,
+};
 use crate::state::AppState;
 
 /// `.excalidraw` 内嵌图片上限；超过时只复制原文件，避免源文件无限膨胀。
@@ -165,6 +168,18 @@ pub fn export_knowledge_base(
             "svg": board.svg_path,
             "note": "画板固定导出三种格式；PNG/SVG 由桌面端渲染，失败会写入导出结果 warnings。",
         })).collect::<Vec<_>>(),
+        "mindmaps": result.mindmaps.iter().map(|mindmap| json!({
+            "nodeId": mindmap.node_id,
+            "title": mindmap.title,
+            "dir": mindmap.dir_path,
+            "formats": ["native", "xmind", "markdown", "png", "svg"],
+            "native": mindmap.native_path,
+            "xmind": mindmap.xmind_path,
+            "markdown": mindmap.markdown_path,
+            "png": mindmap.png_path,
+            "svg": mindmap.svg_path,
+            "note": "思维导图固定导出原生 JSON、XMind 与 Markdown；PNG/SVG 由桌面端渲染。",
+        })).collect::<Vec<_>>(),
         "files": result.files.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
         "attachments": result.attachment_count,
         "attachmentNodes": result.attachment_nodes,
@@ -284,6 +299,17 @@ fn export_children(
             }
             6 => {
                 export_attachment_node(
+                    attachment_context,
+                    node,
+                    dir,
+                    &mut used,
+                    referenced,
+                    result,
+                )?;
+            }
+            7 => {
+                export_mindmap(
+                    state,
                     attachment_context,
                     node,
                     dir,
@@ -523,6 +549,105 @@ fn export_board(
         excalidraw_path: db::paths::path_to_string(&excalidraw_path)?,
         png_path: db::paths::path_to_string(&png_path)?,
         svg_path: db::paths::path_to_string(&svg_path)?,
+    });
+    Ok(())
+}
+
+/// 整库导出一个思维导图：原生 JSON + XMind + Markdown，图片对象另存 attach/。
+#[allow(clippy::too_many_arguments)]
+fn export_mindmap(
+    state: &AppState,
+    context: &AttachmentContext,
+    node: &NodeDto,
+    parent_dir: &Path,
+    used_dirs: &mut HashSet<String>,
+    referenced: &mut BTreeSet<String>,
+    result: &mut ExportResult,
+) -> AppResult<()> {
+    let folder = unique_directory(
+        parent_dir,
+        &safe_component(&node.title, "思维导图"),
+        used_dirs,
+    );
+    let dir = parent_dir.join(&folder);
+    fs::create_dir_all(&dir)?;
+    let attach_dir = dir.join("attach");
+    fs::create_dir_all(&attach_dir)?;
+    let snapshot = mindmap_service::snapshot(state, &node.id)?;
+    let object_ids = mindmap_format::image_object_ids(&snapshot.content);
+    let mut used_names = HashSet::new();
+    for object_id in &object_ids {
+        let meta = match attachment_service::get(context, object_id) {
+            Ok(meta) => meta,
+            Err(error) => {
+                result.warnings.push(format!(
+                    "思维导图「{}」的图片 {object_id} 不存在：{error}",
+                    node.title
+                ));
+                continue;
+            }
+        };
+        let name = unique_name(
+            &attach_dir,
+            &safe_component(&meta.name, "图片"),
+            &mut used_names,
+        );
+        let target = attach_dir.join(&name);
+        match attachment_service::read_image_object(context, object_id, MAX_EMBED_IMAGE_BYTES) {
+            Ok((_, bytes)) => {
+                fs::write(&target, bytes)?;
+                referenced.insert(object_id.clone());
+                result.attachment_count += 1;
+                result.files.push(ExportFileDto {
+                    path: db::paths::path_to_string(&target)?,
+                    kind: "attachment".to_string(),
+                });
+            }
+            Err(error) => result.warnings.push(format!(
+                "思维导图「{}」图片「{}」导出失败：{error}",
+                node.title, meta.name
+            )),
+        }
+    }
+    let native_path = dir.join(format!("{folder}.starris-mindmap.json"));
+    let xmind_path = dir.join(format!("{folder}.xmind"));
+    let markdown_path = dir.join(format!("{folder}.md"));
+    let svg_path = dir.join(format!("{folder}.svg"));
+    let png_path = dir.join(format!("{folder}.png"));
+    let image_loader = |object_id: &str| -> AppResult<(Vec<u8>, String)> {
+        let (attachment, bytes) =
+            attachment_service::read_image_object(context, object_id, MAX_EMBED_IMAGE_BYTES)?;
+        let extension = attachment
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        Ok((bytes, extension))
+    };
+    for (format, path) in [
+        (MindmapFormat::Native, &native_path),
+        (MindmapFormat::Xmind, &xmind_path),
+        (MindmapFormat::Markdown, &markdown_path),
+    ] {
+        let exported =
+            mindmap_format::export(&snapshot.content, &node.title, format, Some(&image_loader))?;
+        fs::write(path, exported.bytes)?;
+        result.files.push(ExportFileDto {
+            path: db::paths::path_to_string(path)?,
+            kind: "mindmap".to_string(),
+        });
+    }
+    result.mindmaps.push(MindmapExportTarget {
+        node_id: node.id.clone(),
+        title: node.title.clone(),
+        dir_path: db::paths::path_to_string(&dir)?,
+        base_name: folder.clone(),
+        native_path: db::paths::path_to_string(&native_path)?,
+        xmind_path: db::paths::path_to_string(&xmind_path)?,
+        markdown_path: db::paths::path_to_string(&markdown_path)?,
+        svg_path: db::paths::path_to_string(&svg_path)?,
+        png_path: db::paths::path_to_string(&png_path)?,
     });
     Ok(())
 }

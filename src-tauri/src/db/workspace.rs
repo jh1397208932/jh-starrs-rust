@@ -16,7 +16,7 @@ use crate::logging;
 use crate::utils::now_ms;
 
 /// 工作区库结构版本。
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 /// 迁移前备份目录（相对工作区 `db/`）。
 const BACKUP_DIR: &str = "backups";
 /// 保留的迁移备份份数。
@@ -202,6 +202,33 @@ CREATE TABLE IF NOT EXISTS board_library_item (
 );
 CREATE INDEX IF NOT EXISTS idx_board_library_item_library
     ON board_library_item(library_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS ai_inbox (
+    id           TEXT PRIMARY KEY NOT NULL,
+    tool         TEXT NOT NULL,
+    node_id      TEXT,
+    payload_json TEXT NOT NULL,
+    summary      TEXT NOT NULL DEFAULT '',
+    risk         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'failed')),
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    decided_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_ai_inbox_status_created
+    ON ai_inbox(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_audit (
+    id         TEXT PRIMARY KEY NOT NULL,
+    tool       TEXT NOT NULL,
+    node_id    TEXT,
+    summary    TEXT NOT NULL DEFAULT '',
+    risk       TEXT NOT NULL,
+    outcome    TEXT NOT NULL CHECK (outcome IN ('direct', 'inbox', 'approved', 'rejected', 'failed', 'denied')),
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_created
+    ON ai_audit(created_at DESC);
 "#;
 
 /// v9 → v10：附件引用表、生命周期字段与附件节点类型。
@@ -347,6 +374,69 @@ CREATE INDEX IF NOT EXISTS idx_node_deleted
     ON node(deleted_at) WHERE deleted_at IS NOT NULL;
 "#;
 
+/// v14 → v15：思维导图节点类型与场景表。
+///
+/// `node.type` 的 CHECK 无法原地扩展，因此重建 node 表并保留 v11/v14 新增列。
+/// 重建依赖 migrate() 在事务外关闭外键并启用 `legacy_alter_table`。
+const MIGRATION_V14_TO_V15: &str = r#"
+CREATE TABLE node_v15 (
+    id                TEXT PRIMARY KEY NOT NULL,
+    type              INTEGER NOT NULL CHECK (type BETWEEN 1 AND 7),
+    title             TEXT NOT NULL,
+    knowledge_base_id TEXT NOT NULL,
+    parent_id         TEXT,
+    level             INTEGER NOT NULL CHECK (level >= 1),
+    path              TEXT NOT NULL,
+    sort_order        INTEGER NOT NULL DEFAULT 0,
+    starred           INTEGER NOT NULL DEFAULT 0,
+    word_count        INTEGER NOT NULL DEFAULT 0,
+    content           TEXT NOT NULL DEFAULT '',
+    create_time       INTEGER NOT NULL,
+    update_time       INTEGER NOT NULL,
+    doc_version       INTEGER NOT NULL DEFAULT 0,
+    deleted_at        INTEGER,
+    FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES node(id) ON DELETE CASCADE
+);
+INSERT INTO node_v15
+    (id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+     starred, word_count, content, create_time, update_time, doc_version, deleted_at)
+SELECT
+    id, type, title, knowledge_base_id, parent_id, level, path, sort_order,
+    starred, word_count, content, create_time, update_time, doc_version, deleted_at
+FROM node;
+DROP TABLE node;
+ALTER TABLE node_v15 RENAME TO node;
+CREATE INDEX IF NOT EXISTS idx_node_kb_parent_sort
+    ON node(knowledge_base_id, parent_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_node_parent
+    ON node(parent_id);
+CREATE INDEX IF NOT EXISTS idx_node_kb
+    ON node(knowledge_base_id);
+CREATE INDEX IF NOT EXISTS idx_node_deleted
+    ON node(deleted_at) WHERE deleted_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS mindmap_scene (
+    node_id         TEXT PRIMARY KEY NOT NULL,
+    content_json    TEXT NOT NULL,
+    content_version INTEGER NOT NULL DEFAULT 1,
+    topic_count     INTEGER NOT NULL DEFAULT 1,
+    updated_at      INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_mindmap_scene_updated
+    ON mindmap_scene(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS mindmap_viewport (
+    node_id    TEXT PRIMARY KEY NOT NULL,
+    x          REAL NOT NULL DEFAULT 0,
+    y          REAL NOT NULL DEFAULT 0,
+    zoom       REAL NOT NULL DEFAULT 1 CHECK (zoom > 0),
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+"#;
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_base (
     id          TEXT PRIMARY KEY NOT NULL,
@@ -361,7 +451,7 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_base_sort
 
 CREATE TABLE IF NOT EXISTS node (
     id                TEXT PRIMARY KEY NOT NULL,
-    type              INTEGER NOT NULL CHECK (type BETWEEN 1 AND 5),
+    type              INTEGER NOT NULL CHECK (type BETWEEN 1 AND 7),
     title             TEXT NOT NULL,
     knowledge_base_id TEXT NOT NULL,
     parent_id         TEXT,
@@ -455,23 +545,66 @@ CREATE INDEX IF NOT EXISTS idx_board_library_item_library
     ON board_library_item(library_id, sort_order);
 "#;
 
-/// 打开（必要时创建）工作区库并执行迁移。
+/// 仅建立工作区连接（轻量）：不备份、不迁移、不建表。
 ///
-/// 调用方负责先确认“打开已有工作区”时数据库文件已存在；本函数会创建文件。
-pub fn open(path: &Path) -> AppResult<Connection> {
+/// 供启动初始化与已就绪工作区的重新挂载使用；业务代码不得凭空假设结构完整，
+/// 需要结构保证时调用 [`ensure_initialized`]。
+pub fn open_connection(path: &Path) -> AppResult<Connection> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let existed = path.is_file();
-    let mut connection = Connection::open(path)?;
+    let connection = Connection::open(path)?;
     configure(&connection)?;
-    let version = current_version(&connection)?;
+    Ok(connection)
+}
+
+/// 打开（必要时创建）并完成全部登记的初始化任务。
+///
+/// 只允许启动装配、新建工作区与测试调用。
+pub fn open(path: &Path) -> AppResult<Connection> {
+    let mut connection = open_connection(path)?;
+    initialize_workspace(&mut connection, path)?;
+    Ok(connection)
+}
+
+/// 执行登记表里的工作区初始化任务（备份 → 版本迁移 → 结构自愈）。
+///
+/// @returns 实际执行的任务 id，按优先级排序，便于日志与测试核对
+pub fn initialize_workspace(
+    connection: &mut Connection,
+    path: &Path,
+) -> AppResult<Vec<&'static str>> {
+    let existed = path.is_file();
+    let version = current_version(connection)?;
     // 只有“已存在的旧库”才需要备份；新建库或已是最新版本直接跳过。
     if existed && version > 0 && version < SCHEMA_VERSION {
-        backup_before_migrate(&connection, path, version)?;
+        backup_before_migrate(connection, path, version)?;
     }
-    migrate(&mut connection)?;
-    Ok(connection)
+    super::init_registry::run_tasks(connection, super::init_registry::WORKSPACE_TASKS)
+}
+
+/// 业务路径的结构保证：仅在检测到版本落后或核心表缺失时才执行登记任务。
+///
+/// 完整库上只做几次目录查询，不产生 DDL；漂移库则补齐并记录日志。
+pub fn ensure_initialized(connection: &mut Connection, path: &Path) -> AppResult<()> {
+    if !needs_initialization(connection)? {
+        return Ok(());
+    }
+    logging::info("db.workspace", "工作区需要初始化，执行登记任务");
+    let executed = initialize_workspace(connection, path)?;
+    logging::info(
+        "db.workspace",
+        &format!("工作区初始化完成 tasks={}", executed.join(",")),
+    );
+    Ok(())
+}
+
+/// 版本落后或结构残缺时返回 true（轻量目录查询，与自愈共用同一份清单）。
+pub fn needs_initialization(connection: &Connection) -> AppResult<bool> {
+    if current_version(connection)? < SCHEMA_VERSION {
+        return Ok(true);
+    }
+    structure_needs_repair(connection)
 }
 
 /// 读取当前 schema 版本。
@@ -583,6 +716,79 @@ fn configure(connection: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+/// 初始化任务：按 `PRAGMA user_version` 迁移；保护现有数据，失败整体回滚。
+pub(crate) fn task_schema_version(connection: &mut Connection) -> AppResult<()> {
+    migrate(connection)
+}
+
+/// 初始化任务：版本号可信但结构残缺时按实际表/列补齐（历史中间构建的库）。
+pub(crate) fn task_structure_repair(connection: &mut Connection) -> AppResult<()> {
+    if !structure_needs_repair(connection)? {
+        return Ok(());
+    }
+    let transaction = connection.transaction()?;
+    repair_schema_gaps(&transaction)?;
+    transaction.commit()?;
+    logging::info(
+        "db.workspace",
+        "工作区库自愈完成：已补齐缺失的表/列并回填附件引用",
+    );
+    Ok(())
+}
+
+/// 初始化门与结构自愈共用的结构清单（单一事实源）。
+///
+/// 每项 = 表名 + 缺失时执行的幂等补齐语句；`None` 表示基线表，由 [`SCHEMA`] 一次性兜底。
+/// 两条门（`needs_initialization` / `structure_needs_repair`）与 `repair_schema_gaps`
+/// 都只读这张表，避免“门说需要初始化、自愈却永远补不上”的分叉。
+const REQUIRED_STRUCTURES: &[(&str, Option<&str>)] = &[
+    ("knowledge_base", None),
+    ("node", None),
+    ("doc_block_hash", None),
+    ("doc_block_tree", None),
+    ("doc_block_meta", None),
+    ("board_scene", None),
+    ("board_viewport", None),
+    ("board_library", None),
+    ("board_library_item", None),
+    ("attachment_pack", Some(MIGRATION_V4_TO_V5)),
+    ("attachment_blob", Some(MIGRATION_V4_TO_V5)),
+    ("attachment", Some(MIGRATION_V4_TO_V5)),
+    ("node_attachment", Some(REPAIR_NODE_ATTACHMENT)),
+    ("workspace_meta", Some(REPAIR_WORKSPACE_META)),
+    ("mindmap_scene", Some(REPAIR_MINDMAP_TABLES)),
+    ("mindmap_viewport", Some(REPAIR_MINDMAP_TABLES)),
+    ("search_index", Some(MIGRATION_V11_TO_V12)),
+    ("doc_history", Some(MIGRATION_V12_TO_V13)),
+    ("ai_inbox", Some(REPAIR_AI_TABLES)),
+    ("ai_audit", Some(REPAIR_AI_TABLES)),
+];
+
+/// 轻量判断：任一必需表/列缺失即视为需要自愈。
+fn structure_needs_repair(connection: &Connection) -> AppResult<bool> {
+    for (table, _) in REQUIRED_STRUCTURES {
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?1",
+            [table],
+            |row| row.get(0),
+        )?;
+        if count == 0 {
+            return Ok(true);
+        }
+    }
+    Ok(!attachment_lifecycle_ready(connection)?)
+}
+
+/// attachment 的三个生命周期列是否齐备。
+fn attachment_lifecycle_ready(connection: &Connection) -> AppResult<bool> {
+    let columns: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('attachment') WHERE name IN ('scope','expires_at','orphaned_at')",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(columns >= 3)
+}
+
 /// 按 `PRAGMA user_version` 迁移；保护现有数据，失败整体回滚。
 fn migrate(connection: &mut Connection) -> AppResult<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -593,12 +799,9 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
         );
         return Err(AppError::Internal);
     }
-    if version >= SCHEMA_VERSION {
-        return Ok(());
-    }
 
-    // v10 重建 node 表：必须在事务外关闭外键，并禁止 SQLite 改写依赖表的 FK 名称。
-    let rebuild_node = version < 10;
+    // v10 与 v15 都重建 node 表：必须在事务外关闭外键，并禁止 SQLite 改写依赖表的 FK 名称。
+    let rebuild_node = version < 15;
     if rebuild_node {
         connection.pragma_update(None, "foreign_keys", "OFF")?;
         connection.pragma_update(None, "legacy_alter_table", "ON")?;
@@ -606,56 +809,72 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
 
     let result = (|| -> AppResult<()> {
         let transaction = connection.transaction()?;
-        if version == 0 {
-            transaction.execute_batch(SCHEMA)?;
-            transaction.execute_batch(MIGRATION_V4_TO_V5)?;
-            transaction.execute_batch(MIGRATION_V5_TO_V6)?;
-            transaction.execute_batch(MIGRATION_V6_TO_V7)?;
-            transaction.execute_batch(MIGRATION_V7_TO_V8)?;
-            transaction.execute_batch(MIGRATION_V8_TO_V9)?;
-        } else {
-            if version == 1 {
-                transaction.execute_batch(MIGRATION_V1_TO_V2)?;
-            }
-            if version <= 2 {
-                transaction.execute_batch(MIGRATION_V2_TO_V3)?;
-            }
-            if version <= 3 {
-                transaction.execute_batch(MIGRATION_V3_TO_V4)?;
-            }
-            if version <= 4 {
+        if version < SCHEMA_VERSION {
+            if version == 0 {
+                transaction.execute_batch(SCHEMA)?;
                 transaction.execute_batch(MIGRATION_V4_TO_V5)?;
-            }
-            if version <= 5 {
                 transaction.execute_batch(MIGRATION_V5_TO_V6)?;
-            }
-            if version <= 6 {
                 transaction.execute_batch(MIGRATION_V6_TO_V7)?;
-            }
-            if version <= 7 {
                 transaction.execute_batch(MIGRATION_V7_TO_V8)?;
-            }
-            if version <= 8 {
                 transaction.execute_batch(MIGRATION_V8_TO_V9)?;
+            } else {
+                if version == 1 {
+                    transaction.execute_batch(MIGRATION_V1_TO_V2)?;
+                }
+                if version <= 2 {
+                    transaction.execute_batch(MIGRATION_V2_TO_V3)?;
+                }
+                if version <= 3 {
+                    transaction.execute_batch(MIGRATION_V3_TO_V4)?;
+                }
+                if version <= 4 {
+                    transaction.execute_batch(MIGRATION_V4_TO_V5)?;
+                }
+                if version <= 5 {
+                    transaction.execute_batch(MIGRATION_V5_TO_V6)?;
+                }
+                if version <= 6 {
+                    transaction.execute_batch(MIGRATION_V6_TO_V7)?;
+                }
+                if version <= 7 {
+                    transaction.execute_batch(MIGRATION_V7_TO_V8)?;
+                }
+                if version <= 8 {
+                    transaction.execute_batch(MIGRATION_V8_TO_V9)?;
+                }
             }
-        }
-        if version <= 9 {
-            transaction.execute_batch(MIGRATION_V9_TO_V10)?;
-            backfill_attachment_relations(&transaction)?;
-        }
-        if version <= 10 {
-            transaction.execute_batch(MIGRATION_V10_TO_V11)?;
-        }
-        if version <= 11 {
-            transaction.execute_batch(MIGRATION_V11_TO_V12)?;
-        }
-        if version <= 12 {
-            transaction.execute_batch(MIGRATION_V12_TO_V13)?;
-        }
-        if version <= 13 {
-            transaction.execute_batch(MIGRATION_V13_TO_V14)?;
+            if version <= 9 {
+                transaction.execute_batch(MIGRATION_V9_TO_V10)?;
+                backfill_attachment_relations(&transaction)?;
+            }
+            if version <= 10 {
+                transaction.execute_batch(MIGRATION_V10_TO_V11)?;
+            }
+            if version <= 11 {
+                transaction.execute_batch(MIGRATION_V11_TO_V12)?;
+            }
+            if version <= 12 {
+                transaction.execute_batch(MIGRATION_V12_TO_V13)?;
+            }
+            if version <= 13 {
+                transaction.execute_batch(MIGRATION_V13_TO_V14)?;
+            }
+            if version <= 14 {
+                transaction.execute_batch(MIGRATION_V14_TO_V15)?;
+            }
         }
         transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        if rebuild_node {
+            // 悬空引用必须在提交前拦下：提交后再报错只会留下“版本已升级但数据是坏的”的库。
+            let violations = foreign_key_violation_count(&transaction)?;
+            if violations > 0 {
+                logging::error(
+                    "db.workspace",
+                    &format!("工作区库迁移后存在 {violations} 条外键悬空引用"),
+                );
+                return Err(AppError::Internal);
+            }
+        }
         transaction.commit()?;
         Ok(())
     })();
@@ -666,20 +885,176 @@ fn migrate(connection: &mut Connection) -> AppResult<()> {
     }
     result?;
 
-    if rebuild_node {
-        let violations = foreign_key_violation_count(connection)?;
-        if violations > 0 {
-            logging::error(
-                "db.workspace",
-                &format!("工作区库迁移后存在 {violations} 条外键悬空引用"),
-            );
-            return Err(AppError::Internal);
+    if version < SCHEMA_VERSION {
+        logging::info(
+            "db.workspace",
+            &format!("工作区库迁移完成，版本={SCHEMA_VERSION}"),
+        );
+    }
+    Ok(())
+}
+
+/// 自愈补丁 · 附件节点引用表：只在缺失时创建（2026-10-26 真实现场）。
+const REPAIR_NODE_ATTACHMENT: &str = r#"
+CREATE TABLE IF NOT EXISTS node_attachment (
+    node_id    TEXT NOT NULL,
+    object_id  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (node_id, object_id),
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE,
+    FOREIGN KEY (object_id) REFERENCES attachment(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_node_attachment_object
+    ON node_attachment(object_id);
+"#;
+
+/// 自愈补丁 · 工作区元数据表。
+const REPAIR_WORKSPACE_META: &str = r#"
+CREATE TABLE IF NOT EXISTS workspace_meta (
+    key   TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+);
+"#;
+
+/// 自愈补丁 · 文档块元数据表（检索索引回填的前置依赖）。
+/// 自愈补丁 · 思维导图表（与 V14→V15 中相同的幂等部分）。
+const REPAIR_MINDMAP_TABLES: &str = r#"
+CREATE TABLE IF NOT EXISTS mindmap_scene (
+    node_id         TEXT PRIMARY KEY NOT NULL,
+    content_json    TEXT NOT NULL,
+    content_version INTEGER NOT NULL DEFAULT 1,
+    topic_count     INTEGER NOT NULL DEFAULT 1,
+    updated_at      INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS mindmap_viewport (
+    node_id    TEXT PRIMARY KEY NOT NULL,
+    x          REAL NOT NULL DEFAULT 0,
+    y          REAL NOT NULL DEFAULT 0,
+    zoom       REAL NOT NULL DEFAULT 1 CHECK (zoom > 0),
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (node_id) REFERENCES node(id) ON DELETE CASCADE
+);
+"#;
+
+/// 自愈补丁 · AI 协作表（待审区与审计）。
+const REPAIR_AI_TABLES: &str = r#"
+CREATE TABLE IF NOT EXISTS ai_inbox (
+    id           TEXT PRIMARY KEY NOT NULL,
+    tool         TEXT NOT NULL,
+    node_id      TEXT,
+    payload_json TEXT NOT NULL,
+    summary      TEXT NOT NULL DEFAULT '',
+    risk         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'failed')),
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    decided_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_ai_inbox_status_created
+    ON ai_inbox(status, created_at DESC);
+CREATE TABLE IF NOT EXISTS ai_audit (
+    id         TEXT PRIMARY KEY NOT NULL,
+    tool       TEXT NOT NULL,
+    node_id    TEXT,
+    summary    TEXT NOT NULL DEFAULT '',
+    risk       TEXT NOT NULL,
+    outcome    TEXT NOT NULL CHECK (outcome IN ('direct', 'inbox', 'approved', 'rejected', 'failed', 'denied')),
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_created
+    ON ai_audit(created_at DESC);
+"#;
+
+/// 检查表是否存在。
+fn table_exists(transaction: &rusqlite::Transaction<'_>, name: &str) -> AppResult<bool> {
+    let count: i64 = transaction.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// 读取表的全部列名。
+fn table_columns(transaction: &rusqlite::Transaction<'_>, table: &str) -> AppResult<Vec<String>> {
+    let mut statement = transaction.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(columns)
+}
+
+/// 自愈：按 [`REQUIRED_STRUCTURES`] 补齐缺失的表/列。
+///
+/// 这些产物原本分散在基线 [`SCHEMA`] 与增量迁移里；由缺它们的构建新建的库会带着
+/// 已经到顶的 `user_version` 跳过全部迁移，之后附件看门狗、检索、思维导图加载等
+/// 一律报“数据库操作失败”。全部语句幂等，需要时会重复执行。
+fn repair_schema_gaps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    let mut repaired = false;
+
+    let mut missing: Vec<&str> = Vec::new();
+    for (table, _) in REQUIRED_STRUCTURES {
+        if !table_exists(transaction, table)? {
+            missing.push(table);
         }
     }
-    logging::info(
-        "db.workspace",
-        &format!("工作区库迁移完成，版本={SCHEMA_VERSION}"),
-    );
+    // 基线表缺失：一次性执行整段 SCHEMA（全部 IF NOT EXISTS）。
+    if REQUIRED_STRUCTURES
+        .iter()
+        .any(|(table, batch)| batch.is_none() && missing.contains(table))
+    {
+        transaction.execute_batch(SCHEMA)?;
+        repaired = true;
+    }
+    // 迁移期产物：同一段 DDL 覆盖的表里任缺一张就跑一次。
+    let mut batches: Vec<&str> = Vec::new();
+    for (_, batch) in REQUIRED_STRUCTURES {
+        let Some(batch) = batch else { continue };
+        if batches.contains(batch) {
+            continue;
+        }
+        batches.push(batch);
+        let covers_missing = REQUIRED_STRUCTURES
+            .iter()
+            .any(|(name, candidate)| *candidate == Some(batch) && missing.contains(name));
+        if covers_missing {
+            transaction.execute_batch(batch)?;
+            repaired = true;
+        }
+    }
+    if table_exists(transaction, "attachment")? && !attachment_lifecycle_ready(transaction)? {
+        let columns = table_columns(transaction, "attachment")?;
+        let mut lifecycle = String::new();
+        if !columns.iter().any(|column| column == "scope") {
+            lifecycle.push_str(
+                "ALTER TABLE attachment ADD COLUMN scope TEXT NOT NULL DEFAULT 'library' CHECK (scope IN ('library', 'node'));\n",
+            );
+        }
+        if !columns.iter().any(|column| column == "expires_at") {
+            lifecycle.push_str("ALTER TABLE attachment ADD COLUMN expires_at INTEGER;\n");
+        }
+        if !columns.iter().any(|column| column == "orphaned_at") {
+            lifecycle.push_str("ALTER TABLE attachment ADD COLUMN orphaned_at INTEGER;\n");
+        }
+        if !lifecycle.is_empty() {
+            transaction.execute_batch(&lifecycle)?;
+            transaction.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_attachment_lifecycle
+                 ON attachment(scope, status, orphaned_at, expires_at);",
+            )?;
+            repaired = true;
+        }
+    }
+
+    if repaired {
+        backfill_attachment_relations(transaction)?;
+        logging::info(
+            "db.workspace",
+            "工作区库自愈完成：已补齐缺失的表/列并回填附件引用",
+        );
+    }
     Ok(())
 }
 
@@ -712,7 +1087,7 @@ fn backfill_attachment_relations(transaction: &rusqlite::Transaction<'_>) -> App
         }
     }
 
-    let boards = {
+    let boards = if table_exists(transaction, "board_scene")? {
         let mut statement = transaction.prepare(
             "SELECT s.node_id, s.elements_json
              FROM board_scene s JOIN node n ON n.id = s.node_id
@@ -722,6 +1097,9 @@ fn backfill_attachment_relations(transaction: &rusqlite::Transaction<'_>) -> App
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>()?
+    } else {
+        // 自愈场景里画板表可能同样缺失；没有表就没有可回填的画板引用。
+        Vec::new()
     };
     for (node_id, elements_json) in boards {
         match serde_json::from_str::<Value>(&elements_json) {
@@ -805,6 +1183,248 @@ mod tests {
     "#;
 
     #[test]
+    fn repairs_v15_database_missing_v10_artifacts() {
+        // 复刻 2026-10-26 真实现场：user_version 已到 15、缺 node_attachment/
+        // workspace_meta/mindmap 表与 attachment 生命周期列，打开时必须自愈。
+        let directory = tempdir().expect("临时目录");
+        let path = directory.path().join("workspace.sqlite3");
+        {
+            let connection = Connection::open(&path).expect("创建残缺 v15 库");
+            connection
+                .execute_batch(
+                    "CREATE TABLE knowledge_base (
+                        id          TEXT PRIMARY KEY NOT NULL,
+                        name        TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '',
+                        sort_order  INTEGER NOT NULL DEFAULT 0,
+                        created_at  INTEGER NOT NULL,
+                        updated_at  INTEGER NOT NULL
+                    );
+                    CREATE TABLE node (
+                        id                TEXT PRIMARY KEY NOT NULL,
+                        type              INTEGER NOT NULL CHECK (type BETWEEN 1 AND 7),
+                        title             TEXT NOT NULL,
+                        knowledge_base_id TEXT NOT NULL,
+                        parent_id         TEXT,
+                        level             INTEGER NOT NULL CHECK (level >= 1),
+                        path              TEXT NOT NULL,
+                        sort_order        INTEGER NOT NULL DEFAULT 0,
+                        starred           INTEGER NOT NULL DEFAULT 0,
+                        word_count        INTEGER NOT NULL DEFAULT 0,
+                        content           TEXT NOT NULL DEFAULT '',
+                        doc_version       INTEGER NOT NULL DEFAULT 0,
+                        create_time       INTEGER NOT NULL,
+                        update_time       INTEGER NOT NULL,
+                        deleted_at        INTEGER,
+                        FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_base(id) ON DELETE CASCADE,
+                        FOREIGN KEY (parent_id) REFERENCES node(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE attachment (
+                        id           TEXT PRIMARY KEY NOT NULL,
+                        name         TEXT NOT NULL,
+                        logical_path TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        size         INTEGER NOT NULL,
+                        mime         TEXT NOT NULL,
+                        status       TEXT NOT NULL,
+                        created_at   INTEGER NOT NULL,
+                        updated_at   INTEGER NOT NULL,
+                        deleted_at   INTEGER
+                    );
+                    INSERT INTO knowledge_base (id, name, created_at, updated_at)
+                        VALUES ('kb1', '残缺库', 1, 1);
+                    INSERT INTO attachment (id, name, logical_path, content_hash, size, mime, status, created_at, updated_at)
+                        VALUES ('att1', '旧附件', 'p', 'h', 1, 'text/plain', 'active', 1, 1);
+                    PRAGMA user_version = 15;",
+                )
+                .expect("残缺 v15 结构");
+        }
+        let _ = crate::logging::init(&directory.path().join("logs"));
+        let connection = match open(&path) {
+            Ok(connection) => connection,
+            Err(error) => {
+                let log = std::fs::read_to_string(directory.path().join("logs/starris.log"))
+                    .unwrap_or_default();
+                panic!("打开残缺库应触发自愈: {error:?}\nLOG:\n{log}");
+            }
+        };
+
+        let repaired: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+                 AND name IN ('node_attachment', 'workspace_meta', 'mindmap_scene', 'mindmap_viewport')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("自愈后表数量");
+        assert_eq!(repaired, 4, "缺失的 4 张表都应补齐");
+
+        let scope: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('attachment') WHERE name = 'scope'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("scope 列");
+        assert_eq!(scope, 1, "attachment.scope 应补齐");
+
+        connection
+            .execute(
+                "INSERT INTO node (id, type, title, knowledge_base_id, level, path, create_time, update_time)
+                 VALUES ('n1', 7, '导图', 'kb1', 1, '/导图', 1, 1)",
+                [],
+            )
+            .expect("节点应可写");
+        connection
+            .execute(
+                "INSERT INTO node_attachment (node_id, object_id, created_at, updated_at)
+                 VALUES ('n1', 'att1', 1, 1)",
+                [],
+            )
+            .expect("node_attachment 应可写");
+        connection
+            .execute(
+                "INSERT INTO workspace_meta (key, value) VALUES ('k', 'v')",
+                [],
+            )
+            .expect("workspace_meta 应可写");
+        connection
+            .execute("INSERT INTO mindmap_scene (node_id, content_json, updated_at) VALUES ('n1', '{}', 1)", [])
+            .expect("mindmap_scene 应可写");
+    }
+
+    #[test]
+    fn initialization_tasks_run_in_priority_order_and_make_schema_ready() {
+        let directory = tempdir().expect("临时目录");
+        let path = directory.path().join("workspace.sqlite3");
+        // 轻量连接：不建表，模拟“启动时尚未初始化”的库
+        let mut connection = open_connection(&path).expect("轻量连接");
+        assert!(
+            needs_initialization(&connection).expect("检查"),
+            "空库应判定需要初始化"
+        );
+
+        let executed = initialize_workspace(&mut connection, &path).expect("执行登记任务");
+        assert_eq!(
+            executed,
+            vec!["schema-version", "structure-repair"],
+            "任务按优先级执行"
+        );
+        assert!(
+            !needs_initialization(&connection).expect("复查"),
+            "初始化后不应再需要初始化"
+        );
+
+        let tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
+                 ('node','attachment','node_attachment','workspace_meta','search_index',
+                  'doc_history','mindmap_scene','ai_inbox')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("表统计");
+        assert_eq!(tables, 8, "登记任务应一次建齐核心表");
+
+        // 已就绪的库再次走业务路径：ensure 只做检查，不报错
+        ensure_initialized(&mut connection, &path).expect("已就绪库应直接通过");
+    }
+
+    #[test]
+    fn ensure_initialized_repairs_drifted_v15_database() {
+        let directory = tempdir().expect("临时目录");
+        let path = directory.path().join("workspace.sqlite3");
+        {
+            let connection = Connection::open(&path).expect("创建残缺库");
+            connection
+                .execute_batch(
+                    "CREATE TABLE knowledge_base (
+                        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0,
+                        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE node (
+                        id TEXT PRIMARY KEY NOT NULL, type INTEGER NOT NULL,
+                        title TEXT NOT NULL, knowledge_base_id TEXT NOT NULL, parent_id TEXT,
+                        level INTEGER NOT NULL, path TEXT NOT NULL,
+                        sort_order INTEGER NOT NULL DEFAULT 0, starred INTEGER NOT NULL DEFAULT 0,
+                        word_count INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL DEFAULT '',
+                        create_time INTEGER NOT NULL, update_time INTEGER NOT NULL, deleted_at INTEGER
+                    );
+                    CREATE TABLE attachment (
+                        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL,
+                        logical_path TEXT NOT NULL, content_hash TEXT NOT NULL,
+                        size INTEGER NOT NULL, mime TEXT NOT NULL, status TEXT NOT NULL,
+                        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER
+                    );
+                    INSERT INTO attachment
+                        (id, name, logical_path, content_hash, size, mime, status, created_at, updated_at)
+                        VALUES ('att1', '旧附件', 'p', 'h', 1, 'text/plain', 'active', 1, 1);
+                    PRAGMA user_version = 15;",
+                )
+                .expect("残缺结构");
+        }
+        let mut connection = open_connection(&path).expect("轻量连接");
+        assert!(
+            needs_initialization(&connection).expect("检查"),
+            "缺表应判定需要初始化"
+        );
+        ensure_initialized(&mut connection, &path).expect("业务路径触发登记任务");
+        ensure_initialized(&mut connection, &path).expect("修复后应直接通过");
+        assert!(
+            !needs_initialization(&connection).expect("复查"),
+            "修复后不再需要初始化"
+        );
+    }
+
+    #[test]
+    fn ensure_initialized_repairs_every_registered_structure() {
+        // 统一清单回归：无论缺的是基线表（doc_block_meta）还是迁移期产物
+        // （search_index / doc_history / mindmap_viewport / ai_audit），
+        // 初始化门与自愈都必须一致地判定并补齐。
+        let directory = tempdir().expect("临时目录");
+        let path = directory.path().join("workspace.sqlite3");
+        {
+            let connection = open(&path).expect("建立完整库");
+            connection
+                .execute_batch(
+                    "DROP TABLE search_index;
+                     DROP TABLE doc_history;
+                     DROP TABLE mindmap_viewport;
+                     DROP TABLE doc_block_meta;
+                     DROP TABLE ai_audit;",
+                )
+                .expect("制造多组漂移");
+        }
+        let mut connection = open_connection(&path).expect("轻量连接");
+        assert!(
+            needs_initialization(&connection).expect("检查"),
+            "缺任一登记结构都应判定需要初始化"
+        );
+        ensure_initialized(&mut connection, &path).expect("登记任务补齐");
+        for table in [
+            "search_index",
+            "doc_history",
+            "mindmap_viewport",
+            "doc_block_meta",
+            "ai_audit",
+        ] {
+            let count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("查询表");
+            assert_eq!(count, 1, "{table} 应被自愈补齐");
+        }
+        assert!(
+            !needs_initialization(&connection).expect("复查"),
+            "补齐后不再需要初始化"
+        );
+    }
+
+    #[test]
     fn migrates_v1_timestamp_columns_and_keeps_data() {
         let directory = tempdir().expect("临时目录");
         let path = directory.path().join("workspace.sqlite3");
@@ -831,7 +1451,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 14, "迁移必须停在 v14");
+        assert_eq!(version, 15, "迁移必须停在 v15");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(node)")
@@ -1058,7 +1678,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         let doc_version: i64 = connection
             .query_row(
@@ -1145,7 +1765,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         let backup_dir = db_dir.join(BACKUP_DIR);
         let backups: Vec<PathBuf> = fs::read_dir(&backup_dir)
@@ -1253,7 +1873,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读版本");
-        assert_eq!(version, 14, "v8 库必须升到 v14");
+        assert_eq!(version, 15, "v8 库必须升到 v15");
 
         let columns: Vec<String> = connection
             .prepare("PRAGMA table_info(attachment_blob)")

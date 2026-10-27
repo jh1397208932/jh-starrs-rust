@@ -112,7 +112,7 @@ export function FileTree({
                 aria-label={t("上传附件")}
                 disabled={!currentKbName}
                 onClick={() => onUploadAttachment(null)}
-                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Upload className="size-3.5" />
               </button>
@@ -126,7 +126,7 @@ export function FileTree({
                 aria-label={t("新建内容")}
                 disabled={!currentKbName}
                 onClick={onCreateRoot}
-                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid size-6 cursor-default place-items-center rounded-[8px] text-sidebar-muted transition-colors duration-150 ease-[var(--ease)] hover:bg-card/50 hover:text-sidebar-foreground disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus className="size-4" />
               </button>
@@ -141,7 +141,7 @@ export function FileTree({
         aria-label={t("文件树")}
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-2"
       >
         {!currentKbName ? (
           <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-sidebar-muted">

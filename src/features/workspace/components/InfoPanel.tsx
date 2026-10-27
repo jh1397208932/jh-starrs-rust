@@ -109,7 +109,7 @@ export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               className={cn(
-                "cursor-default rounded-full py-1 text-[12.5px] transition-[background-color,box-shadow,color] duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring",
+                "cursor-default rounded-full py-1 text-[12.5px] transition-[background-color,box-shadow,color] duration-150 ease-[var(--ease)]",
                 tab === id
                   ? "bg-card font-[650] text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -146,7 +146,7 @@ export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps
               <button
                 type="button"
                 onClick={onBackToInfo}
-                className="cursor-default text-[13px] text-muted-foreground underline-offset-4 transition-colors duration-150 ease-[var(--ease)] hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="cursor-default text-[13px] text-muted-foreground underline-offset-4 transition-colors duration-150 ease-[var(--ease)] hover:text-foreground hover:underline"
               >
                 {t("查看信息")}
               </button>
@@ -159,7 +159,7 @@ export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps
                     type="button"
                     aria-label={t("打开 {title}", { title: item.title })}
                     onClick={() => onOpenNode(item.id)}
-                    className="w-full cursor-default rounded-lg border border-border/60 px-2.5 py-2 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    className="w-full cursor-default rounded-lg border border-border/60 px-2.5 py-2 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40"
                   >
                     <span className="block truncate text-[13px] text-foreground">{item.title}</span>
                     <span className={cn(CAPTION_CLS, "block text-muted-foreground")}>{item.kbName}</span>
@@ -181,7 +181,7 @@ export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps
                       type="button"
                       aria-label={t("打开 {title}", { title: item.title })}
                       onClick={() => onOpenNode(item.id)}
-                      className="w-full cursor-default rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                      className="w-full cursor-default rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ease-[var(--ease)]"
                     >
                       <span className="block truncate text-[13px] text-foreground">{item.title}</span>
                       <span className={cn(CAPTION_CLS, "block text-muted-foreground")}>{item.kbName}</span>

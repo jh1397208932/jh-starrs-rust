@@ -13,7 +13,7 @@ const DEFAULTS: MaintenanceSettings = {
 };
 
 const INPUT_CLS =
-  "h-[30px] w-full rounded-[7px] border border-input bg-background px-2 text-[12.5px] tabular-nums outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "h-[30px] w-full rounded-[7px] border border-input bg-background px-2 text-[12.5px] tabular-nums outline-none";
 
 /** 当前工作区的附件保留时间；默认值与旧版硬编码一致。 */
 export function MaintenancePolicyEditor() {

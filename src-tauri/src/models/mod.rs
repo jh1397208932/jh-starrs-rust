@@ -9,18 +9,18 @@ use serde::{Deserialize, Serialize};
 pub mod attachment;
 pub mod backup;
 pub mod board;
-pub mod cloud;
 pub mod document;
 pub mod exchange;
 pub mod history;
 pub mod library;
+pub mod mindmap;
 pub mod search;
 pub mod template;
 
 pub use document::{DocLoadResult, DocSaveResult, SaveDocumentInput};
 pub use exchange::{
     BoardExportTarget, ExportDocumentInput, ExportFileDto, ExportFormat, ExportKnowledgeBaseInput,
-    ExportResult, ExportWriteFileInput, ImportDocumentsInput, ImportResult,
+    ExportResult, ExportWriteFileInput, ImportDocumentsInput, ImportResult, MindmapExportTarget,
 };
 
 /// 记忆配置中“当前工作区”的保留键；只由工作区统一切换入口写入。
@@ -31,6 +31,10 @@ pub const SETTING_THEME: &str = "appearance.theme";
 pub const SETTING_MODE: &str = "appearance.mode";
 /// 界面语言记忆键。
 pub const SETTING_LOCALE: &str = "appearance.locale";
+/// 客户端内置 MCP 服务开关（"1" 开 / "0" 关，缺省视为开）。
+pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// 客户端内置 MCP 服务的 Bearer 令牌。
+pub const SETTING_MCP_TOKEN: &str = "mcp.token";
 
 /// 全局库中的工作区记录。
 #[derive(Debug, Clone)]

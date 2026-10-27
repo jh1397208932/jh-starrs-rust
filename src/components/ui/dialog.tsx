@@ -81,7 +81,7 @@ export function DialogContent({
         {showClose && (
           <DialogPrimitive.Close
             aria-label={t("关闭")}
-            className="absolute top-3 right-3 grid size-8 cursor-default place-items-center rounded-md text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="absolute top-3 right-3 grid size-8 cursor-default place-items-center rounded-md text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground"
           >
             <X className="size-4" />
           </DialogPrimitive.Close>

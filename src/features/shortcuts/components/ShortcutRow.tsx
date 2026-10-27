@@ -51,7 +51,7 @@ export function ShortcutRow({
             onClick={onStartRecord}
             aria-label={t("录制 {label}", { label: t(action.label) })}
             className={cn(
-              "flex min-h-7 min-w-[148px] items-center justify-end gap-1 rounded-[7px] px-1.5 py-0.5 text-right transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              "flex min-h-7 min-w-[148px] items-center justify-end gap-1 rounded-[7px] px-1.5 py-0.5 text-right transition-colors hover:bg-accent/60",
               !binding && "text-muted-foreground",
             )}
           >
@@ -74,7 +74,7 @@ export function ShortcutRow({
         </Button>
       </div>
       {(error || warning) && (
-        <p className={cn("mt-1 text-right text-[11px]", error ? "text-destructive" : "text-amber-600")}>
+        <p className={cn("mt-1 text-right text-[11px]", error ? "text-destructive" : "text-[var(--logo-c)]")}>
           {error ?? warning}
         </p>
       )}

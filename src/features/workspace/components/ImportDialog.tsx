@@ -122,7 +122,7 @@ export function ImportDialog({
       <DialogContent className="w-[600px] p-5" aria-describedby={undefined}>
         <DialogTitle>{t("导入")}</DialogTitle>
         <DialogDescription className="mt-1 text-[12.5px] text-muted-foreground">
-          {t("支持 Markdown、Word 与 Excalidraw。")}
+          {t("支持 Markdown、Word、Excalidraw、XMind、FreeMind、OPML 与 Starris 思维导图。")}
         </DialogDescription>
 
         <div className="mt-4 flex flex-col gap-4">
@@ -149,7 +149,7 @@ export function ImportDialog({
               onClick={() => void chooseFiles()}
               disabled={busy}
               className={cn(
-                "flex cursor-default items-center gap-2.5 rounded-md border border-border bg-card p-3 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60",
+                "flex cursor-default items-center gap-2.5 rounded-md border border-border bg-card p-3 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60",
                 mode === "files" && paths.length > 0 && "border-primary/40 bg-accent",
               )}
             >
@@ -164,7 +164,7 @@ export function ImportDialog({
               onClick={() => void chooseDirectory()}
               disabled={busy}
               className={cn(
-                "flex cursor-default items-center gap-2.5 rounded-md border border-border bg-card p-3 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60",
+                "flex cursor-default items-center gap-2.5 rounded-md border border-border bg-card p-3 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60",
                 mode === "directory" && paths.length > 0 && "border-primary/40 bg-accent",
               )}
             >
@@ -199,14 +199,20 @@ export function ImportDialog({
             <div
               className={cn(
                 "rounded-md border px-3 py-2.5 text-[12.5px]",
-                result.failed > 0
-                  ? "border-amber-500/40 bg-amber-500/5 text-foreground"
-                  : "border-primary/35 bg-accent text-accent-foreground",
+                result.failed > 0 ? "text-foreground" : "border-primary/35 bg-accent text-accent-foreground",
               )}
+              style={
+                result.failed > 0
+                  ? {
+                      borderColor: "color-mix(in srgb, var(--logo-c) 42%, transparent)",
+                      background: "color-mix(in srgb, var(--logo-c) 6%, transparent)",
+                    }
+                  : undefined
+              }
             >
               <p className="flex items-center gap-1.5 font-medium">
                 {result.failed > 0 ? (
-                  <AlertCircle className="size-4 text-amber-600" />
+                  <AlertCircle className="size-4 text-[var(--logo-c)]" />
                 ) : (
                   <CheckCircle2 className="size-4 text-primary" />
                 )}

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星屿 · 思维导图页原型（雾光笺）</title>
+<script>
+  (function () {
+    try {
+      var mode = new URLSearchParams(window.location.search).get('mode');
+      if (mode !== 'dark' && mode !== 'light') {
+        mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-mode', mode);
+    } catch (_) {}
+  })();
+</script>
+<style>
+  /* 原型内联令牌：与 src/styles/tokens.css「雾光笺 mist」一致；仅供评审，不是实现。 */
+  :root {
+    --radius: 10px; --radius-sm: 8px; --radius-lg: 18px;
+    --font-ui: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --ease: cubic-bezier(.25, 1, .5, 1);
+    --dur-1: 150ms; --dur-2: 300ms;
+    --shadow-sm: 0 1px 2px rgb(28 43 39 / .06);
+    --shadow-md: 0 10px 28px -14px rgb(28 43 39 / .20);
+    --shadow-lg: 0 26px 64px -28px rgb(28 43 39 / .30);
+  }
+  html[data-mode="light"] {
+    --background: #FCFDFC; --foreground: #1D201F; --card: #FFFFFF;
+    --primary: #5C8F83; --primary-foreground: #FFFFFF;
+    --secondary: #F1F5F3; --muted-foreground: #626663;
+    --accent: #E7F1ED; --accent-foreground: #2F5C51;
+    --border: #D7E0DC; --input: #C9D5D0; --ring: #5C8F83;
+    --logo-c: #C8A96E; --glow-a: #9CC4B8;
+  }
+  html[data-mode="dark"] {
+    --background: #171B1A; --foreground: #E8ECEA; --card: #1F2423;
+    --primary: #6FA396; --primary-foreground: #10201B;
+    --secondary: #262C2B; --muted-foreground: #9AA3A0;
+    --accent: #273832; --accent-foreground: #A9CFC2;
+    --border: #333B39; --input: #3D4644; --ring: #6FA396;
+    --logo-c: #D3B67F; --glow-a: #7FB0A2;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-md: 0 10px 28px -14px rgb(0 0 0 / .55);
+    --shadow-lg: 0 26px 64px -28px rgb(0 0 0 / .65);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: var(--font-ui); color: var(--foreground);
+    background: var(--background); font-size: 14px; line-height: 20px;
+    transition: background var(--dur-2) var(--ease);
+  }
+  .proto-note {
+    padding: 10px 18px; font-size: 12.5px; color: var(--muted-foreground);
+    border-bottom: 1px dashed var(--border); display: flex; justify-content: space-between; align-items: center;
+  }
+  .proto-note button {
+    font: inherit; color: var(--accent-foreground); background: var(--accent);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 10px; cursor: default;
+  }
+  /* ---- 页面壳 ---- */
+  .mindmap-view { display: flex; height: calc(100vh - 41px); flex-direction: column; }
+  .pagebar {
+    display: flex; height: 36px; flex-shrink: 0; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border);
+  }
+  .crumb { display: flex; min-width: 0; align-items: center; gap: 4px; font-size: 12.5px; }
+  .crumb .kb { color: var(--muted-foreground); padding: 1px 4px; border-radius: 6px; }
+  .crumb .kb:hover { background: var(--accent); }
+  .crumb .sep { color: var(--muted-foreground); opacity: .7; }
+  .crumb .title { font-weight: 600; white-space: nowrap; }
+  .pagebar-actions { display: flex; align-items: center; gap: 4px; }
+  .tbtn {
+    display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center;
+    border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted-foreground);
+    cursor: default; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  }
+  .tbtn:hover { background: var(--accent); color: var(--accent-foreground); }
+  .tbtn:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+  .tbtn.is-active { color: var(--primary); }
+  .status-pill {
+    display: inline-flex; height: 22px; align-items: center; gap: 4px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    background: color-mix(in srgb, var(--card) 45%, transparent);
+    padding: 0 8px; font-size: 11.5px; color: var(--muted-foreground); white-space: nowrap;
+  }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--primary); }
+  /* ---- 工作区 ---- */
+  .workspace { position: relative; display: flex; flex: 1; min-height: 0; }
+  .canvas {
+    --mindmap-grid: color-mix(in srgb, var(--border) 72%, transparent);
+    --mindmap-branch-0: var(--primary);
+    --mindmap-branch-1: var(--logo-c);
+    --mindmap-branch-2: var(--glow-a);
+    flex: 1; position: relative; overflow: hidden;
+    background-image: radial-gradient(var(--mindmap-grid) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .canvas svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .node {
+    position: absolute; display: flex; align-items: center; justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--card) 92%, var(--background));
+    box-shadow: var(--shadow-sm); font-size: 14px; line-height: 20px;
+    transition: box-shadow var(--dur-1) var(--ease);
+  }
+  .node[data-depth="1"] { background: color-mix(in srgb, var(--card) 88%, var(--accent)); }
+  .node--root {
+    border-color: var(--input); border-radius: var(--radius);
+    background: var(--card); box-shadow: var(--shadow-md); font-weight: 700;
+  }
+  .node.is-selected { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 28%, transparent), var(--shadow-sm); }
+  .node.is-editing { border-color: var(--ring); background: var(--card); }
+  .node .content { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 4px; padding: 8px 12px; text-align: center; }
+  .node .badges { display: flex; gap: 4px; color: var(--muted-foreground); font-size: 11px; }
+  .node .badges .chip { border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; font-size: 10.5px; line-height: 16px; }
+  .collapse-badge {
+    position: absolute; top: 50%; right: -9px; width: 18px; height: 18px; transform: translateY(-50%);
+    border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+    color: var(--muted-foreground); font: 600 10px var(--font-mono);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .node--left .collapse-badge { right: auto; left: -9px; }
+  /* ---- 浮动工具栏 ---- */
+  .floating-toolbar {
+    position: absolute; bottom: 20px; left: 20px; z-index: 8; display: flex; gap: 2px; padding: 4px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: color-mix(in srgb, var(--card) 94%, transparent); box-shadow: var(--shadow-md);
+  }
+  .floating-toolbar .tbtn.is-disabled { opacity: .55; pointer-events: none; }
+  /* ---- 检查器 ---- */
+  .inspector { width: 280px; padding: 14px; border-left: 1px solid var(--border); background: var(--card); overflow-y: auto; }
+  .inspector h2 { margin-bottom: 12px; font-size: 14px; font-weight: 650; }
+  .inspector label { display: block; margin-top: 12px; color: var(--muted-foreground); font-size: 12px; }
+  .inspector textarea, .inspector input {
+    width: 100%; margin-top: 4px; border: 1px solid var(--input); border-radius: var(--radius-sm);
+    background: var(--background); color: var(--foreground); padding: 7px 9px; font: inherit; outline: none;
+  }
+  .inspector textarea:focus, .inspector input:focus { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 22%, transparent); }
+  .inspector textarea { min-height: 96px; resize: vertical; }
+  /* ---- 搜索浮层 ---- */
+  .search-pop {
+    position: absolute; top: 14px; right: 18px; z-index: 12; width: min(360px, calc(100% - 36px));
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-lg);
+  }
+  .search-pop input {
+    width: 100%; border: 0; border-radius: var(--radius) var(--radius) 0 0; background: transparent;
+    color: var(--foreground); padding: 10px 12px; outline: none;
+  }
+  .search-pop .results { max-height: 200px; overflow-y: auto; border-top: 1px solid var(--border); }
+  .search-pop .result { display: flex; justify-content: space-between; padding: 8px 12px; }
+  .search-pop .result:hover, .search-pop .result.is-active { background: var(--accent); }
+  .search-pop .result .where { color: var(--muted-foreground); font-size: 11.5px; }
+  .legend { position: absolute; bottom: 20px; right: 296px; z-index: 6; display: flex; gap: 10px; font-size: 11.5px; color: var(--muted-foreground); }
+  .legend .key { display: flex; align-items: center; gap: 4px; }
+  .legend .swatch { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+  <div class="proto-note">
+    <span>原型 · 思维导图页（雾光笺令牌内联；仅用于评审，不是实现代码） · 对应需求 §13 视觉与交互规范</span>
+    <button type="button" onclick="const h=document.documentElement;h.dataset.mode=h.dataset.mode==='light'?'dark':'light'">切换深浅</button>
+  </div>
+
+  <div class="mindmap-view">
+    <!-- 页头：36px、发丝下边线、面包屑与保存状态胶囊 -->
+    <header class="pagebar">
+      <div class="crumb">
+        <span class="kb">产品知识库</span>
+        <span class="sep">/</span>
+        <span class="title">产品规划</span>
+      </div>
+      <div class="pagebar-actions">
+        <button class="tbtn is-active" aria-label="搜索主题" title="搜索主题">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+        <button class="tbtn" aria-label="结构与主题" title="结构与主题">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2v4M12 11.2 5.8 17M12 11.2l6.2 5.8"/></svg>
+        </button>
+        <button class="tbtn" aria-label="导出思维导图" title="导出">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        </button>
+        <span class="status-pill"><span class="dot"></span>已保存</span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- 画布：点阵背景 + 分支色贝塞尔 -->
+      <div class="canvas">
+        <svg class="edges" aria-hidden="true">
+          <!-- 根(470,240) → 右侧一级 -->
+          <path d="M530 250 C 586 250, 586 150, 642 150" fill="none" stroke="var(--mindmap-branch-0)" stroke-width="2"/>
+          <path d="M530 250 C 586 250, 586 300, 642 300" fill="none" stroke="var(--mindmap-branch-0)" stroke-width="2"/>
+          <path d="M530 250 C 586 250, 586 396, 642 396" fill="none" stroke="var(--mindmap-branch-0)" stroke-width="2"/>
+          <!-- 根 → 左侧一级 -->
+          <path d="M410 250 C 354 250, 354 170, 298 170" fill="none" stroke="var(--mindmap-branch-1)" stroke-width="2"/>
+          <path d="M410 250 C 354 250, 354 330, 298 330" fill="none" stroke="var(--mindmap-branch-2)" stroke-width="2"/>
+          <!-- 二级 -->
+          <path d="M762 150 C 800 150, 800 218, 838 218" fill="none" stroke="var(--mindmap-branch-0)" stroke-width="2"/>
+          <path d="M762 300 C 800 300, 800 460, 838 460" fill="none" stroke="var(--mindmap-branch-0)" stroke-width="2"/>
+          <path d="M238 330 C 200 330, 200 372, 162 372" fill="none" stroke="var(--mindmap-branch-2)" stroke-width="2"/>
+        </svg>
+
+        <!-- 根主题 -->
+        <div class="node node--root" style="left:410px;top:224px;width:120px;height:52px;">
+          <div class="content"><span class="text">产品规划</span></div>
+        </div>
+        <!-- 右侧一级（选中） -->
+        <div class="node is-selected" style="left:642px;top:132px;width:120px;height:36px;" data-depth="1">
+          <div class="content">
+            <span class="text">里程碑</span>
+            <span class="badges"><span class="chip">P0</span><span class="chip">⚑</span></span>
+          </div>
+        </div>
+        <div class="node" style="left:642px;top:282px;width:120px;height:36px;" data-depth="1">
+          <div class="content"><span class="text">风险与依赖</span></div>
+          <span class="collapse-badge">3</span>
+        </div>
+        <div class="node" style="left:642px;top:378px;width:120px;height:36px;" data-depth="1">
+          <div class="content"><span class="text">资源池</span></div>
+        </div>
+        <!-- 左侧一级 -->
+        <div class="node node--left" style="left:178px;top:152px;width:120px;height:36px;" data-depth="1">
+          <div class="content"><span class="text">评审要点</span></div>
+        </div>
+        <div class="node node--left" style="left:178px;top:312px;width:120px;height:36px;" data-depth="1">
+          <div class="content"><span class="text">交付验收</span></div>
+        </div>
+        <!-- 二级（编辑态） -->
+        <div class="node is-editing" style="left:838px;top:202px;width:104px;height:34px;">
+          <div class="content"><span class="text" style="outline:none">M2 内测</span></div>
+        </div>
+        <div class="node" style="left:838px;top:442px;width:104px;height:36px;">
+          <div class="content"><span class="text">供应商延迟</span></div>
+        </div>
+        <div class="node node--left" style="left:58px;top:354px;width:104px;height:36px;">
+          <div class="content"><span class="text">用例回归</span></div>
+        </div>
+
+        <!-- 搜索浮层 -->
+        <div class="search-pop" role="dialog" aria-label="搜索主题">
+          <input value="风险" aria-label="搜索主题" placeholder="输入主题、备注或标签" readonly>
+          <div class="results">
+            <div class="result is-active"><span>风险与依赖</span><span class="where">一级主题</span></div>
+            <div class="result"><span>供应商延迟</span><span class="where">风险与依赖 › 外部</span></div>
+          </div>
+        </div>
+
+        <!-- 浮动工具栏 -->
+        <div class="floating-toolbar" role="toolbar" aria-label="导图编辑工具">
+          <button class="tbtn" aria-label="新建子主题" title="子主题 Tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/><path d="M19 17v6"/><path d="M22 20h-6"/></svg></button>
+          <button class="tbtn" aria-label="新建同级主题" title="同级主题 Enter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+          <button class="tbtn" aria-label="折叠或展开"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></button>
+          <button class="tbtn" aria-label="撤销"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+          <button class="tbtn" aria-label="重做"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+          <button class="tbtn is-disabled" aria-label="删除主题"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg></button>
+        </div>
+
+        <div class="legend">
+          <span class="key"><span class="swatch" style="background:var(--mindmap-branch-0)"></span>一级分支</span>
+          <span class="key"><span class="swatch" style="background:var(--mindmap-branch-1)"></span>左侧分支</span>
+          <span class="key"><span class="swatch" style="background:var(--mindmap-branch-2)"></span>左侧分支 B</span>
+        </div>
+      </div>
+
+      <!-- 检查器 -->
+      <aside class="inspector" aria-label="主题检查器">
+        <h2>主题</h2>
+        <label for="p-note">备注</label>
+        <textarea id="p-note" readonly>上线前必须完成回归。</textarea>
+        <label for="p-labels">标签</label>
+        <input id="p-labels" value="P0, 内测" readonly>
+        <label for="p-link">超链接</label>
+        <input id="p-link" value="https://example.test/m2" readonly>
+        <label for="p-image">图片</label>
+        <input id="p-image" type="file" accept="image/*">
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

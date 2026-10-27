@@ -205,7 +205,7 @@ export function CreateWorkspaceWizard({
                 disabled={pending}
                 onClick={() => setAvatar(color)}
                 className={cn(
-                  "size-6 cursor-default rounded-full transition-shadow duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                  "size-6 cursor-default rounded-full transition-shadow duration-150 ease-[var(--ease)]",
                   avatar === color && "outline-2 outline-offset-2 outline-primary",
                 )}
                 style={{ backgroundColor: color }}

@@ -53,11 +53,6 @@ export function WorkspaceModals({ controller }: WorkspaceModalsProps) {
         open={dialog?.type === "settings"}
         onOpenChange={(open) => onDialogChange(open ? { type: "settings" } : null)}
         workspacePath={currentWorkspace.path}
-        onWorkspaceRestored={async (workspace) => {
-          await store.openWorkspace(workspace.path);
-          showToast(t("已恢复「{name}」", { name: workspace.name }), "primary");
-          onDialogChange(null);
-        }}
       />
       <ShareExportDialog
         open={dialog?.type === "share"}

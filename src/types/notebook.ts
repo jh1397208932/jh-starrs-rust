@@ -5,11 +5,11 @@
  * 当前数据来源为本地 SQLite（Rust），不再从 mocks 读取。
  */
 
-/** 数据库与 IPC 使用的节点类型数字（需求约定 1~6） */
-export type NodeType = 1 | 2 | 3 | 4 | 5 | 6;
+/** 数据库与 IPC 使用的节点类型数字（需求约定 1~7） */
+export type NodeType = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 /** 前端展示与交互使用的节点类型 */
-export type NodeKind = "folder" | "doc" | "board" | "table" | "flow" | "attachment";
+export type NodeKind = "folder" | "doc" | "board" | "table" | "flow" | "attachment" | "mindmap";
 
 /** 可打开为标签页的节点类型（文件夹不打开标签） */
 export type OpenableKind = Exclude<NodeKind, "folder">;
@@ -22,6 +22,7 @@ export const NODE_KIND_BY_TYPE: Record<NodeType, NodeKind> = {
   4: "table",
   5: "flow",
   6: "attachment",
+  7: "mindmap",
 };
 
 /** 字面量类型 → 数字类型（新建节点时使用） */
@@ -32,6 +33,7 @@ export const NODE_TYPE_BY_KIND: Record<NodeKind, NodeType> = {
   table: 4,
   flow: 5,
   attachment: 6,
+  mindmap: 7,
 };
 
 /** 类型中文名（新建菜单、aria-label） */
@@ -42,10 +44,11 @@ export const NODE_KIND_LABELS: Record<NodeKind, string> = {
   table: "表格",
   flow: "流程图",
   attachment: "附件",
+  mindmap: "思维导图",
 };
 
 /** 新建菜单展示顺序：文件夹在前 */
-export const NODE_KIND_ORDER: NodeKind[] = ["folder", "doc", "board", "table", "flow"];
+export const NODE_KIND_ORDER: NodeKind[] = ["folder", "doc", "board", "table", "flow", "mindmap"];
 
 /** 工作区（全局注册表中的一行） */
 export interface Workspace {

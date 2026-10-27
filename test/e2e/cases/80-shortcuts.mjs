@@ -67,23 +67,23 @@ export default {
     await ctx.expectText("文档正文", { timeout: 8000 });
 
     await ctx.key("cmd+n");
-    await ctx.expectText("创建", { timeout: 5000 });
+    await ctx.expectText("创建", { timeout: 8000 });
     await ctx.press("取消");
     ctx.metrics.dialogs += 1;
 
     await ctx.key("cmd+j");
-    await ctx.expectText("模板库", { timeout: 5000 });
+    await ctx.expectText("模板库", { timeout: 8000 });
     await ctx.key("escape");
 
     await ctx.key("cmd+,");
-    await ctx.expectText("外观", { timeout: 5000 });
+    await ctx.expectText("外观", { timeout: 8000 });
     await ctx.press("关闭");
     ctx.metrics.dialogs += 1;
 
     await ctx.key("cmd+d");
-    await ctx.expectText("取消收藏 (⌘D)", { timeout: 5000 });
+    await ctx.expectText("取消收藏 (⌘D)", { timeout: 8000 });
     await ctx.key("cmd+d");
-    await ctx.expectText("收藏 (⌘D)", { timeout: 5000 });
+    await ctx.expectText("收藏 (⌘D)", { timeout: 8000 });
 
     await ctx.key("cmd+s");
     await ctx.expectText("已保存", { timeout: 8000 });

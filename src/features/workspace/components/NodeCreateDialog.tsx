@@ -81,7 +81,7 @@ export function NodeCreateDialog({
       <DialogContent className="w-[440px] p-5" aria-describedby={undefined}>
         <DialogHeader title={parent ? t("在「{title}」中新建", { title: parent.title }) : t("新建")} />
 
-        <fieldset aria-label={t("类型")} className="mt-4 grid grid-cols-5 gap-1.5">
+        <fieldset aria-label={t("类型")} className="mt-4 grid grid-cols-6 gap-1.5">
           {CREATABLE_KINDS.map((item) => (
             <button
               key={item}
@@ -90,7 +90,7 @@ export function NodeCreateDialog({
               disabled={pending}
               onClick={() => setKind(item)}
               className={cn(
-                "flex cursor-default flex-col items-center gap-1.5 rounded-md border px-1 py-2.5 text-[12px] transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                "flex cursor-default flex-col items-center gap-1.5 rounded-md border px-1 py-2.5 text-[12px] transition-colors duration-150 ease-[var(--ease)]",
                 kind === item
                   ? "border-primary bg-accent font-semibold text-accent-foreground"
                   : "border-border bg-card hover:bg-secondary",

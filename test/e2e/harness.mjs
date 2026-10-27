@@ -304,7 +304,22 @@ export class TestContext {
         await sleep(500);
       }
     }
-    if (!opened) throw new Error("系统面板未响应「前往文件夹」");
+    if (!opened) {
+      // 面板/附属 sheet 处于模态循环时 AX 查询可能整树为空（2026-10-26 现场），
+      // 但 CGEvent 按键仍会送达：盲走「粘贴路径 + 两次回车 + 点按钮」，由后续断言验证结果。
+      this.notes.push("系统面板未响应 AX，按盲序列继续前往文件夹");
+      await this.paste(pathValue);
+      await this.key("return");
+      await sleep(350);
+      await this.key("return");
+      await sleep(settle);
+      try {
+        await this.press(button, { timeout: 4000, settle });
+      } catch {
+        // 某些面板在第二次 Return 后已经提交。
+      }
+      return;
+    }
     await this.paste(pathValue);
     await this.key("return");
     await sleep(350);

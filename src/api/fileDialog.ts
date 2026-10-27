@@ -8,6 +8,7 @@ import { invokeCommand } from "@/api/client";
 import { t } from "@/lib/i18n";
 import type { BoardExportFormat } from "@/types/board";
 import type { ExportFormat, ExportPathGrant } from "@/types/exchange";
+import type { MindmapExportFormat } from "@/types/mindmap";
 
 /** 文件选择选项 */
 export interface PickAttachmentOptions {
@@ -115,8 +116,23 @@ export async function pickImportFiles(): Promise<string[]> {
     title: t("选择要导入的文件"),
     filters: [
       {
-        name: "Markdown / Word / Excalidraw",
-        extensions: ["md", "markdown", "mdown", "mkd", "docx", "docm", "dotx", "dotm", "doc", "excalidraw"],
+        name: "Markdown / Word / Excalidraw / 思维导图",
+        extensions: [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd",
+          "docx",
+          "docm",
+          "dotx",
+          "dotm",
+          "doc",
+          "excalidraw",
+          "xmind",
+          "mm",
+          "opml",
+          "json",
+        ],
       },
     ],
   });
@@ -149,4 +165,57 @@ export async function pickBoardExportPath(
     filterName: t(filter.name),
     extensions: filter.extensions,
   });
+}
+
+/** 思维导图导出格式过滤表 */
+const MINDMAP_EXPORT_FILTERS: Record<MindmapExportFormat, { name: string; extensions: string[] }> = {
+  xmind: { name: "XMind 文件", extensions: ["xmind"] },
+  freemind: { name: "FreeMind 文件", extensions: ["mm"] },
+  opml: { name: "OPML 大纲", extensions: ["opml"] },
+  markdown: { name: "Markdown", extensions: ["md"] },
+  native: { name: "Starris 思维导图", extensions: ["json"] },
+  svg: { name: "SVG 矢量图", extensions: ["svg"] },
+  png: { name: "PNG 图片", extensions: ["png"] },
+};
+
+/**
+ * 选择思维导图导出目标路径；保存面板由 Rust 打开并签发一次性令牌。
+ * @param format 思维导图导出格式
+ * @param defaultName 默认文件名（不含扩展名）
+ * @returns 路径令牌；取消时为 null
+ * @example await pickMindmapExportPath("xmind", "产品规划")
+ */
+export async function pickMindmapExportPath(
+  format: MindmapExportFormat,
+  defaultName: string,
+): Promise<ExportPathGrant | null> {
+  const filter = MINDMAP_EXPORT_FILTERS[format];
+  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名思维导图");
+  const extension = format === "native" ? "starris-mindmap.json" : filter.extensions[0];
+  return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
+    suggestedName: `${safeName}.${extension}`,
+    filterName: t(filter.name),
+    extensions: format === "native" ? ["json"] : filter.extensions,
+  });
+}
+
+/**
+ * 选择思维导图导入文件。
+ * @returns 绝对路径数组；取消时为空数组
+ * @example const paths = await pickMindmapImportFiles();
+ */
+export async function pickMindmapImportFiles(): Promise<string[]> {
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    title: t("选择思维导图文件"),
+    filters: [
+      {
+        name: "XMind / FreeMind / OPML / Markdown / Starris",
+        extensions: ["xmind", "mm", "opml", "md", "markdown", "json"],
+      },
+    ],
+  });
+  if (selected === null) return [];
+  return Array.isArray(selected) ? selected : [selected];
 }

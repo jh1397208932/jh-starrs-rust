@@ -229,7 +229,7 @@ export function EditorContextMenu({
             aria-label={t("清除格式")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run((chain) => chain.unsetAllMarks().clearNodes())}
-            className="flex h-7 cursor-default items-center rounded-md px-2 text-[11px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="flex h-7 cursor-default items-center rounded-md px-2 text-[11px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground"
           >
             {t("清除格式")}
           </button>
@@ -377,7 +377,7 @@ export function EditorContextMenu({
               aria-label={`插入表情 ${emoji.name}`}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => run((chain) => chain.setEmoji(emoji.name))}
-              className="grid h-7 cursor-default place-items-center rounded-sm text-[16px] transition-colors duration-150 ease-[var(--ease)] hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="grid h-7 cursor-default place-items-center rounded-sm text-[16px] transition-colors duration-150 ease-[var(--ease)] hover:bg-accent"
             >
               {emoji.emoji}
             </button>

@@ -23,10 +23,12 @@ use crate::models::attachment::{
 };
 use crate::models::backup::{BackupWorkspaceInput, RestoreWorkspaceInput};
 use crate::models::board::{BoardSaveInput, BoardSaveViewportInput};
-use crate::models::cloud::{CloudRestoreInput, CloudSyncFolderInput};
 use crate::models::exchange::ImportMode;
 use crate::models::history::RestoreDocHistoryInput;
 use crate::models::library::{ImportLibraryInput, SetLibraryEnabledInput};
+use crate::models::mindmap::{
+    MindmapContent, MindmapSaveInput, MindmapStructure, MindmapTheme, MindmapTopic,
+};
 use crate::models::search::SearchNodesInput;
 use crate::models::template::{CreateFromTemplateInput, SaveTemplateInput};
 use crate::models::{
@@ -37,12 +39,14 @@ use crate::models::{
 };
 use crate::repositories::attachment_repository;
 use crate::repositories::document_repository;
+use crate::services::ai_service;
 use crate::services::attachment_maintenance_service::{self, MaintenancePolicy};
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::{
-    attachment_store, backup_service, board_service, cloud_service, document_history_service,
-    document_service, export_service, import_service, knowledge_base_service, library_service,
-    memory_service, node_service, search_service, template_service, workspace_service,
+    attachment_store, backup_service, board_service, document_history_service, document_service,
+    export_service, import_service, knowledge_base_service, library_service, memory_service,
+    mindmap_format, mindmap_import_service, mindmap_service, node_service, search_service,
+    template_service, workspace_service,
 };
 use crate::state::AppState;
 use crate::utils::now_ms;
@@ -348,65 +352,6 @@ fn workspace_backup_and_restore_roundtrip() {
         .is_err(),
         "恢复目标非空必须拒绝"
     );
-}
-
-#[test]
-fn cloud_sync_folder_uploads_and_restores_latest_snapshot() {
-    let env = TestEnv::new();
-    env.create_workspace("ws-cloud", "云同步源");
-    let kb_id = env.first_kb_id();
-    let doc = env.create_node(&kb_id, None, DOC, "云同步文档");
-    env.save_doc(&doc.id, document(vec![paragraph("同步前内容")]));
-
-    let sync_folder = env.dir.path().join("cloud-drive");
-    let status = cloud_service::set_folder(
-        &env.state,
-        CloudSyncFolderInput {
-            folder: sync_folder.to_string_lossy().into_owned(),
-        },
-    )
-    .expect("设置同步文件夹");
-    assert!(status.folder.is_some());
-    assert!(status.latest.is_none());
-
-    let synced = cloud_service::sync_now(&env.state).expect("同步");
-    let latest = synced.latest.expect("同步后应有快照");
-    assert_eq!(latest.workspace_name, "云同步源");
-    assert!(
-        Path::new(&latest.path)
-            .join("db/workspace.sqlite3")
-            .is_file()
-    );
-
-    env.save_doc(&doc.id, document(vec![paragraph("同步后内容")]));
-    let target = env.dir.path().join("cloud-restored");
-    let restored = cloud_service::restore_latest(
-        &env.state,
-        CloudRestoreInput {
-            target_dir: target.to_string_lossy().into_owned(),
-        },
-    )
-    .expect("从同步文件夹恢复")
-    .workspace;
-    assert_eq!(
-        restored.name, "cloud-restored",
-        "恢复工作区名取目标文件夹名"
-    );
-    let loaded = document_service::load(&env.state, &doc.id).expect("恢复后加载");
-    assert!(
-        loaded.document.to_string().contains("同步前内容"),
-        "恢复必须回到同步时的快照"
-    );
-
-    let inside = Path::new(&restored.path).join("sync-inside");
-    let rejected = cloud_service::set_folder(
-        &env.state,
-        CloudSyncFolderInput {
-            folder: inside.to_string_lossy().into_owned(),
-        },
-    )
-    .expect_err("同步文件夹不能放在工作区内部");
-    assert!(matches!(rejected, AppError::Validation(_)));
 }
 
 #[test]
@@ -3477,7 +3422,7 @@ fn board_images_use_global_object_ids_and_report_missing_objects() {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读取 schema 版本")
     };
-    assert_eq!(version, 14, "工作区库必须升级到 v14");
+    assert_eq!(version, 15, "工作区库必须升级到 v15");
 
     let references: i64 = connection
         .query_row(
@@ -3966,4 +3911,755 @@ fn import_excalidraw_restores_sidecar_card_attachment_and_rejects_invalid() {
         before,
         "无效画板不应留下节点"
     );
+}
+
+#[test]
+fn mindmap_lifecycle_formats_and_search_roundtrip() {
+    let env = TestEnv::new();
+    env.create_workspace("mindmap-lifecycle", "思维导图");
+    let kb_id = env.first_kb_id();
+    let node = env.create_node(&kb_id, None, 7, "产品规划");
+
+    let initial = mindmap_service::load(&env.state, &node.id).expect("加载默认导图");
+    assert_eq!(initial.version, 0);
+    assert_eq!(initial.content.sheet.root.text, "中心主题");
+
+    let content = MindmapContent {
+        schema_version: 2,
+        sheet: crate::models::mindmap::MindmapSheet {
+            id: initial.content.sheet.id.clone(),
+            structure: MindmapStructure::LogicRight,
+            theme: MindmapTheme::Warm,
+            branch_coloring: Default::default(),
+            edge_style: Default::default(),
+            background: Default::default(),
+            show_numbers: false,
+            root: MindmapTopic {
+                id: initial.content.sheet.root.id.clone(),
+                text: "产品规划".to_string(),
+                note: "总目标".to_string(),
+                labels: vec![],
+                link: String::new(),
+                markers: vec![],
+                image: None,
+                collapsed: false,
+                style: None,
+                pos: None,
+                stickers: Vec::new(),
+                children: vec![MindmapTopic {
+                    id: "topic-mindmap-child".to_string(),
+                    text: "搜索能力".to_string(),
+                    note: "FTS trigram".to_string(),
+                    labels: vec!["P0".to_string()],
+                    link: "https://example.test/search".to_string(),
+                    markers: vec!["priority-1".to_string()],
+                    image: None,
+                    collapsed: true,
+                    style: None,
+                    pos: None,
+                    stickers: Vec::new(),
+                    children: vec![MindmapTopic {
+                        id: "topic-mindmap-grandchild".to_string(),
+                        text: "主题定位".to_string(),
+                        note: String::new(),
+                        labels: vec![],
+                        link: String::new(),
+                        markers: vec![],
+                        image: None,
+                        collapsed: false,
+                        style: None,
+                        pos: None,
+                        stickers: Vec::new(),
+                        children: vec![],
+                    }],
+                }],
+            },
+        },
+        relationships: Vec::new(),
+        boundaries: Vec::new(),
+        summaries: Vec::new(),
+        free_topics: Vec::new(),
+    };
+    let saved = mindmap_service::save(
+        &env.state,
+        MindmapSaveInput {
+            node_id: node.id.clone(),
+            base_version: 0,
+            content: content.clone(),
+        },
+    )
+    .expect("保存导图");
+    assert_eq!(saved.topic_count, 3);
+    assert!(
+        mindmap_service::save(
+            &env.state,
+            MindmapSaveInput {
+                node_id: node.id.clone(),
+                base_version: 0,
+                content,
+            },
+        )
+        .is_err(),
+        "旧版本不得覆盖新场景"
+    );
+
+    let hits = search_service::search(
+        &env.state,
+        SearchNodesInput {
+            query: "主题定位".to_string(),
+            knowledge_base_id: kb_id.clone(),
+            limit: 20,
+        },
+    )
+    .expect("搜索导图正文");
+    assert!(hits.iter().any(|hit| hit.node_id == node.id));
+
+    let xmind_path = env.dir.path().join("产品规划.xmind");
+    mindmap_service::export(
+        &env.state,
+        &node.id,
+        mindmap_format::MindmapFormat::Xmind,
+        &xmind_path.to_string_lossy(),
+    )
+    .expect("导出 XMind");
+    let imported = mindmap_format::parse(&xmind_path).expect("回读 XMind");
+    assert_eq!(imported.len(), 1);
+    let root = &imported[0].content.sheet.root;
+    assert_eq!(root.text, "产品规划");
+    assert_eq!(root.children[0].text, "搜索能力");
+    assert_eq!(root.children[0].note, "FTS trigram");
+    assert_eq!(root.children[0].labels, vec!["P0".to_string()]);
+    assert!(root.children[0].collapsed);
+    assert_eq!(root.children[0].children[0].text, "主题定位");
+
+    let markdown_path = env.dir.path().join("大纲.md");
+    fs::write(
+        &markdown_path,
+        "# 项目\n\n## 目标\n- 导图\n  - 导入\n\n说明文字\n",
+    )
+    .expect("写 Markdown");
+    let imported = mindmap_import_service::import(
+        &env.state,
+        &kb_id,
+        None,
+        &[markdown_path.to_string_lossy().into_owned()],
+    )
+    .expect("导入 Markdown");
+    assert_eq!(imported.imported, 1);
+    let markdown_node = imported.files[0].node_id.clone().expect("Markdown 节点");
+    let markdown = mindmap_service::load(&env.state, &markdown_node).expect("加载 Markdown 导图");
+    assert_eq!(markdown.content.sheet.root.text, "项目");
+    assert_eq!(markdown.content.sheet.root.children[0].text, "目标");
+
+    let deleted = node_service::delete(&env.state, &node.id).expect("移入回收站");
+    assert_eq!(deleted.deleted_count, 1);
+    assert!(mindmap_service::load(&env.state, &node.id).is_err());
+    node_service::restore(&env.state, &node.id).expect("恢复导图");
+    let restored = mindmap_service::load(&env.state, &node.id).expect("恢复后加载");
+    assert_eq!(restored.topic_count, 3);
+}
+/// 需求 §14 的性能预算：1000 主题的保存、XMind 导出与导入必须有实测记录。
+/// 断言用宽松上界以免 debug 构建抖动；实测毫秒数打到 stdout，由单元测试文档归档。
+#[test]
+fn mindmap_thousand_topic_save_export_import_budget() {
+    const TOTAL: usize = 1_000;
+
+    fn build_topic(id: String, text: String) -> crate::models::mindmap::MindmapTopic {
+        crate::models::mindmap::MindmapTopic {
+            id,
+            text,
+            note: String::new(),
+            labels: vec![],
+            link: String::new(),
+            markers: vec![],
+            image: None,
+            collapsed: false,
+            style: None,
+            pos: None,
+            stickers: Vec::new(),
+            children: vec![],
+        }
+    }
+
+    // 完全三叉树：节点 i 的孩子是 3i+1..=3i+3，深度约 log3(1000) ≈ 7 层。
+    fn assemble(index: usize, id: String) -> crate::models::mindmap::MindmapTopic {
+        let text = if index == 0 {
+            "性能基准".to_string()
+        } else {
+            format!("主题 {index:04} 要点补充说明")
+        };
+        let mut topic = build_topic(id, text);
+        for child_index in [3 * index + 1, 3 * index + 2, 3 * index + 3] {
+            if child_index < TOTAL {
+                topic
+                    .children
+                    .push(assemble(child_index, format!("topic-{child_index:05}")));
+            }
+        }
+        topic
+    }
+
+    fn count_topics(topic: &crate::models::mindmap::MindmapTopic) -> usize {
+        1 + topic.children.iter().map(count_topics).sum::<usize>()
+    }
+
+    let content = crate::models::mindmap::MindmapContent {
+        schema_version: 2,
+        sheet: crate::models::mindmap::MindmapSheet {
+            id: "sheet-perf".to_string(),
+            structure: MindmapStructure::Balanced,
+            theme: MindmapTheme::Auto,
+            branch_coloring: Default::default(),
+            edge_style: Default::default(),
+            background: Default::default(),
+            show_numbers: false,
+            root: assemble(0, "topic-root".to_string()),
+        },
+        relationships: Vec::new(),
+        boundaries: Vec::new(),
+        summaries: Vec::new(),
+        free_topics: Vec::new(),
+    };
+    assert_eq!(count_topics(&content.sheet.root), TOTAL, "基准树规模");
+
+    let env = TestEnv::new();
+    env.create_workspace("mindmap-perf", "思维导图");
+    let node = env.create_node(&env.first_kb_id(), None, 7, "性能基准");
+
+    let start = Instant::now();
+    let saved = mindmap_service::save(
+        &env.state,
+        MindmapSaveInput {
+            node_id: node.id.clone(),
+            base_version: 0,
+            content,
+        },
+    )
+    .expect("保存 1000 主题");
+    let save_ms = start.elapsed().as_millis();
+    assert_eq!(saved.topic_count, TOTAL as i64);
+
+    let xmind_path = env.dir.path().join("性能基准.xmind");
+    let start = Instant::now();
+    mindmap_service::export(
+        &env.state,
+        &node.id,
+        mindmap_format::MindmapFormat::Xmind,
+        &xmind_path.to_string_lossy(),
+    )
+    .expect("导出 1000 主题 XMind");
+    let export_ms = start.elapsed().as_millis();
+
+    let start = Instant::now();
+    let parsed = mindmap_format::parse(&xmind_path).expect("回读 1000 主题 XMind");
+    let parse_ms = start.elapsed().as_millis();
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(count_topics(&parsed[0].content.sheet.root), TOTAL);
+
+    let start = Instant::now();
+    let imported = mindmap_import_service::import(
+        &env.state,
+        &env.first_kb_id(),
+        None,
+        &[xmind_path.to_string_lossy().into_owned()],
+    )
+    .expect("导入 1000 主题 XMind");
+    let import_ms = start.elapsed().as_millis();
+    assert_eq!(imported.imported, 1);
+
+    println!(
+        "MM-PERF save={save_ms}ms export={export_ms}ms parse={parse_ms}ms import={import_ms}ms topics={TOTAL}"
+    );
+    assert!(save_ms < 5_000, "保存耗时 {save_ms}ms 超出 debug 上界");
+    assert!(export_ms < 5_000, "导出耗时 {export_ms}ms 超出 debug 上界");
+    assert!(parse_ms < 5_000, "解析耗时 {parse_ms}ms 超出 debug 上界");
+    assert!(import_ms < 10_000, "导入耗时 {import_ms}ms 超出 debug 上界");
+}
+
+/// AI 协作：权限矩阵、待审区审批/拒绝、段落级编辑与并发冲突。
+#[test]
+fn ai_permission_matrix_inbox_and_paragraph_edits() {
+    let env = TestEnv::new();
+    env.create_workspace("ai-collab", "AI 协作");
+    let kb_id = env.first_kb_id();
+
+    let initial = ai_service::permissions(&env.state).expect("默认权限");
+    assert_eq!(initial.doc, "review", "默认写权限应为待审");
+
+    // review：低风险写工具进入待审区，未落库
+    let created = ai_service::execute(
+        &env.state,
+        "doc_create",
+        &json!({
+            "knowledgeBaseId": kb_id,
+            "title": "AI 文档",
+            "markdown": "# 标题\n\n第一段",
+            "summary": "agent 初始化文档"
+        }),
+    )
+    .expect("doc_create");
+    assert_eq!(created.status, "pending_review");
+    let inbox_id = created.inbox_id.clone().expect("应返回待审 id");
+    assert!(
+        node_service::list(&env.state, &kb_id)
+            .expect("节点列表")
+            .iter()
+            .all(|node| node.title != "AI 文档"),
+        "待审期间不得落库"
+    );
+
+    // 审批通过 → 文档创建成功
+    ai_service::approve(&env.state, &inbox_id).expect("审批通过");
+    let node = node_service::list(&env.state, &kb_id)
+        .expect("节点列表")
+        .into_iter()
+        .find(|item| item.title == "AI 文档")
+        .expect("文档应存在");
+
+    let read = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": node.id }))
+        .expect("doc_read")
+        .data
+        .expect("读取数据");
+    let blocks = read
+        .get("blocks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(blocks.len(), 2, "标题 + 段落");
+    let first_block_id = blocks[0]
+        .get("blockId")
+        .and_then(Value::as_str)
+        .expect("blockId")
+        .to_string();
+    let version = read
+        .get("version")
+        .and_then(Value::as_i64)
+        .expect("version");
+
+    // review：更新段落 → 待审；拒绝后内容不变
+    let update = ai_service::execute(
+        &env.state,
+        "doc_update_block",
+        &json!({
+            "nodeId": node.id,
+            "blockId": first_block_id,
+            "text": "被拒绝的修改",
+            "summary": "尝试改标题",
+            "expectedVersion": version
+        }),
+    )
+    .expect("doc_update_block");
+    let reject_id = update.inbox_id.expect("待审 id");
+    ai_service::reject(&env.state, &reject_id).expect("拒绝");
+    let after_reject = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": node.id }))
+        .expect("doc_read")
+        .data
+        .expect("读取数据");
+    let texts = after_reject
+        .get("blocks")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    item.get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    assert!(texts.contains(&"标题".to_string()), "拒绝后保持原样");
+
+    // read-only：写工具直接拒绝
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "read-only".to_string(),
+            board: "review".to_string(),
+            mindmap: "review".to_string(),
+        },
+    )
+    .expect("设置只读");
+    let denied = ai_service::execute(
+        &env.state,
+        "doc_append_blocks",
+        &json!({ "nodeId": node.id, "blocks": [{ "text": "追加" }] }),
+    )
+    .expect("只读执行");
+    assert_eq!(denied.status, "denied");
+
+    // editable：中风险直写；高风险仍进待审
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "editable".to_string(),
+            board: "review".to_string(),
+            mindmap: "review".to_string(),
+        },
+    )
+    .expect("设置可编辑");
+    let direct = ai_service::execute(
+        &env.state,
+        "doc_append_blocks",
+        &json!({ "nodeId": node.id, "blocks": [{ "type": "paragraph", "text": "直写段落" }], "summary": "追加" }),
+    )
+    .expect("直写");
+    assert_eq!(direct.status, "ok");
+    let risky = ai_service::execute(
+        &env.state,
+        "doc_replace_range",
+        &json!({ "nodeId": node.id, "start": 0, "end": 1, "blocks": [], "summary": "清空标题" }),
+    )
+    .expect("高风险");
+    assert_eq!(risky.status, "pending_review", "高风险始终待审");
+
+    // 并发冲突：review 模式下用旧 expectedVersion 入队，审批时版本已变化 → 失败并记录原因
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "review".to_string(),
+            board: "review".to_string(),
+            mindmap: "review".to_string(),
+        },
+    )
+    .expect("回到待审模式");
+    let stale_id = risky.inbox_id.expect("待审 id");
+    ai_service::approve(&env.state, &stale_id).expect("无版本约束时可执行");
+    let current = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": node.id }))
+        .expect("doc_read")
+        .data
+        .expect("读取数据");
+    let next_version = current
+        .get("version")
+        .and_then(Value::as_i64)
+        .expect("version");
+    let conflicting = ai_service::execute(
+        &env.state,
+        "doc_update_block",
+        &json!({
+            "nodeId": node.id,
+            "blockId": first_block_id,
+            "text": "并发修改",
+            "expectedVersion": next_version - 1
+        }),
+    )
+    .expect("入待审");
+    let conflict_id = conflicting.inbox_id.expect("待审 id");
+    assert!(
+        ai_service::approve(&env.state, &conflict_id).is_err(),
+        "版本冲突应审批失败"
+    );
+    let failed = ai_service::inbox(&env.state, Some("failed")).expect("失败列表");
+    assert!(failed.iter().any(|row| row.id == conflict_id));
+
+    let audit_rows = ai_service::audit(&env.state).expect("审计");
+    assert!(audit_rows.iter().any(|row| row.outcome == "approved"));
+    assert!(audit_rows.iter().any(|row| row.outcome == "rejected"));
+    assert!(audit_rows.iter().any(|row| row.outcome == "denied"));
+    assert!(audit_rows.iter().any(|row| row.outcome == "direct"));
+}
+
+/// 同一条待审项只能被审批一次：第二次必须冲突，且不产生重复写入。
+#[test]
+fn ai_inbox_approve_is_single_shot() {
+    let env = TestEnv::new();
+    env.create_workspace("ai-approve", "AI 审批幂等");
+    let kb_id = env.first_kb_id();
+    let created = ai_service::execute(
+        &env.state,
+        "doc_create",
+        &json!({
+            "knowledgeBaseId": kb_id,
+            "title": "唯一文档",
+            "markdown": "内容",
+            "summary": "建立唯一文档"
+        }),
+    )
+    .expect("doc_create");
+    let inbox_id = created.inbox_id.expect("待审 id");
+    ai_service::approve(&env.state, &inbox_id).expect("首次审批");
+    let second = ai_service::approve(&env.state, &inbox_id);
+    assert!(second.is_err(), "重复审批必须失败");
+    let nodes = node_service::list(&env.state, &kb_id).expect("节点列表");
+    assert_eq!(
+        nodes.iter().filter(|node| node.title == "唯一文档").count(),
+        1,
+        "重复审批不得产生第二份文档"
+    );
+}
+
+/// 节点级工具按目标节点类型选择作用域，而不是工具声明里写死的那个。
+#[test]
+fn ai_node_tools_follow_target_node_scope() {
+    let env = TestEnv::new();
+    env.create_workspace("ai-scope", "AI 作用域跟随");
+    let kb_id = env.first_kb_id();
+
+    let board = node_service::create(
+        &env.state,
+        CreateNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            node_type: 3,
+            title: "作用域画板".to_string(),
+        },
+    )
+    .expect("画板节点");
+    let mindmap = node_service::create(
+        &env.state,
+        CreateNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            node_type: 7,
+            title: "作用域导图".to_string(),
+        },
+    )
+    .expect("导图节点");
+    let doc = node_service::create(
+        &env.state,
+        CreateNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            node_type: 2,
+            title: "作用域文档".to_string(),
+        },
+    )
+    .expect("文档节点");
+
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "editable".to_string(),
+            board: "review".to_string(),
+            mindmap: "read-only".to_string(),
+        },
+    )
+    .expect("写权限");
+
+    // node_trash 声明在导图作用域：目标是画板时必须走画板作用域（review → 待审）。
+    let trash = ai_service::execute(
+        &env.state,
+        "node_trash",
+        &json!({ "nodeId": board.id, "summary": "清理画板" }),
+    )
+    .expect("node_trash");
+    assert_eq!(trash.status, "pending_review", "画板作用域为 review");
+
+    // node_rename 声明在文档作用域：目标是导图时必须走导图只读作用域（拒绝）。
+    let rename = ai_service::execute(
+        &env.state,
+        "node_rename",
+        &json!({ "nodeId": mindmap.id, "title": "改名", "summary": "改名" }),
+    )
+    .expect("node_rename");
+    assert_eq!(rename.status, "denied", "导图作用域只读");
+
+    // 目标是文档时仍按文档作用域直接执行。
+    let ok = ai_service::execute(
+        &env.state,
+        "node_rename",
+        &json!({ "nodeId": doc.id, "title": "文档改名", "summary": "改名" }),
+    )
+    .expect("node_rename");
+    assert_eq!(ok.status, "ok", "文档作用域可编辑");
+}
+
+/// AI 扩展工具：段落插入/删除、画板元素删除、节点重命名/移动/新建文件夹。
+#[test]
+fn ai_extended_tools_cover_paragraph_and_board_edits() {
+    let env = TestEnv::new();
+    env.create_workspace("ai-extended", "AI 扩展工具");
+    let kb_id = env.first_kb_id();
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "editable".to_string(),
+            board: "editable".to_string(),
+            mindmap: "editable".to_string(),
+        },
+    )
+    .expect("设置可编辑");
+
+    // 文档：创建后可直插段落
+    let created = ai_service::execute(
+        &env.state,
+        "doc_create",
+        &json!({ "knowledgeBaseId": kb_id, "title": "扩展文档", "markdown": "# 标题\n\n第一段" }),
+    )
+    .expect("doc_create");
+    assert_eq!(created.status, "ok");
+    let doc_id = created
+        .data
+        .as_ref()
+        .and_then(|value| value.get("nodeId"))
+        .and_then(Value::as_str)
+        .expect("nodeId")
+        .to_string();
+    let read = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": doc_id }))
+        .expect("doc_read")
+        .data
+        .expect("数据");
+    let heading_id = read
+        .get("blocks")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("blockId"))
+        .and_then(Value::as_str)
+        .expect("首个 blockId")
+        .to_string();
+    let inserted = ai_service::execute(
+        &env.state,
+        "doc_insert_after_block",
+        &json!({
+            "nodeId": doc_id,
+            "blockId": heading_id,
+            "blocks": [{ "type": "paragraph", "text": "插入段" }],
+            "summary": "补充说明"
+        }),
+    )
+    .expect("插入段落");
+    assert_eq!(inserted.status, "ok");
+    let texts = |value: &Value| -> Vec<String> {
+        value
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|item| {
+                        item.get("text")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let after_insert = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": doc_id }))
+        .expect("doc_read")
+        .data
+        .expect("数据");
+    assert_eq!(texts(&after_insert), vec!["标题", "插入段", "第一段"]);
+
+    // 删除段落：高风险 → 待审 → 通过后消失
+    let deleted = ai_service::execute(
+        &env.state,
+        "doc_delete_block",
+        &json!({ "nodeId": doc_id, "blockId": heading_id, "summary": "删除标题" }),
+    )
+    .expect("删除段落");
+    assert_eq!(deleted.status, "pending_review");
+    ai_service::approve(&env.state, &deleted.inbox_id.expect("待审 id")).expect("审批");
+    let after_delete = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": doc_id }))
+        .expect("doc_read")
+        .data
+        .expect("数据");
+    assert_eq!(texts(&after_delete), vec!["插入段", "第一段"]);
+
+    // 画板：追加元素 → 删除元素（高风险走待审）
+    let board = env.create_node(&kb_id, None, 3, "AI 画板");
+    let added = ai_service::execute(
+        &env.state,
+        "board_add_elements",
+        &json!({
+            "nodeId": board.id,
+            "elements": [{ "type": "rectangle", "x": 10, "y": 20, "width": 120, "height": 60 }]
+        }),
+    )
+    .expect("添加元素");
+    assert_eq!(added.status, "ok");
+    let board_read = ai_service::execute(&env.state, "board_read", &json!({ "nodeId": board.id }))
+        .expect("board_read")
+        .data
+        .expect("数据");
+    let element_id = board_read
+        .get("elements")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_str)
+        .expect("元素 id")
+        .to_string();
+    let removed = ai_service::execute(
+        &env.state,
+        "board_delete_elements",
+        &json!({ "nodeId": board.id, "elementIds": [element_id], "summary": "清理画板" }),
+    )
+    .expect("删除元素");
+    assert_eq!(removed.status, "pending_review");
+    ai_service::approve(&env.state, &removed.inbox_id.expect("待审 id")).expect("审批");
+    let board_after = ai_service::execute(&env.state, "board_read", &json!({ "nodeId": board.id }))
+        .expect("board_read")
+        .data
+        .expect("数据");
+    assert_eq!(
+        board_after
+            .get("elements")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0),
+        0
+    );
+
+    // 节点：新建文件夹 + 重命名 + 移动
+    let folder = ai_service::execute(
+        &env.state,
+        "node_create_folder",
+        &json!({ "knowledgeBaseId": kb_id, "title": "AI 文件夹" }),
+    )
+    .expect("新建文件夹");
+    assert_eq!(folder.status, "ok");
+    let folder_id = folder
+        .data
+        .as_ref()
+        .and_then(|value| value.get("nodeId"))
+        .and_then(Value::as_str)
+        .expect("folderId")
+        .to_string();
+    let renamed = ai_service::execute(
+        &env.state,
+        "node_rename",
+        &json!({ "nodeId": doc_id, "title": "扩展文档·改名" }),
+    )
+    .expect("重命名");
+    assert_eq!(renamed.status, "ok");
+    let moved = ai_service::execute(
+        &env.state,
+        "node_move",
+        &json!({ "nodeId": doc_id, "parentId": folder_id, "index": 0 }),
+    )
+    .expect("移动节点");
+    assert_eq!(moved.status, "ok");
+    let nodes = node_service::list(&env.state, &kb_id).expect("节点列表");
+    assert!(nodes.iter().any(|node| node.title == "扩展文档·改名"));
+}
+
+/// 全新工作区：一次性初始化必须建齐所有历史迁移产物（证明自愈不承担"首次初始化"职责）。
+#[test]
+fn fresh_workspace_schema_is_complete_without_repair() {
+    let env = TestEnv::new();
+    env.create_workspace("fresh-schema", "全新库");
+    let guard = env.state.workspace().expect("工作区");
+    let connection = &guard.as_ref().expect("会话").connection;
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN
+             ('node','attachment','node_attachment','workspace_meta','search_index','doc_history',
+              'mindmap_scene','mindmap_viewport','ai_inbox','ai_audit')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("表统计");
+    assert_eq!(count, 10, "全新库应一次建齐全部表：{:?}", count);
+    let columns: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('attachment') WHERE name IN ('scope','expires_at','orphaned_at')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("列统计");
+    assert_eq!(columns, 3, "attachment 生命周期列必须由初始化建立");
 }

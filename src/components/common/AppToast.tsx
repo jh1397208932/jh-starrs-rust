@@ -19,7 +19,7 @@ export function AppToast({ toast }: AppToastProps) {
       {toast && (
         <motion.div
           key={toast.id}
-          role="status"
+          role={toast.kind === "destructive" ? "alert" : "status"}
           initial={{ opacity: 0, y: 16, scale: 0.96, x: "-50%" }}
           animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
           exit={{ opacity: 0, y: 8, scale: 0.98, x: "-50%" }}
@@ -29,13 +29,13 @@ export function AppToast({ toast }: AppToastProps) {
           <span
             aria-hidden="true"
             className={cn(
-              "grid size-5 shrink-0 place-items-center rounded-full text-[11px]",
+              "grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
               toast.kind === "destructive"
                 ? "bg-destructive text-destructive-foreground"
                 : "bg-accent text-accent-foreground",
             )}
           >
-            ✓
+            {toast.kind === "destructive" ? "!" : "✓"}
           </span>
           <span className="text-[13.5px] text-popover-foreground">{toast.message}</span>
           {toast.kbd && <Kbd>{toast.kbd}</Kbd>}

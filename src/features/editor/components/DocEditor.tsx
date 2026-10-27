@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onFindRequested } from "@/api/app";
-import { toErrorMessage } from "@/api/client";
+import { isConflictError, toErrorMessage } from "@/api/client";
 import { loadDocument } from "@/api/document";
 import { onNativeFileDrop } from "@/api/dragDrop";
 import { pickAttachmentFiles } from "@/api/fileDialog";
@@ -95,7 +95,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
         <button
           type="button"
           onClick={onRetry}
-          className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 hover:bg-destructive/10"
         >
           {t("重试")}
         </button>
@@ -232,7 +232,8 @@ export function DocEditor({
     onError: (error) => {
       const message = toErrorMessage(error);
       // 冲突不是普通网络错误：保留编辑器内容，提示用户主动重新加载。
-      if (message.includes("文档已在别处更新")) {
+      // 判定看原始错误文本，避免英文界面下匹配中文关键词失效。
+      if (isConflictError(error)) {
         setConflict(t(message));
         return;
       }
@@ -750,6 +751,8 @@ export function DocEditor({
       if (cancelled || sequence !== docSeqRef.current) return;
       if (!flushed) {
         setLoadError(t("上一份文档尚未保存，请重试"));
+        // 失败分支必须恢复可编辑，否则用户修好保存问题后正文仍是只读。
+        editor.setEditable(true, false);
         setLoading(false);
         return;
       }
@@ -805,6 +808,7 @@ export function DocEditor({
         if (cancelled || sequence !== docSeqRef.current) return;
         persistence.beginDocument(null);
         setLoadError(toErrorMessage(error));
+        editor.setEditable(true, false);
         setLoading(false);
       }
     };

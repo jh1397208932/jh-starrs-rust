@@ -74,7 +74,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
             if (isFolder) props.onToggleFolder(node.id);
             else props.onOpenNode(node);
           }}
-          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-[10px] pr-1 text-left text-[13px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-[10px] pr-1 text-left text-[13px]"
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           {isFolder ? (
@@ -99,7 +99,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
               aria-label={t("{title} 操作", { title: node.title })}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
-              className="mr-1 grid size-6 shrink-0 cursor-default place-items-center rounded-[8px] text-sidebar-muted opacity-0 transition-[opacity,background-color] duration-150 ease-[var(--ease)] hover:bg-card/60 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+              className="mr-1 grid size-6 shrink-0 cursor-default place-items-center rounded-[8px] text-sidebar-muted opacity-0 transition-[opacity,background-color] duration-150 ease-[var(--ease)] hover:bg-card/60 group-hover:opacity-100 focus-visible:opacity-100"
             >
               <Ellipsis className="size-4" />
             </button>

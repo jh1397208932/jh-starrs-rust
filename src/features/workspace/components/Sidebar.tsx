@@ -30,6 +30,8 @@ export interface SidebarProps {
   onAllExport: () => void;
   /** 打开导入弹窗（根级） */
   onImport: () => void;
+  /** 直接导入思维导图文件 */
+  onImportMindmap: () => void;
   /** 导入到指定文件夹 */
   onImportToFolder: (parent: NodeItem) => void;
   /** 上传附件到根或指定文件夹 */
@@ -85,7 +87,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           type="button"
           aria-label={t("切换工作区")}
-          className="workspace-brand group mx-3 mt-2 flex h-11 cursor-default items-center gap-2.5 px-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="workspace-brand group mx-3 mt-2 flex h-11 cursor-default items-center gap-2.5 px-1.5 text-left"
         >
           <span className="grid size-8 shrink-0 place-items-center">
             <BrandLogo size={26} />
@@ -113,7 +115,7 @@ export function Sidebar(props: SidebarProps) {
               else if (id === "note") props.onCreateNote();
               else props.onCreateDoc();
             }}
-            className="quick-action cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="quick-action cursor-default"
           >
             <span className="quick-action__icon">
               <Icon className="size-4" strokeWidth={1.8} />
@@ -146,6 +148,7 @@ export function Sidebar(props: SidebarProps) {
           onOpenSettings={props.onOpenSettings}
           onAllExport={props.onAllExport}
           onImport={props.onImport}
+          onImportMindmap={props.onImportMindmap}
           onOpenLibrary={props.onOpenLibrary}
           onBackup={props.onBackup}
           onTemplates={props.onTemplates}
@@ -153,7 +156,7 @@ export function Sidebar(props: SidebarProps) {
         >
           <button
             type="button"
-            className="sidebar-row flex h-9 w-full cursor-default items-center gap-2 px-2 text-[13px] text-sidebar-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="sidebar-row flex h-9 w-full cursor-default items-center gap-2 px-2 text-[13px] text-sidebar-foreground"
           >
             <Ellipsis className="size-4 text-sidebar-muted" />
             {t("更多")}

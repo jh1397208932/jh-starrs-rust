@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * 动效只做颜色/透明度过渡（--dur-1）。
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-default items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-[color,background-color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 cursor-default items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-[color,background-color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {

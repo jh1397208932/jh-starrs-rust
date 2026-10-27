@@ -88,7 +88,13 @@ export function SearchPalette({ open, mode, knowledgeBaseId, onOpenChange, onSel
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-[12%] w-[560px] translate-y-0 gap-0 p-0" aria-describedby={undefined}>
+      {/* dialog-top：只做水平居中；基类的 -50% Y 平移会把 12% top 再抬半个面板高度。
+          showClose=false：行内已有 Esc 徽标，右上角 × 会与之重叠。 */}
+      <DialogContent
+        className="dialog-top top-[12%] w-[560px] gap-0 p-0"
+        aria-describedby={undefined}
+        showClose={false}
+      >
         <DialogTitle className="sr-only">{mode === "quick" ? t("快速跳转") : t("搜索")}</DialogTitle>
         <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2.5">
           <Search className="size-4 shrink-0 text-muted-foreground" />

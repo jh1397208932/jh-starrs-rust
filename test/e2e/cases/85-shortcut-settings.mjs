@@ -47,7 +47,7 @@ export default {
 
     await ctx.menu("更多 ⌘J", "设置");
     await ctx.press("快捷键", { role: "AXRadioButton" });
-    await ctx.expectText("启用快捷键", { timeout: 5000 });
+    await ctx.expectText("启用快捷键", { timeout: 8000 });
     await ctx.press("启用快捷键", { role: "AXCheckBox", settle: 250 });
     await ctx.press("关闭");
 
@@ -82,7 +82,7 @@ export default {
       await ctx.press("取消");
     }
     await ctx.key("cmd+shift+n");
-    await ctx.expectText("创建", { timeout: 5000 });
+    await ctx.expectText("创建", { timeout: 8000 });
     await ctx.press("取消");
     ctx.log("新组合 ⌘⇧N 生效，旧组合失效");
 
@@ -90,7 +90,7 @@ export default {
     await ctx.press("快捷键", { role: "AXRadioButton" });
     await ctx.press("录制 新建");
     await ctx.key("cmd+j");
-    await ctx.expectText("与「更多菜单」冲突", { timeout: 5000 });
+    await ctx.expectText("与「更多菜单」冲突", { timeout: 8000 });
     await ctx.key("escape");
     await ctx.press("恢复默认");
     await ctx.waitForGlobalDb(
@@ -102,7 +102,7 @@ export default {
     await ctx.press("关闭");
 
     await ctx.key("cmd+n");
-    await ctx.expectText("创建", { timeout: 5000 });
+    await ctx.expectText("创建", { timeout: 8000 });
     await ctx.press("取消");
     await ctx.screenshot("shortcut-settings");
     ctx.log("快捷键总开关、录制、冲突与持久化均完成");

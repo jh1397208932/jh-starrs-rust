@@ -86,7 +86,7 @@ export function WorkspaceOnboarding({
             type="button"
             disabled={busy !== null}
             onClick={onCreateWorkspace}
-            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-primary/25 bg-accent/60 p-4 text-left text-accent-foreground shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-primary/25 bg-accent/60 p-4 text-left text-accent-foreground shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-accent disabled:opacity-60"
           >
             <Plus className="size-5" />
             <span className="text-[14px] font-semibold">{t("新建工作区")}</span>
@@ -95,7 +95,7 @@ export function WorkspaceOnboarding({
             type="button"
             disabled={busy !== null}
             onClick={() => void handleOpen()}
-            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-border/70 bg-card/70 p-4 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+            className="flex cursor-default flex-col items-start gap-2 rounded-[14px] border border-border/70 bg-card/70 p-4 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/40 disabled:opacity-60"
           >
             <FolderOpen className="size-5" />
             <span className="text-[14px] font-semibold">
@@ -117,7 +117,7 @@ export function WorkspaceOnboarding({
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void handleSwitch(workspace.id)}
-                    className="flex w-full cursor-default items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/35 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                    className="flex w-full cursor-default items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 ease-[var(--ease)] hover:bg-accent/35 disabled:opacity-60"
                   >
                     <span
                       aria-hidden="true"

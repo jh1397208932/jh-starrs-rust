@@ -793,6 +793,25 @@ fn import_file(
     if EXCALIDRAW_EXTENSIONS.contains(&extension(path).as_str()) {
         return import_excalidraw_file(state, attachment, kb_id, parent_id, path);
     }
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if matches!(extension(path).as_str(), "xmind" | "mm" | "opml")
+        || file_name.ends_with(".starris-mindmap.json")
+    {
+        let result = crate::services::mindmap_import_service::import(
+            state,
+            kb_id,
+            parent_id,
+            &[path.to_string_lossy().into_owned()],
+        )?;
+        return Ok(result
+            .files
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| failure(path, "思维导图导入未创建节点".to_string())));
+    }
     if !is_supported(path) {
         return Ok(failure(
             path,

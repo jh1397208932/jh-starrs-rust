@@ -41,6 +41,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
     createDoc,
     createNote,
     uploadAttachmentsToTree,
+    importMindmapFiles,
     handleSwitchWorkspace,
     handleSwitchKb,
     toggleStar,
@@ -74,6 +75,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
           onOpenSettings={() => onDialogChange({ type: "settings" })}
           onAllExport={() => onDialogChange({ type: "exportKb" })}
           onImport={() => onDialogChange({ type: "import", parentId: null })}
+          onImportMindmap={importMindmapFiles}
           onImportToFolder={(parent) => onDialogChange({ type: "import", parentId: parent.id })}
           onOpenLibrary={() => onDialogChange({ type: "library" })}
           onBackup={() => onDialogChange({ type: "backup" })}

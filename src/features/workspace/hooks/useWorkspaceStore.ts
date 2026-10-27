@@ -1,9 +1,13 @@
+import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { waitForAppBootstrap } from "@/api/app";
 import { toErrorMessage } from "@/api/client";
 import * as kbApi from "@/api/knowledgeBase";
 import * as nodeApi from "@/api/node";
 import * as workspaceApi from "@/api/workspace";
+import { flushActivePersistence } from "@/features/editor/activeDocument";
 import { buildTree } from "@/features/workspace/utils/tree";
+import { t } from "@/lib/i18n";
 import type { DeleteWorkspaceResult, KnowledgeBase, NodeItem, TreeNode, Workspace } from "@/types/notebook";
 import { useWorkspaceMemory } from "./useWorkspaceMemory";
 
@@ -24,6 +28,8 @@ export interface WorkspaceStore {
   currentKb: KnowledgeBase | null;
   /** 当前知识库平表节点 */
   nodes: NodeItem[];
+  /** 最新节点列表的引用（await refresh 后立即读取，避免闭包里的旧数组） */
+  nodesRef: RefObject<NodeItem[]>;
   /** 当前知识库递归树 */
   tree: TreeNode[];
   starredNodes: NodeItem[];
@@ -109,6 +115,8 @@ export function useWorkspaceStore(): WorkspaceStore {
     setLoading(true);
     setError(null);
     try {
+      const bootstrapError = await waitForAppBootstrap();
+      if (bootstrapError) throw new Error(bootstrapError);
       const data = await workspaceApi.getBootstrap();
       if (token !== bootstrapSeq.current) return;
       currentWorkspaceIdRef.current = data.currentWorkspace?.id ?? null;
@@ -144,31 +152,47 @@ export function useWorkspaceStore(): WorkspaceStore {
     void refresh().catch(() => undefined);
   }, [refresh]);
 
+  /**
+   * 工作区切换类动作前必须先落盘当前编辑器。
+   *
+   * 这些动作会替换工作区会话并清空标签页；未保存内容会在切换后写入新库（或直接丢失）。
+   * 保存失败时中止动作，把错误抛给调用方展示。
+   */
+  const guardBeforeSessionChange = useCallback(async () => {
+    const flushed = await flushActivePersistence();
+    if (!flushed) {
+      throw new Error(t("当前内容尚未保存，请先处理保存失败"));
+    }
+  }, []);
+
   const switchWorkspace = useCallback(
     async (id: string) => {
+      await guardBeforeSessionChange();
       const workspace = await workspaceApi.switchWorkspace(id);
       await refresh();
       return workspace;
     },
-    [refresh],
+    [guardBeforeSessionChange, refresh],
   );
 
   const createWorkspace = useCallback(
     async (params: workspaceApi.CreateWorkspaceParams) => {
+      await guardBeforeSessionChange();
       const workspace = await workspaceApi.createWorkspace(params);
       await refresh();
       return workspace;
     },
-    [refresh],
+    [guardBeforeSessionChange, refresh],
   );
 
   const openWorkspace = useCallback(
     async (path: string) => {
+      await guardBeforeSessionChange();
       const workspace = await workspaceApi.openWorkspace(path);
       await refresh();
       return workspace;
     },
-    [refresh],
+    [guardBeforeSessionChange, refresh],
   );
 
   const renameWorkspace = useCallback(async (id: string, name: string) => {
@@ -180,11 +204,13 @@ export function useWorkspaceStore(): WorkspaceStore {
 
   const deleteWorkspace = useCallback(
     async (id: string, deleteFolder: boolean) => {
+      // 删除当前工作区会自动切到别的会话，同样需要先落盘。
+      await guardBeforeSessionChange();
       const result = await workspaceApi.deleteWorkspace(id, deleteFolder);
       await refresh();
       return result;
     },
-    [refresh],
+    [guardBeforeSessionChange, refresh],
   );
 
   const switchKb = useCallback(
@@ -318,6 +344,7 @@ export function useWorkspaceStore(): WorkspaceStore {
     kbs,
     currentKb,
     nodes,
+    nodesRef,
     tree,
     starredNodes,
     refresh,

@@ -34,18 +34,48 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 "#;
 
-/// 打开（必要时创建）全局库并执行迁移。
+/// 仅建立全局库连接（轻量）：不建表、不迁移；供启动初始化任务使用。
 ///
 /// @param path `db/starris.db` 的绝对路径
 /// @returns 已开启外键与 WAL 的连接
-pub fn open(path: &Path) -> AppResult<Connection> {
+pub fn open_connection(path: &Path) -> AppResult<Connection> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut connection = Connection::open(path)?;
+    let connection = Connection::open(path)?;
     configure(&connection)?;
-    migrate(&mut connection)?;
     Ok(connection)
+}
+
+/// 打开（必要时创建）并完成全局库初始化。
+///
+/// 仅测试便捷入口；产品路径在启动装配里按登记任务执行。
+#[cfg(test)]
+pub fn open(path: &Path) -> AppResult<Connection> {
+    let mut connection = open_connection(path)?;
+    super::init_registry::run_tasks(&mut connection, super::init_registry::GLOBAL_TASKS)?;
+    Ok(connection)
+}
+
+/// 初始化任务：按版本号建立/升级全局库结构。
+pub(crate) fn task_schema(connection: &mut Connection) -> AppResult<()> {
+    migrate(connection)
+}
+
+/// 全局库是否需要初始化（版本落后或结构缺失）。
+pub fn needs_initialization(connection: &Connection) -> AppResult<bool> {
+    let version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(AppError::from)?;
+    if version < SCHEMA_VERSION {
+        return Ok(true);
+    }
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('workspaces','settings')",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(count < 2)
 }
 
 /// 连接级 PRAGMA：外键、WAL、忙等待，保证跨进程读写的可预期行为。

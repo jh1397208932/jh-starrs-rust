@@ -92,7 +92,7 @@ export function AttachmentManager() {
           value={manager.search}
           onChange={(event) => manager.setSearch(event.target.value)}
           placeholder={t("搜索附件")}
-          className="h-[31px] w-40 rounded-[8px] border border-input bg-background px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-[31px] w-40 rounded-[8px] border border-input bg-background px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground"
         />
         <label htmlFor="attachment-logical-path" className="sr-only">
           {t("上传目录")}
@@ -102,7 +102,7 @@ export function AttachmentManager() {
           value={manager.logicalPath}
           onChange={(event) => manager.setLogicalPath(event.target.value)}
           placeholder={t("目录（可选）")}
-          className="h-[31px] w-40 rounded-[8px] border border-input bg-background px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-[31px] w-40 rounded-[8px] border border-input bg-background px-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground"
         />
         <label htmlFor="attachment-ttl" className="sr-only">
           {t("上传保留时间")}
@@ -112,7 +112,7 @@ export function AttachmentManager() {
           value={manager.ttlSeconds ?? ""}
           disabled={manager.disabled}
           onChange={(event) => manager.setTtlSeconds(event.target.value ? Number(event.target.value) : null)}
-          className="h-[31px] rounded-[8px] border border-input bg-background px-2 text-[12px] text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="h-[31px] rounded-[8px] border border-input bg-background px-2 text-[12px] text-foreground outline-none"
         >
           <option value="">{t("永久保留")}</option>
           <option value="86400">{t("保留 1 天")}</option>

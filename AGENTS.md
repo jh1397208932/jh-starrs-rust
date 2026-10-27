@@ -131,16 +131,16 @@
 
 ### 3.2 命名规范
 
-| 对象 | 规则 | 示例 |
-|---|---|---|
-| 组件文件/目录 | PascalCase，一文件一组件 | `InfoPanel.tsx` |
-| 非组件 ts 文件 | camelCase | `useToast.ts`、`notebook.ts` |
-| Hooks | `use` 前缀 + PascalCase | `useWorkspaceStore` |
-| 组件 Props 接口 | `XxxProps`，与组件同名 | `InfoPanelProps` |
-| 类型联合字面量 | 小写字符串字面量 | `"doc" \| "board" \| "table"` |
-| 常量 | SCREAMING_SNAKE_CASE | `MOCK_KBS`、`EASE_STANDARD` |
-| 布尔值 | `is/has/can/should` 前缀 | `sidebarOpen` |
-| 回调 Props / 事件处理器 | `onXxx` / `handleXxx` | `onOpenNode` / `handleSubmit` |
+| 对象               | 规则                     | 示例                            |
+| ---------------- | ---------------------- | ----------------------------- |
+| 组件文件/目录          | PascalCase，一文件一组件      | `InfoPanel.tsx`               |
+| 非组件 ts 文件        | camelCase              | `useToast.ts`、`notebook.ts`   |
+| Hooks            | `use` 前缀 + PascalCase  | `useWorkspaceStore`           |
+| 组件 Props 接口      | `XxxProps`，与组件同名       | `InfoPanelProps`              |
+| 类型联合字面量          | 小写字符串字面量               | `"doc" \| "board" \| "table"` |
+| 常量               | SCREAMING_SNAKE_CASE   | `MOCK_KBS`、`EASE_STANDARD`    |
+| 布尔值              | `is/has/can/should` 前缀 | `sidebarOpen`                 |
+| 回调 Props / 事件处理器 | `onXxx` / `handleXxx`  | `onOpenNode` / `handleSubmit` |
 
 ### 3.3 API 层：IPC 唯一出入口
 
@@ -243,6 +243,7 @@
 - 编写代码时主动规避常见 Sonar/静态扫描问题：高圈复杂度、重复代码、未使用变量、空 catch/错误被吞、资源未释放、危险反序列化、SQL 注入、路径穿越、宽泛异常处理、重复字面量、无效条件和不安全强转等。
 - 不得用随意禁用 lint、Clippy、Sonar 规则、`allow`/`ignore` 注解或降低编译器严格程度的方式让检查通过。确实需要例外时，范围必须最小，写明中文原因，并在任务记录中说明。
 - 错误信息应帮助定位问题，但不得泄露系统路径、密钥、用户隐私或内部敏感细节给最终用户；日志与用户提示应按用途区分。
+
 
 ## 10. 日志系统规范
 

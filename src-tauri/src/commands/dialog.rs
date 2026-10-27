@@ -82,6 +82,14 @@ pub fn resolve_write(token: &str, requested: &str) -> AppResult<PathBuf> {
     if !requested_path.is_absolute() {
         return Err(AppError::validation("导出路径必须是绝对路径"));
     }
+    // `Path::starts_with` 把 `..` 当普通组件：`/granted/../evil` 也会通过前缀检查。
+    // 导出目标由系统面板产生，合法路径不含 `..`，出现即拒绝。
+    if requested_path
+        .components()
+        .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(AppError::validation("导出路径不能包含 .. 上级目录"));
+    }
     let mut grants = lock_grants()?;
     let grant = grants
         .get(token)
@@ -183,5 +191,13 @@ mod tests {
         let outside = resolve_write(&grant.token, "/tmp/other/a.png").expect_err("越界必须拒绝");
         assert!(matches!(outside, AppError::Validation(_)));
         assert_eq!(resolve_directory(&grant.token).expect("目录校验"), root);
+    }
+
+    #[test]
+    fn directory_grant_rejects_parent_dir_escape() {
+        let grant = issue(std::path::PathBuf::from("/tmp/starris-export"), true).expect("签发");
+        let escaped = resolve_write(&grant.token, "/tmp/starris-export/../evil.txt")
+            .expect_err("`..` 前缀绕过必须拒绝");
+        assert!(matches!(escaped, AppError::Validation(_)));
     }
 }

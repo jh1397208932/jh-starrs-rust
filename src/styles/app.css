@@ -23,10 +23,11 @@ body {
     color var(--dur-2) var(--ease);
 }
 
-/* 焦点环：所有可交互元素统一 ring-ring */
+/* 焦点环已按产品决定全局去除（2026-10-26）：金色 --ring 外框在点击选中时大面积出现；
+   键盘定位依赖光标与既有 hover/选中态，不再画 outline。 */
+:focus,
 :focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: none;
 }
 
 ::selection {
@@ -106,6 +107,27 @@ body {
 .anim-dialog-out {
   animation: starris-dialog-out var(--dur-1) var(--ease);
   transform: translate(-50%, -50%);
+}
+/* 顶部锚定弹层（搜索 / 快速跳转）：只在水平方向居中，垂直停靠在指定 top。
+   基类 transform 是 -50%,-50%；顶部锚定若不覆盖，12% 的 top 会被再抬半个高度，
+   面板输入行会被顶出窗口上沿（2026-10-26 真机现场）。 */
+@keyframes starris-dialog-top-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+.anim-dialog-in.dialog-top {
+  animation: starris-dialog-top-in var(--dur-2) var(--ease-pop);
+  transform: translate(-50%, 0);
+}
+.anim-dialog-out.dialog-top {
+  animation: starris-dialog-out var(--dur-1) var(--ease);
+  transform: translate(-50%, 0);
 }
 .anim-fade-in {
   animation: starris-fade-in var(--dur-2) var(--ease);
@@ -540,10 +562,8 @@ body {
   border-radius: 10px;
 }
 
-.doc-content img.ProseMirror-selectednode {
-  outline: 2px solid var(--ring);
-  outline-offset: 3px;
-}
+/* 选中图片的金色 outline 已按产品决定去除（2026-10-26）：
+   resize wrapper 自带 hover/focus-within 的柔和描边，足够指认选中。 */
 
 .doc-content [data-resize-container] {
   justify-content: center;
@@ -956,11 +976,6 @@ body.starris-block-dragging .doc-editor * {
 .editor-menu-item[data-active="true"] {
   background: var(--accent);
   color: var(--accent-foreground);
-}
-
-.editor-menu-item:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 
 .editor-menu-icon {

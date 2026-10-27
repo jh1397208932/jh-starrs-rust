@@ -45,9 +45,9 @@ export function WindowBar({
   const close = () => runWindowAction(windowActions.close, t("关闭窗口"), onWindowFallback);
 
   const iconBtn =
-    "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-card/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+    "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-card/60 hover:text-foreground";
   const controlBtn =
-    "grid size-7 cursor-default place-items-center rounded-[9px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:bg-card/60";
+    "grid size-7 cursor-default place-items-center rounded-[9px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-card/60";
 
   return (
     <header
@@ -80,7 +80,7 @@ export function WindowBar({
                 type="button"
                 title={tab.title}
                 onClick={() => onSelect(tab.id)}
-                className="flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring"
+                className="flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px]"
               >
                 <NodeKindIcon
                   kind={tab.kind}
@@ -100,7 +100,7 @@ export function WindowBar({
                 aria-label={t("关闭标签页 {title}", { title: tab.title })}
                 onClick={() => onClose(tab.id)}
                 className={cn(
-                  "grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-opacity duration-150 ease-[var(--ease)] hover:bg-foreground/10 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring",
+                  "grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-opacity duration-150 ease-[var(--ease)] hover:bg-foreground/10",
                   active
                     ? "opacity-50 hover:opacity-100"
                     : "opacity-0 group-hover:opacity-60 group-hover:hover:opacity-100 focus-visible:opacity-100",
@@ -124,7 +124,7 @@ export function WindowBar({
               type="button"
               aria-label={t("全局搜索")}
               onClick={onSearch}
-              className="hidden h-[30px] w-[236px] cursor-default items-center gap-2 rounded-full border border-border/60 bg-card/55 px-3 text-left shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-card/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-[900px]:flex"
+              className="hidden h-[30px] w-[236px] cursor-default items-center gap-2 rounded-full border border-border/60 bg-card/55 px-3 text-left shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-card/80 min-[900px]:flex"
             >
               <Search className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="flex-1 truncate text-[12.5px] text-muted-foreground">{t("搜索…")}</span>
@@ -179,7 +179,7 @@ export function WindowBar({
                 aria-label={t("关闭")}
                 onClick={close}
                 className={cn(
-                  "grid size-7 cursor-default place-items-center rounded-[9px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:bg-destructive hover:text-destructive-foreground",
+                  "grid size-7 cursor-default place-items-center rounded-[9px] text-sidebar-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-destructive hover:text-destructive-foreground",
                 )}
               >
                 <X className="size-4" />

@@ -28,7 +28,7 @@ export function ColorSwatches({ colors, mode, activeValue, onPick, onClear }: Co
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onPick(color.value)}
             className={cn(
-              "relative grid size-7 place-items-center rounded-full border text-[13px] font-semibold transition-[box-shadow,transform] duration-150 ease-[var(--ease)] hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              "relative grid size-7 place-items-center rounded-full border text-[13px] font-semibold transition-[box-shadow,transform] duration-150 ease-[var(--ease)] hover:scale-105",
               active
                 ? "border-ring ring-2 ring-ring/35 ring-offset-1 ring-offset-popover"
                 : "border-border hover:border-ring/50",
@@ -57,7 +57,7 @@ export function ColorSwatches({ colors, mode, activeValue, onPick, onClear }: Co
         aria-label={t("清除颜色")}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onClear}
-        className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="grid size-7 place-items-center rounded-full border border-border text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
       >
         <Ban className="size-3.5" />
       </button>

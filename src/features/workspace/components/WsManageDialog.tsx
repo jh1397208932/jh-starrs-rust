@@ -132,7 +132,7 @@ export function WsManageDialog({
                     <button
                       type="button"
                       aria-label={t("{name} 操作", { name: workspace.name })}
-                      className="grid size-7 cursor-default place-items-center rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                      className="grid size-7 cursor-default place-items-center rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground"
                     >
                       <Ellipsis className="size-4" />
                     </button>

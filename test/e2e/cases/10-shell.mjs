@@ -40,7 +40,7 @@ export default {
       ui: "更多 → 设置；弹窗右上关闭",
       clicks: 3,
       dialogs: 1,
-      note: "设置包含 通用/外观/快捷键/存储/云同步/关于。",
+      note: "设置包含 通用/外观/快捷键/存储/关于。",
     },
   ],
   complexity: {
@@ -78,7 +78,6 @@ export default {
     await ctx.expectText("外观");
     await ctx.expectText("快捷键");
     await ctx.expectText("存储");
-    await ctx.expectText("云同步");
     await ctx.expectText("关于");
     await ctx.screenshot("shell-settings");
     await ctx.press("关闭");

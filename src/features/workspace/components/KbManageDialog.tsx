@@ -105,7 +105,7 @@ export function KbManageDialog({
                   type="button"
                   disabled={busyId !== null}
                   onClick={() => void switchTo(kb.id)}
-                  className="flex min-w-0 cursor-default items-center gap-1.5 truncate text-left text-[13px] font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                  className="flex min-w-0 cursor-default items-center gap-1.5 truncate text-left text-[13px] font-medium disabled:opacity-60"
                 >
                   <span className="truncate">{busyId === kb.id ? t("正在切换…") : kb.name}</span>
                   {isCurrent && (
@@ -123,7 +123,7 @@ export function KbManageDialog({
                     <button
                       type="button"
                       aria-label={t("{name} 操作", { name: kb.name })}
-                      className="grid size-7 cursor-default place-items-center justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                      className="grid size-7 cursor-default place-items-center justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground"
                     >
                       <Ellipsis className="size-4" />
                     </button>

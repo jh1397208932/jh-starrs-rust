@@ -1,5 +1,5 @@
 /** 快捷键作用域：应用、编辑器、画板。 */
-export type ShortcutScope = "app" | "editor" | "board";
+export type ShortcutScope = "app" | "editor" | "board" | "mindmap";
 
 /** 可配置动作；id 稳定用于持久化。 */
 export interface ShortcutAction {

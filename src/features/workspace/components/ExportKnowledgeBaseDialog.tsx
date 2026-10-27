@@ -66,7 +66,7 @@ export function ExportKnowledgeBaseDialog({
             <label
               key={id}
               className={cn(
-                "flex cursor-default items-start gap-2.5 rounded-md border p-3 text-left transition-colors duration-150 ease-[var(--ease)] has-disabled:cursor-not-allowed has-disabled:opacity-60 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
+                "flex cursor-default items-start gap-2.5 rounded-md border p-3 text-left transition-colors duration-150 ease-[var(--ease)] has-disabled:cursor-not-allowed has-disabled:opacity-60 has- has- has-",
                 format === id
                   ? "border-primary/45 bg-accent text-accent-foreground"
                   : "border-border bg-card hover:bg-secondary",

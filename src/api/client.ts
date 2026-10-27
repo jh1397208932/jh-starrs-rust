@@ -67,6 +67,24 @@ export async function invokeRawCommand<T>(
   }
 }
 
+/**
+ * 是否为版本冲突。
+ *
+ * 必须看 Rust 原始错误文本：`toErrorMessage` 会按当前语言翻译，
+ * 在英文界面下匹配中文关键词会失效，导致冲突横幅与重载入口不出现。
+ */
+export function isConflictError(error: unknown): boolean {
+  const raw =
+    error instanceof ApiError
+      ? typeof error.cause === "string"
+        ? error.cause
+        : error.cause instanceof Error
+          ? error.cause.message
+          : ""
+      : "";
+  return raw.includes("别处更新") || raw.includes("版本已变化");
+}
+
 /** 从 Rust 错误载荷解析消息：字符串直接使用，其他回退通用文案。 */
 function resolveMessage(_command: string, cause: unknown): string {
   if (typeof cause === "string" && cause.trim()) return cause;

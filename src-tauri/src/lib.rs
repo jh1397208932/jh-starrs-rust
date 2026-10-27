@@ -8,6 +8,7 @@ mod db;
 mod domain;
 mod errors;
 mod logging;
+mod mcp;
 mod menu;
 mod models;
 mod repositories;
@@ -57,6 +58,9 @@ pub fn run() {
             };
             app.set_menu(menu::build(app.handle(), &locale)?)?;
             app.manage(state);
+            bootstrap::spawn_startup(app.handle().clone());
+            // MCP 是客户端能力：进程内起本机 HTTP 服务，随窗口启动；失败只记录状态。
+            services::mcp_host::ensure_started(app.handle());
             services::attachment_maintenance_service::spawn_watchdog(app.handle().clone());
             // 开发/打包启动都把主窗口带到前台，避免后台启动时窗口不可交互。
             if let Some(window) = app.get_webview_window("main") {
@@ -75,6 +79,16 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::ai::ai_permissions_get,
+            commands::ai::ai_permissions_set,
+            commands::ai::ai_inbox_list,
+            commands::ai::ai_inbox_approve,
+            commands::ai::ai_inbox_reject,
+            commands::ai::ai_audit_list,
+            commands::mcp::mcp_status,
+            commands::mcp::mcp_set_enabled,
+            commands::mcp::mcp_regenerate_token,
+            commands::app::app_bootstrap_status,
             commands::app::app_confirm_exit,
             commands::app::app_cancel_exit,
             commands::app::app_print_main_window,
@@ -87,10 +101,6 @@ pub fn run() {
             commands::workspace::workspace_delete,
             commands::backup::backup_workspace,
             commands::backup::restore_workspace,
-            commands::cloud::cloud_sync_status,
-            commands::cloud::cloud_set_sync_folder,
-            commands::cloud::cloud_sync_now,
-            commands::cloud::cloud_restore_latest,
             commands::knowledge_base::kb_list,
             commands::knowledge_base::kb_get,
             commands::knowledge_base::kb_create,
@@ -120,6 +130,11 @@ pub fn run() {
             commands::board::board_load,
             commands::board::board_save,
             commands::board::board_save_viewport,
+            commands::mindmap::mindmap_load,
+            commands::mindmap::mindmap_save,
+            commands::mindmap::mindmap_save_viewport,
+            commands::mindmap::mindmap_export,
+            commands::mindmap::import_mindmaps,
             commands::library::library_list,
             commands::library::library_items,
             commands::library::library_import,

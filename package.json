@@ -18,7 +18,8 @@
     "format": "biome format --write src",
     "package": "tauri build",
     "package:dmg": "tauri build --bundles dmg",
-    "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
+    "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
+    "test:mcp": "node test/mcp/smoke.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -54,6 +55,7 @@
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
+    "@xyflow/react": "^12.12.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lowlight": "3.3.0",

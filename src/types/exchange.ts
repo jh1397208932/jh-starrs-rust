@@ -27,6 +27,19 @@ export interface BoardExportTarget {
   svgPath: string;
 }
 
+/** 整库导出中的思维导图落点；PNG/SVG 由桌面端渲染后写入。 */
+export interface MindmapExportTarget {
+  nodeId: string;
+  title: string;
+  dirPath: string;
+  baseName: string;
+  nativePath: string;
+  xmindPath: string;
+  markdownPath: string;
+  svgPath: string;
+  pngPath: string;
+}
+
 /** 导出结果 */
 export interface ExportResult {
   /** 单文档为文件路径；整库为根目录 */
@@ -36,6 +49,8 @@ export interface ExportResult {
   warnings: string[];
   /** 整库导出中的画板目标；文档导出为空 */
   boards: BoardExportTarget[];
+  /** 整库导出中的思维导图目标；文档导出为空 */
+  mindmaps: MindmapExportTarget[];
 }
 
 /** 用户选择的导出位置与一次性令牌 */

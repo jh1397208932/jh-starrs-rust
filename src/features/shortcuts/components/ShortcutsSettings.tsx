@@ -10,6 +10,7 @@ import {
   BOARD_SHORTCUT_ACTIONS,
   BUILTIN_SHORTCUTS,
   EDITOR_SHORTCUT_ACTIONS,
+  MINDMAP_SHORTCUT_ACTIONS,
 } from "../actions";
 import { useShortcutConfig } from "../ShortcutProvider";
 import {
@@ -25,12 +26,14 @@ const SCOPE_LABELS: Record<ShortcutScope, string> = {
   app: "应用",
   editor: "编辑器",
   board: "画板",
+  mindmap: "思维导图",
 };
 
 const GROUPS: { scope: ShortcutScope; actions: ShortcutAction[]; note: string }[] = [
   { scope: "app", actions: APP_SHORTCUT_ACTIONS, note: "星屿窗口内任意页面生效。" },
   { scope: "editor", actions: EDITOR_SHORTCUT_ACTIONS, note: "文档编辑器获得焦点时生效。" },
   { scope: "board", actions: BOARD_SHORTCUT_ACTIONS, note: "画板获得焦点时生效；原生绘图键位见下方只读区。" },
+  { scope: "mindmap", actions: MINDMAP_SHORTCUT_ACTIONS, note: "思维导图获得焦点时生效。" },
 ];
 
 /** 设置 → 快捷键：总开关、作用域、搜索、录制与冲突提示。 */
@@ -132,7 +135,7 @@ export function ShortcutsSettings() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("搜索快捷键…")}
             aria-label={t("搜索快捷键")}
-            className="h-8 w-[180px] rounded-[8px] border border-input bg-background pr-2.5 pl-8 text-[12px] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="h-8 w-[180px] rounded-[8px] border border-input bg-background pr-2.5 pl-8 text-[12px] outline-none placeholder:text-muted-foreground"
           />
         </div>
         <Button

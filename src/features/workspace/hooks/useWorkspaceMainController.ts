@@ -4,7 +4,13 @@ import { uploadAttachmentToTree } from "@/api/attachment";
 import { loadBoard } from "@/api/board";
 import { toErrorMessage } from "@/api/client";
 import { exportDocument, exportKnowledgeBase, importDocuments, writeExportFile } from "@/api/exchange";
-import { pickAttachmentFiles, pickExportDirectory, pickExportPath } from "@/api/fileDialog";
+import {
+  pickAttachmentFiles,
+  pickExportDirectory,
+  pickExportPath,
+  pickMindmapImportFiles,
+} from "@/api/fileDialog";
+import { importMindmaps, loadMindmap } from "@/api/mindmap";
 import {
   boardFilesToBinary,
   renderBoardPng,
@@ -12,6 +18,7 @@ import {
   textToBase64,
 } from "@/features/board/utils/exportScene";
 import { flushActivePersistence } from "@/features/editor/activeDocument";
+import { renderMindmapSvg, svgToPngBlob } from "@/features/mindmap/utils/exportGraphics";
 import type { SearchMode } from "@/features/search/components/SearchPalette";
 import { useShortcutConfig } from "@/features/shortcuts/ShortcutProvider";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -73,6 +80,70 @@ async function renderBoardExports(result: ExportResult, token: string): Promise<
   }
 }
 
+/** 全部导出后补渲染思维导图 PNG/SVG；单图失败只写警告。 */
+async function renderMindmapExports(result: ExportResult, token: string): Promise<void> {
+  for (const mindmap of result.mindmaps) {
+    try {
+      const data = await loadMindmap(mindmap.nodeId);
+      const images = new Map(data.images.map((file) => [file.id, file]));
+      const style = getComputedStyle(document.documentElement);
+      const theme = {
+        background: style.getPropertyValue("--background").trim() || "#fff",
+        card: style.getPropertyValue("--card").trim() || "#fff",
+        foreground: style.getPropertyValue("--foreground").trim() || "#000",
+        muted: style.getPropertyValue("--muted-foreground").trim() || "#666",
+        border: style.getPropertyValue("--border").trim() || "#ddd",
+        branches: [0, 1, 2, 3, 4, 5].map(
+          (index) => style.getPropertyValue(`--mindmap-branch-${index}`).trim() || "#888",
+        ),
+      };
+      const svg = renderMindmapSvg(data.content, mindmap.title, images, theme);
+      result.files.push(
+        await writeExportFile({
+          token,
+          path: mindmap.svgPath,
+          dataBase64: textToBase64(svg),
+          overwrite: true,
+        }),
+      );
+      const png = await svgToPngBlob(svg);
+      result.files.push(
+        await writeExportFile({
+          token,
+          path: mindmap.pngPath,
+          dataBase64: await blobToBase64(png),
+          overwrite: true,
+        }),
+      );
+      if (data.missingObjectIds.length > 0) {
+        result.warnings.push(
+          t("思维导图「{title}」有 {count} 个图片缺失", {
+            title: mindmap.title,
+            count: data.missingObjectIds.length,
+          }),
+        );
+      }
+    } catch (error) {
+      result.warnings.push(
+        t("思维导图「{title}」导出失败：{error}", {
+          title: mindmap.title,
+          error: toErrorMessage(error),
+        }),
+      );
+    }
+  }
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
 export interface WorkspaceMainControllerOptions {
   store: WorkspaceStore;
   actions: WorkspaceDialogActions;
@@ -118,6 +189,8 @@ export function useWorkspaceMainController({
   const tabSession = useTabSession();
   const { activeTab, openNode } = tabSession;
   const { config: shortcutConfig } = useShortcutConfig();
+  // 稳定引用：refresh 之后从 ref 读最新节点，不必把 store.nodes 塞进依赖。
+  const nodesRef = store.nodesRef;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
   // 每次打开/切换文档都从收起状态开始，避免上一页的信息浮窗跟到新文档。
@@ -325,6 +398,7 @@ export function useWorkspaceMainController({
           token: grant.token,
         });
         await renderBoardExports(result, grant.token);
+        await renderMindmapExports(result, grant.token);
         const warningSuffix =
           result.warnings.length > 0 ? t("，{count} 个警告", { count: result.warnings.length }) : "";
         showToast(
@@ -441,6 +515,37 @@ export function useWorkspaceMainController({
     setActiveTabId: setActiveTabIdGuarded,
   };
 
+  /** 选择并导入思维导图，成功后刷新树并打开第一个节点。 */
+  const importMindmapFiles = useCallback(async () => {
+    const kb = store.currentKb;
+    if (!kb) {
+      showError(t("请先新建知识库"));
+      return;
+    }
+    if (!(await flushActivePersistence())) {
+      showError(t("文档未保存，请重试"));
+      return;
+    }
+    const paths = await pickMindmapImportFiles();
+    if (paths.length === 0) return;
+    try {
+      const result = await importMindmaps({ knowledgeBaseId: kb.id, parentId: null, paths });
+      await store.refresh();
+      const first = result.files.find((file) => file.ok && file.nodeId)?.nodeId;
+      // refresh 后必须读 ref 里的新节点；闭包里的 store.nodes 还是刷新前的快照。
+      const node = first ? findNode(nodesRef.current, first) : null;
+      if (node) guardedTabSession.openNode(node);
+      showToast(
+        result.failed > 0
+          ? t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })
+          : t("已导入 {count} 项", { count: result.imported }),
+        result.failed > 0 ? "destructive" : "primary",
+      );
+    } catch (error) {
+      showError(toErrorMessage(error));
+    }
+  }, [guardedTabSession.openNode, nodesRef, showError, showToast, store.currentKb, store.refresh]);
+
   /** 新建节点弹窗提交：成功后非文件夹自动打开标签 */
   const submitNodeCreate = useCallback(
     async (kind: NodeKind, title: string) => {
@@ -549,6 +654,7 @@ export function useWorkspaceMainController({
     printActiveDocument,
     exportCurrentKnowledgeBase,
     importIntoKnowledgeBase,
+    importMindmapFiles,
     submitNodeCreate,
     submitNodeRename,
     submitNodeDelete,

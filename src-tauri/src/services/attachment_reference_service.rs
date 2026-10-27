@@ -45,6 +45,22 @@ pub fn sync_board_refs(
     sync(connection, node_id, &object_ids, now)
 }
 
+/// 同步思维导图主题图片引用。
+///
+/// @param connection 当前保存事务连接
+/// @param node_id 思维导图节点 id
+/// @param content 最终导图场景
+/// @param now 当前时间（Unix 毫秒）
+pub fn sync_mindmap_refs(
+    connection: &Connection,
+    node_id: &str,
+    content: &crate::models::mindmap::MindmapContent,
+    now: i64,
+) -> AppResult<RefSyncResult> {
+    let object_ids = crate::domain::mindmap::collect_image_object_ids(content);
+    sync(connection, node_id, &object_ids, now)
+}
+
 /// 附件节点创建时登记唯一对象引用。
 pub fn register_node_object(
     connection: &Connection,

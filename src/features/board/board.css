@@ -138,8 +138,7 @@
 }
 
 .board-excalidraw .excalidraw :focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: none;
 }
 
 /* 画板页头与画布之间不画厚分隔；只保留页头的发丝线。 */

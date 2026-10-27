@@ -35,7 +35,7 @@ export interface DocPageBarProps {
 }
 
 const ICON_BTN =
-  "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground";
 
 /**
  * 文档页头顶行：左侧面包屑（知识库 › 文档），右侧文档操作。
@@ -64,7 +64,7 @@ export function DocPageBar({
             <button
               type="button"
               onClick={onOpenKb}
-              className="max-w-[180px] cursor-default truncate rounded-[8px] px-1.5 py-1 text-[12.5px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="max-w-[180px] cursor-default truncate rounded-[8px] px-1.5 py-1 text-[12.5px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-foreground"
             >
               {kbName}
             </button>

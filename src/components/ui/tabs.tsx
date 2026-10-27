@@ -18,7 +18,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "-mb-px cursor-default border-b-2 border-transparent px-[15px] pt-2 pb-[9px] text-[13.5px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring data-[state=active]:border-primary data-[state=active]:font-[650] data-[state=active]:text-primary",
+        "-mb-px cursor-default border-b-2 border-transparent px-[15px] pt-2 pb-[9px] text-[13.5px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:text-foreground data-[state=active]:border-primary data-[state=active]:font-[650] data-[state=active]:text-primary",
         className,
       )}
       {...props}

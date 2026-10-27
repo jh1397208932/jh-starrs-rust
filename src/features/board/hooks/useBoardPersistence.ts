@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadBoard, saveBoard, saveBoardViewport } from "@/api/board";
-import { toErrorMessage } from "@/api/client";
+import { isConflictError, toErrorMessage } from "@/api/client";
 import { t } from "@/lib/i18n";
 import type { BoardAppState, BoardFile, BoardSaveStatus, BoardViewport } from "@/types/board";
 
@@ -216,7 +216,8 @@ export function useBoardPersistence({
         if (loadTokenRef.current !== token) return false;
         dirtyRef.current = true;
         const message = toErrorMessage(error);
-        if (message.includes("画板已在别处更新")) {
+        // 冲突按原始错误文本判定，英文界面下也走同一条路径。
+        if (isConflictError(error)) {
           updateStatus("conflict");
           onErrorRef.current(t(message));
           return false;

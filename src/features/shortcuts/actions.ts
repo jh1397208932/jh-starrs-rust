@@ -54,10 +54,33 @@ export const BOARD_SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "board.text", label: "文本工具", scope: "board", defaultBinding: "T" },
 ];
 
+/** 思维导图自有快捷键。 */
+export const MINDMAP_SHORTCUT_ACTIONS: ShortcutAction[] = [
+  { id: "mindmap.addChild", label: "新建子主题", scope: "mindmap", defaultBinding: "Tab" },
+  { id: "mindmap.addSibling", label: "新建同级主题", scope: "mindmap", defaultBinding: "Enter" },
+  { id: "mindmap.edit", label: "编辑主题", scope: "mindmap", defaultBinding: "F2" },
+  { id: "mindmap.delete", label: "删除主题", scope: "mindmap", defaultBinding: "Delete" },
+  { id: "mindmap.toggle", label: "折叠或展开", scope: "mindmap", defaultBinding: "Space" },
+  { id: "mindmap.undo", label: "撤销", scope: "mindmap", defaultBinding: "Mod+Z" },
+  { id: "mindmap.redo", label: "重做", scope: "mindmap", defaultBinding: "Mod+Shift+Z" },
+  { id: "mindmap.search", label: "搜索主题", scope: "mindmap", defaultBinding: "F" },
+  { id: "mindmap.duplicate", label: "复制主题", scope: "mindmap", defaultBinding: "Mod+D" },
+  { id: "mindmap.moveUp", label: "上移主题", scope: "mindmap", defaultBinding: "Mod+ArrowUp" },
+  { id: "mindmap.moveDown", label: "下移主题", scope: "mindmap", defaultBinding: "Mod+ArrowDown" },
+  { id: "mindmap.promote", label: "升级主题", scope: "mindmap", defaultBinding: "Mod+ArrowLeft" },
+  { id: "mindmap.demote", label: "降级主题", scope: "mindmap", defaultBinding: "Mod+ArrowRight" },
+  { id: "mindmap.navigateUp", label: "向上选择主题", scope: "mindmap", defaultBinding: "ArrowUp" },
+  { id: "mindmap.navigateDown", label: "向下选择主题", scope: "mindmap", defaultBinding: "ArrowDown" },
+  { id: "mindmap.navigateLeft", label: "向左选择主题", scope: "mindmap", defaultBinding: "ArrowLeft" },
+  { id: "mindmap.navigateRight", label: "向右选择主题", scope: "mindmap", defaultBinding: "ArrowRight" },
+  { id: "mindmap.save", label: "保存思维导图", scope: "mindmap", defaultBinding: "Mod+S" },
+];
+
 export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
   ...APP_SHORTCUT_ACTIONS,
   ...EDITOR_SHORTCUT_ACTIONS,
   ...BOARD_SHORTCUT_ACTIONS,
+  ...MINDMAP_SHORTCUT_ACTIONS,
 ];
 
 /** 第三方/未接管的只读内置快捷键；仅展示。 */
@@ -79,7 +102,7 @@ export function createDefaultShortcutConfig(): ShortcutConfig {
   return {
     version: 1,
     enabled: true,
-    scopes: { app: true, editor: true, board: true },
+    scopes: { app: true, editor: true, board: true, mindmap: true },
     bindings,
   };
 }
@@ -98,6 +121,7 @@ export function normalizeShortcutConfig(raw: unknown): ShortcutConfig {
       app: typeof scopes?.app === "boolean" ? scopes.app : true,
       editor: typeof scopes?.editor === "boolean" ? scopes.editor : true,
       board: typeof scopes?.board === "boolean" ? scopes.board : true,
+      mindmap: typeof scopes?.mindmap === "boolean" ? scopes.mindmap : true,
     },
     bindings: { ...defaults.bindings },
   };

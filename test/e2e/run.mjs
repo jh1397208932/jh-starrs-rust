@@ -9,7 +9,11 @@ import { NativeAX, TestContext, sleep } from "./harness.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
 const ARGS = process.argv.slice(2);
-const FILTER = ARGS.find((arg) => arg.startsWith("--case="))?.slice("--case=".length);
+const FILTER_RAW = ARGS.find((arg) => arg.startsWith("--case="))?.slice("--case=".length);
+const FILTERS = (FILTER_RAW ?? "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 const KEEP = ARGS.includes("--keep");
 const CASE_TIMEOUT_MS = 180_000;
 const APP_START_TIMEOUT_MS = 180_000;
@@ -59,6 +63,25 @@ function compileHelper() {
   }
 }
 
+/**
+ * 关闭上一用例可能遗留的系统面板。
+ *
+ * 2026-10-26 现场：文件面板的「前往文件夹」sheet 未被确认时，模态循环让 AX 整树为空。
+ * 只在本机确实检测到系统面板（AX 树里出现「取消/Cancel」）时才按 Escape——
+ * 无差别连按 Escape 会把排队按键送进下一个用例刚打开的弹窗，导致弹窗中途关闭。
+ */
+async function dismissStrayPanels(context) {
+  try {
+    const tree = context.ax._call(["tree"]);
+    const dump = JSON.stringify(tree);
+    if (!/取消|Cancel/.test(dump)) return;
+    context.ax.key("escape");
+    await sleep(260);
+  } catch {
+    // 面板探测失败时不做任何按键，避免污染后续用例
+  }
+}
+
 const APP_BUNDLE = path.join(RUN_DIR, "Starris E2E.app");
 const APP_EXECUTABLE = path.join(APP_BUNDLE, "Contents/MacOS/starris-e2e");
 const APP_BINARY = path.join(ROOT, "src-tauri/target/debug/starris-rust");
@@ -96,6 +119,7 @@ function prepareAppBundle() {
     `#!/bin/zsh
 export STARRIS_HOME=${shellQuote(HOME)}
 export STARRIS_LOG_LEVEL=info
+export STARRIS_MCP_PORT=47822
 exec ${shellQuote(APP_BINARY)} >> ${shellQuote(APP_LOG)} 2>&1
 `,
   );
@@ -296,10 +320,12 @@ function renderReport(results, meta) {
   return { passed, failed };
 }
 
-const selected = cases.filter((item) =>
-  FILTER ? `${item.id} ${item.title} ${item.area}`.toLowerCase().includes(FILTER.toLowerCase()) : true,
-);
-if (selected.length === 0) failSetup(`没有匹配 --case=${FILTER} 的用例`);
+const selected = cases.filter((item) => {
+  if (FILTERS.length === 0) return true;
+  const haystack = `${item.id} ${item.title} ${item.area}`.toLowerCase();
+  return FILTERS.some((filter) => haystack.includes(filter.toLowerCase()));
+});
+if (selected.length === 0) failSetup(`没有匹配 --case=${FILTER_RAW} 的用例`);
 
 noOtherApp();
 compileHelper();
@@ -342,6 +368,7 @@ try {
     process.stdout.write(`\n[RUN] ${caseMeta.id} ${caseMeta.title}\n`);
     try {
       await context.activate();
+      await dismissStrayPanels(context);
       await runWithTimeout(caseMeta.run(context), CASE_TIMEOUT_MS, caseMeta.title);
       console.log(`  PASS ${caseMeta.id}`);
     } catch (error) {
@@ -391,7 +418,7 @@ const meta = {
   workspace: WORKSPACE,
   appLog: APP_LOG,
   helper: HELPER_BIN,
-  filter: FILTER ?? null,
+  filter: FILTER_RAW ?? null,
   keptRunning: KEEP,
 };
 const summary = renderReport(results, meta);

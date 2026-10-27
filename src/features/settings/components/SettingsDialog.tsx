@@ -1,4 +1,4 @@
-import { Check, Cloud, Database, Info, Keyboard, Palette, Settings2, SlidersHorizontal } from "lucide-react";
+import { Bot, Check, Database, Info, Keyboard, Palette, Settings2, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,17 +10,16 @@ import { ShortcutsSettings } from "@/features/shortcuts/components/ShortcutsSett
 import { LOCALE_LABELS, type Locale, useI18n } from "@/lib/i18n";
 import { THEME_LABELS, THEME_NAMES, type ThemeMode, type ThemeName, useTheme } from "@/lib/theme";
 import { CAPTION_CLS, cn } from "@/lib/utils";
-import type { Workspace } from "@/types/notebook";
-import { CloudSyncSection } from "./CloudSyncSection";
+import { AiSection } from "./AiSection";
 
-type SettingsTab = "general" | "appearance" | "shortcuts" | "storage" | "cloud" | "about";
+type SettingsTab = "general" | "appearance" | "shortcuts" | "ai" | "storage" | "about";
 
 const NAV: { id: SettingsTab; label: string; icon: typeof Info }[] = [
   { id: "general", label: "通用", icon: SlidersHorizontal },
   { id: "appearance", label: "外观", icon: Palette },
   { id: "shortcuts", label: "快捷键", icon: Keyboard },
+  { id: "ai", label: "AI 协作", icon: Bot },
   { id: "storage", label: "存储", icon: Database },
-  { id: "cloud", label: "云同步", icon: Cloud },
   { id: "about", label: "关于", icon: Info },
 ];
 
@@ -29,8 +28,6 @@ export interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   /** 当前工作区根目录；空串表示未连接 */
   workspacePath: string;
-  /** 从云盘恢复后切换工作区 */
-  onWorkspaceRestored: (workspace: Workspace) => Promise<void> | void;
 }
 
 /** 主题预览卡内的示意条 */
@@ -43,7 +40,7 @@ function ModeCard({ target, label }: { target: ThemeMode; label: string }) {
       aria-pressed={active}
       onClick={() => setMode(target)}
       className={cn(
-        "flex cursor-default items-center gap-3 rounded-[12px] border p-3 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex cursor-default items-center gap-3 rounded-[12px] border p-3 text-left transition-colors duration-150 ease-[var(--ease)]",
         active ? "border-primary/35 bg-accent/45 shadow-sm" : "border-border/70 hover:bg-accent/30",
       )}
     >
@@ -87,7 +84,7 @@ function AppearanceSection() {
               aria-pressed={active}
               onClick={() => setTheme(themeName as ThemeName)}
               className={cn(
-                "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)]",
                 active
                   ? "border-primary/40 bg-accent/40 shadow-sm ring-1 ring-primary/15"
                   : "border-border/70 hover:bg-accent/30",
@@ -170,17 +167,18 @@ function AboutSection() {
           </div>
         ))}
       </dl>
+      <h4 className="mt-5 text-[13px] font-semibold">{t("第三方开源组件")}</h4>
+      <ul className={`${CAPTION_CLS} mt-1 space-y-1 text-muted-foreground`}>
+        <li>React Flow · MIT · https://github.com/xyflow/xyflow</li>
+        <li>Excalidraw · MIT · https://github.com/excalidraw/excalidraw</li>
+        <li>Tiptap · MIT · https://github.com/ueberdosis/tiptap</li>
+      </ul>
     </div>
   );
 }
 
 /** 弹窗 C · 设置：720×480 模态，左导航 160px + 右内容区 */
-export function SettingsDialog({
-  open,
-  onOpenChange,
-  workspacePath,
-  onWorkspaceRestored,
-}: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDialogProps) {
   const [tab, setTab] = useState<SettingsTab>("appearance");
   const { t } = useI18n();
 
@@ -205,7 +203,7 @@ export function SettingsDialog({
                 aria-selected={tab === id}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] transition-colors duration-150 ease-[var(--ease)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                  "flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] transition-colors duration-150 ease-[var(--ease)]",
                   tab === id
                     ? "bg-accent/80 font-semibold text-accent-foreground shadow-sm"
                     : "text-sidebar-foreground hover:bg-accent/35",
@@ -222,8 +220,8 @@ export function SettingsDialog({
             {tab === "general" && <GeneralSection />}
             {tab === "appearance" && <AppearanceSection />}
             {tab === "shortcuts" && <ShortcutsSettings />}
+            {tab === "ai" && <AiSection />}
             {tab === "storage" && <StorageSection workspacePath={workspacePath} />}
-            {tab === "cloud" && <CloudSyncSection onRestored={onWorkspaceRestored} />}
             {tab === "about" && <AboutSection />}
 
             <div className="mt-6 flex justify-end">

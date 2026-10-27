@@ -72,3 +72,21 @@ export async function confirmAppExit(): Promise<void> {
 export async function cancelAppExit(): Promise<void> {
   await invokeCommand("app_cancel_exit");
 }
+
+/**
+ * 等待后端按登记表完成启动初始化。
+ *
+ * @param timeoutMs 最长等待毫秒数（默认 30s）
+ * @returns 初始化错误文案；成功返回 null
+ * @example await waitForAppBootstrap()
+ */
+export async function waitForAppBootstrap(timeoutMs = 30_000): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const status = await invokeCommand<{ ready: boolean; error: string | null }>("app_bootstrap_status");
+    if (status.error) return status.error;
+    if (status.ready) return null;
+    if (Date.now() > deadline) return "启动初始化超时，请重启应用";
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+}

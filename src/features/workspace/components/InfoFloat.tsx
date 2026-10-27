@@ -43,7 +43,7 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
               aria-label={t("收起信息浮窗")}
               aria-expanded={true}
               onClick={onToggle}
-              className="absolute top-1/2 -left-3.5 z-30 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-border/70 bg-card/75 text-muted-foreground shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="absolute top-1/2 -left-3.5 z-30 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-border/70 bg-card/75 text-muted-foreground shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground"
             >
               <ChevronRight className="size-3.5" />
             </button>
@@ -57,7 +57,7 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
           aria-expanded={false}
           onClick={onToggle}
           className={cn(
-            "absolute top-1/2 right-2 z-20 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-border/70 bg-card/75 text-muted-foreground shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+            "absolute top-1/2 right-2 z-20 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-border/70 bg-card/75 text-muted-foreground shadow-sm backdrop-blur-md transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground",
           )}
         >
           <ChevronLeft className="size-3.5" />

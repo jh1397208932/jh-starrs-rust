@@ -4,7 +4,8 @@
 //! 避免“一条语句取两次锁”导致静默死锁（见项目记忆）。
 
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 
@@ -23,14 +24,18 @@ pub struct WorkspaceSession {
 }
 
 impl WorkspaceSession {
-    /// 打开工作区库并迁移；目录缺少数据库时返回无效工作区错误。
+    /// 打开工作区并保证结构就绪；目录缺少数据库时返回无效工作区错误。
+    ///
+    /// 连接本身是轻量的；只有检测到版本落后或核心表缺失时，才按统一登记表执行
+    /// 初始化任务（启动时已初始化过的库在这里只是一次目录查询）。
     pub fn open(record: &WorkspaceRecord) -> AppResult<Self> {
         let root = PathBuf::from(&record.path);
         if !db::paths::is_valid_workspace(&root) {
             return Err(AppError::InvalidWorkspace);
         }
         let db_path = db::paths::workspace_db_path(&root);
-        let connection = db::workspace::open(&db_path)?;
+        let mut connection = db::workspace::open_connection(&db_path)?;
+        db::workspace::ensure_initialized(&mut connection, &db_path)?;
         Ok(Self {
             workspace_id: record.id.clone(),
             root_path: root,
@@ -40,12 +45,43 @@ impl WorkspaceSession {
     }
 }
 
+/// 启动初始化进度：前端据此决定何时发起工作区查询。
+#[derive(Default)]
+pub struct BootstrapGate {
+    ready: AtomicBool,
+    error: Mutex<Option<String>>,
+}
+
+impl BootstrapGate {
+    /// 标记启动初始化完成。
+    pub fn mark_ready(&self) {
+        self.ready.store(true, Ordering::SeqCst);
+    }
+
+    /// 标记启动初始化失败（前端展示可读错误）。
+    pub fn mark_failed(&self, message: impl Into<String>) {
+        if let Ok(mut guard) = self.error.lock() {
+            *guard = Some(message.into());
+        }
+        self.ready.store(true, Ordering::SeqCst);
+    }
+
+    /// 当前状态：ready 与错误信息（错误存在时 ready 也为 true，便于前端停止等待）。
+    pub fn status(&self) -> (bool, Option<String>) {
+        let ready = self.ready.load(Ordering::SeqCst);
+        let error = self.error.lock().ok().and_then(|guard| guard.clone());
+        (ready, error)
+    }
+}
+
 /// Tauri 托管的应用状态。
 pub struct AppState {
     /// 全局库连接；只在工作区管理与记忆配置时短暂加锁。
     pub global: Mutex<Connection>,
     /// 当前工作区连接；None 表示首次引导阶段或最后一个工作区已删除。
     pub workspace: Mutex<Option<WorkspaceSession>>,
+    /// 启动初始化进度门。
+    pub bootstrap: Arc<BootstrapGate>,
 }
 
 impl AppState {
@@ -54,6 +90,7 @@ impl AppState {
         Self {
             global: Mutex::new(global),
             workspace: Mutex::new(workspace),
+            bootstrap: Arc::new(BootstrapGate::default()),
         }
     }
 

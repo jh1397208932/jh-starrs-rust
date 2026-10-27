@@ -16,6 +16,8 @@ export function useWorkspaceShortcuts(handlers: AppShortcutHandlers, config: Sho
   return (event: KeyboardEvent) => {
     if (!config.enabled || !config.scopes.app) return;
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
+    // 弹窗打开时不执行应用级动作：例如在「重命名」输入框里按 ⌘N 不应再叠一个新建弹窗。
+    if (document.querySelector('[role="dialog"]')) return;
     const binding = bindingFromEvent(event);
     if (!binding) return;
     const action = APP_SHORTCUT_ACTIONS.find(

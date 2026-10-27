@@ -51,7 +51,7 @@ export function ShortcutRecorder({ onCommit, onCancel }: ShortcutRecorderProps) 
       type="button"
       ref={ref}
       aria-label={t("正在录制快捷键")}
-      className="flex h-7 min-w-[148px] cursor-default items-center justify-center rounded-[7px] border border-dashed border-primary/60 bg-accent/40 px-2 text-[11.5px] text-accent-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="flex h-7 min-w-[148px] cursor-default items-center justify-center rounded-[7px] border border-dashed border-primary/60 bg-accent/40 px-2 text-[11.5px] text-accent-foreground outline-none"
     >
       {t("请按组合键…")} <span className="ml-2 text-muted-foreground">{t("Esc 取消")}</span>
     </button>

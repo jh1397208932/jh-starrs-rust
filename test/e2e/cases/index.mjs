@@ -6,6 +6,9 @@ import tableFlow from "./22-table-flow.mjs";
 import network from "./23-network.mjs";
 import nodeTrash from "./24-node-trash.mjs";
 import attachmentTree from "./25-attachment-tree.mjs";
+import mindmap from "./26-mindmap.mjs";
+import aiCollab from "./27-ai-collab.mjs";
+import mcpHost from "./28-mcp-host.mjs";
 import doc from "./30-doc.mjs";
 import board from "./40-board.mjs";
 import settings from "./50-settings.mjs";
@@ -14,7 +17,6 @@ import importExport from "./70-import-export.mjs";
 import shortcuts from "./80-shortcuts.mjs";
 import shortcutSettings from "./85-shortcut-settings.mjs";
 import shortcutScopes from "./87-shortcut-scopes.mjs";
-import cloudSync from "./88-cloud-sync.mjs";
 import workspaceKb from "./90-workspace-kb.mjs";
 import backup from "./91-backup.mjs";
 import template from "./92-template.mjs";
@@ -36,6 +38,9 @@ export default [
   network,
   nodeTrash,
   attachmentTree,
+  mindmap,
+  aiCollab,
+  mcpHost,
   doc,
   board,
   settings,
@@ -44,7 +49,6 @@ export default [
   shortcuts,
   shortcutSettings,
   shortcutScopes,
-  cloudSync,
   workspaceKb,
   backup,
   template,
