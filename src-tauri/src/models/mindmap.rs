@@ -29,9 +29,12 @@ pub enum MindmapStructure {
 }
 
 /// 画布主题（分支配色方案）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MindmapTheme {
+    /// 缤纷（默认）：导图内部使用独立的高饱和分支色，不随应用主题变化。
+    #[default]
+    Vivid,
     /// 跟随 Starris 当前主题。
     Auto,
     /// 暖屿分支色。
@@ -327,7 +330,7 @@ pub fn default_content() -> MindmapContent {
         sheet: MindmapSheet {
             id: format!("sheet-{}", crate::utils::new_id()),
             structure: MindmapStructure::Balanced,
-            theme: MindmapTheme::Auto,
+            theme: MindmapTheme::Vivid,
             branch_coloring: MindmapBranchColoring::default(),
             edge_style: MindmapEdgeStyle::default(),
             background: MindmapBackground::default(),

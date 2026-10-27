@@ -32,6 +32,7 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
   const [selectionSet, setSelectionSet] = useState<string[]>([]);
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<string | null>(null);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -50,7 +51,7 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
       sheet: {
         id: "sheet-loading",
         structure: "balanced",
-        theme: "auto",
+        theme: "vivid",
         root: { id: "topic-loading", text: "", children: [] },
       },
     },
@@ -64,9 +65,13 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
     if (!persistence.initial) return;
     // 只依赖稳定的 reset 回调与 initial 状态：history 对象每次渲染都是新的，
     // 把它放进依赖曾导致 reset → setState → 重渲染 → 再 reset 的无限循环白屏。
-    resetContent({ ...persistence.initial.content, schemaVersion: 2 });
-    setSelectedId(persistence.initial.content.sheet.root.id);
+    const loaded = persistence.initial.content;
+    const theme = loaded.sheet.theme === "auto" ? "vivid" : loaded.sheet.theme;
+    resetContent({ ...loaded, schemaVersion: 2, sheet: { ...loaded.sheet, theme } });
+    setSelectedId(loaded.sheet.root.id);
     setSelectionSet([]);
+    // 打开导图只选中根主题（键盘可直接操作），详情浮层等用户点选后再出现。
+    setInspectorOpen(false);
     clearMeasureCache();
   }, [persistence.initial, resetContent]);
 
@@ -142,6 +147,8 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
     setSelectedRelationshipId,
     selectedFrameId,
     setSelectedFrameId,
+    inspectorOpen,
+    setInspectorOpen,
     editingId,
     setEditingId,
     searchOpen,
@@ -169,3 +176,5 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
     onToggleCollapsed,
   };
 }
+
+export type MindmapViewState = ReturnType<typeof useMindmapViewState>;

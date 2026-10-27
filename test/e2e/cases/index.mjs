@@ -7,6 +7,7 @@ import network from "./23-network.mjs";
 import nodeTrash from "./24-node-trash.mjs";
 import attachmentTree from "./25-attachment-tree.mjs";
 import mindmap from "./26-mindmap.mjs";
+import mindmapVisual from "./26b-mindmap-visual.mjs";
 import aiCollab from "./27-ai-collab.mjs";
 import mcpHost from "./28-mcp-host.mjs";
 import doc from "./30-doc.mjs";
@@ -39,6 +40,7 @@ export default [
   nodeTrash,
   attachmentTree,
   mindmap,
+  mindmapVisual,
   aiCollab,
   mcpHost,
   doc,

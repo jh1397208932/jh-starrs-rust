@@ -144,7 +144,7 @@ export function MindmapPageBar({
     { id: "fishbone", label: "鱼骨图" },
   ];
   const THEMES: { id: MindmapTheme; label: string }[] = [
-    { id: "auto", label: "跟随应用主题" },
+    { id: "vivid", label: "缤纷（默认）" },
     { id: "warm", label: "暖屿" },
     { id: "sea", label: "雾海" },
     { id: "mono", label: "墨线" },

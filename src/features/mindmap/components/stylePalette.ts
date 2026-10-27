@@ -1,20 +1,42 @@
 /**
- * 思维导图 v2 样式常量：12 色板（与 Rust domain STYLE_PALETTE 一致）与标记分组。
+ * 思维导图样式常量：32 色板（与 Rust domain STYLE_PALETTE 一致）与标记分组。
+ *
+ * 色板独立于全局主题；保留旧 12 色的四个值以兼容历史数据，并补足 8×4 网格。
  */
 
 export const STYLE_PALETTE = [
+  "#e05f5f",
+  "#e8873a",
+  "#d9a72e",
+  "#c9a227",
+  "#7fa63c",
+  "#4fae6b",
+  "#3d8a7e",
+  "#2f9e9a",
+  "#5b8fb5",
+  "#4f7fd9",
+  "#7c82b8",
+  "#8e5fb5",
+  "#b45aa8",
+  "#d0647f",
+  "#c0554e",
+  "#a87a4a",
+  "#8a6a4f",
+  "#2f5c51",
+  "#5c8f83",
+  "#81b29a",
+  "#b08a55",
+  "#7fb0d6",
+  "#64906f",
+  "#626663",
   "#e07a5f",
   "#f2b84b",
   "#f2cc8f",
-  "#81b29a",
-  "#5c8f83",
-  "#3d8a7e",
-  "#5b8fb5",
-  "#7c82b8",
   "#b06ab3",
-  "#c0554e",
-  "#b08a55",
-  "#2f5c51",
+  "#6b8e23",
+  "#4682b4",
+  "#cd5c5c",
+  "#9370db",
 ] as const;
 
 export interface MindmapMarkerOption {

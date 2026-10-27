@@ -857,6 +857,8 @@ export const enUS: Record<string, string> = {
   思维导图未找到: "Mind map not found",
   "思维导图（左右）": "Mind Map (Balanced)",
   大纲视图: "Outline",
+  "缤纷（默认）": "Vivid (default)",
+  主题详情: "Topic details",
   "AI 协作": "AI collaboration",
   "通过客户端内置的 MCP 服务把工作区开放给 AI；写入按作用域权限执行，高风险操作必须人工确认。":
     "Expose this workspace to AI through the client-hosted MCP server. Writes follow per-scope permissions; high-risk actions always need human confirmation.",
@@ -909,6 +911,9 @@ export const enUS: Record<string, string> = {
   按结构重新排列: "Rearrange by structure",
   "修改尚未保存，导出已取消": "Changes are not saved yet; export cancelled",
   "加载失败 · 重试": "Load failed · retry",
+  打开链接: "Open link",
+  暂无备注: "No notes",
+  收起详情: "Hide details",
   更换图片: "Replace image",
   "当前内容尚未保存，请先处理保存失败": "Current content is not saved yet; resolve the save failure first",
   "逻辑图（向左）": "Logic Chart (Left)",

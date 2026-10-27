@@ -68,6 +68,7 @@ export default {
 
     await ctx.press("存储", { role: "AXRadioButton" });
     await ctx.expectText("上传", { timeout: 8000 });
+    await ctx.screenshot("settings-storage");
     await ctx.press("上传");
     await ctx.nativePath(ctx.fixture("pixel.png"), { button: "Open" });
     ctx.metrics.dialogs += 1;
@@ -86,6 +87,11 @@ export default {
     ctx.metrics.dialogs += 1;
 
     const boardTitle = ctx.shared.boardTitle;
+    if (!boardTitle) {
+      // 独立运行（未先跑 40-board）时没有画板可插，跳过插入段以验证设置页本身。
+      ctx.log("跳过附件插入画板：本运行未创建画板");
+      return;
+    }
     await ctx.press(boardTitle);
     await ctx.expectText("插入附件", { timeout: 8000 });
     await ctx.press("插入附件");

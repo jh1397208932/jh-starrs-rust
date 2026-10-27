@@ -13,33 +13,37 @@
   display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
+  /* 默认「缤纷」：分支色定义在画布与大纲的共同父层，大纲色点才能继承。 */
+  --mindmap-branch-0: #e05f5f;
+  --mindmap-branch-1: #e8873a;
+  --mindmap-branch-2: #3d8a7e;
+  --mindmap-branch-3: #5b8fb5;
+  --mindmap-branch-4: #9a6ab8;
+  --mindmap-branch-5: #d0647f;
 }
 
 .mindmap-canvas {
   min-width: 0;
   flex: 1;
   --mindmap-grid: color-mix(in srgb, var(--border) 72%, transparent);
-  --mindmap-branch-0: var(--primary);
-  --mindmap-branch-1: var(--logo-c);
-  --mindmap-branch-2: var(--logo-a);
-  --mindmap-branch-3: var(--glow-a);
-  --mindmap-branch-4: var(--accent-foreground);
-  --mindmap-branch-5: var(--muted-foreground);
 }
 
-.mindmap-canvas[data-theme="warm"] {
+/* 旧数据里的 auto 主题也走鲜艳分支色：导图内部不再继承全局低饱和色。 */
+
+.mindmap-workspace[data-theme="warm"] {
   --mindmap-branch-0: var(--logo-c);
   --mindmap-branch-1: var(--primary);
   --mindmap-branch-2: var(--logo-b);
 }
 
-.mindmap-canvas[data-theme="sea"] {
+.mindmap-workspace[data-theme="sea"] {
   --mindmap-branch-0: var(--logo-a);
   --mindmap-branch-1: var(--glow-a);
   --mindmap-branch-2: var(--primary);
 }
 
-.mindmap-canvas[data-theme="mono"] {
+.mindmap-workspace[data-theme="mono"] {
   --mindmap-branch-0: var(--muted-foreground);
   --mindmap-branch-1: var(--border-strong);
   --mindmap-branch-2: var(--accent-foreground);
@@ -48,46 +52,75 @@
 .mindmap-node {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1.5px solid color-mix(in srgb, var(--branch-color, var(--border)) 62%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--branch-color, var(--card)) 16%, var(--card));
   color: var(--foreground);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    0 1px 2px rgb(20 18 12 / 0.05),
+    0 6px 18px color-mix(in srgb, var(--branch-color, var(--border)) 10%, transparent);
   font-size: 14px;
   line-height: 20px;
   overflow: visible;
+  transition:
+    border-color 140ms var(--ease),
+    background-color 140ms var(--ease),
+    box-shadow 160ms var(--ease);
 }
 
-.mindmap-node[data-depth="1"] {
-  background: color-mix(in srgb, var(--card) 88%, var(--accent));
+/* 入场动画只挂在首次出现的节点上，平移重挂不重播 */
+.mindmap-node-enter .mindmap-node {
+  animation: mindmap-node-in 180ms var(--ease) both;
+}
+
+.mindmap-node:hover {
+  box-shadow:
+    0 2px 4px rgb(20 18 12 / 0.06),
+    0 10px 24px color-mix(in srgb, var(--branch-color, var(--border)) 18%, transparent);
 }
 
 .mindmap-node--root {
-  border-color: var(--input);
-  border-radius: var(--radius);
-  background: var(--card);
-  box-shadow: var(--shadow-md);
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--branch-color, var(--primary)) 78%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--branch-color, var(--card)) 20%, var(--card));
+  box-shadow:
+    0 2px 6px rgb(20 18 12 / 0.07),
+    0 12px 30px color-mix(in srgb, var(--branch-color, var(--border)) 20%, transparent);
   font-weight: 700;
 }
 
 .mindmap-node.is-selected {
-  border-color: var(--ring);
+  border-color: var(--branch-color, var(--ring));
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--ring) 28%, transparent),
-    var(--shadow-sm);
+    0 0 0 3px color-mix(in srgb, var(--branch-color, var(--ring)) 30%, transparent),
+    0 10px 26px color-mix(in srgb, var(--branch-color, var(--border)) 20%, transparent);
 }
 
 .mindmap-node.is-editing {
-  border-color: var(--ring);
+  border-color: var(--branch-color, var(--ring));
   background: var(--card);
+}
+
+@keyframes mindmap-node-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .mindmap-node__content,
 .mindmap-node__editor {
   width: 100%;
-  min-height: 100%;
   border: 0;
   background: transparent;
   color: inherit;
@@ -101,10 +134,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 3px;
   text-align: center;
   cursor: default;
+}
+
+.mindmap-node__title {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .mindmap-node__text {
@@ -112,22 +153,32 @@
   overflow-wrap: anywhere;
 }
 
+.mindmap-node__text.is-empty {
+  color: var(--muted-foreground);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.mindmap-node__meta {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
 .mindmap-node__image {
   max-width: 100%;
   max-height: 120px;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   object-fit: contain;
 }
 
-.mindmap-node__badges {
-  display: flex;
-  gap: 4px;
-  color: var(--muted-foreground);
-}
-
 .mindmap-node__editor {
+  min-height: 100%;
   resize: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   text-align: center;
 }
 
@@ -145,9 +196,9 @@
   font: 600 10px var(--font-mono);
 }
 
-.mindmap-canvas[data-structure="left"] .mindmap-node__collapse {
+.mindmap-node[data-side="left"] .mindmap-node__collapse {
   right: auto;
-  left: -9px;
+  left: -10px;
 }
 
 .react-flow__handle {
@@ -198,29 +249,75 @@
 .mindmap-floating-toolbar {
   position: absolute;
   bottom: 20px;
-  left: 20px;
+  left: 50%;
+  /* 居中用 translate 属性，避免入场动画的 transform 终帧覆盖位移 */
+  translate: -50% 0;
   z-index: 8;
   display: flex;
   gap: 2px;
   padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
   box-shadow: var(--shadow-md);
+  backdrop-filter: blur(14px);
+  transition: translate 200ms var(--ease);
+  animation: mindmap-panel-in 180ms var(--ease) both;
 }
 
+/* 详情浮层打开时把工具栏让到左侧，避免最右侧按钮被面板盖住 */
+.mindmap-workspace:has(.mindmap-inspector) .mindmap-floating-toolbar {
+  translate: calc(-50% - 156px) 0;
+}
+
+/* 检查器：右侧浮动窄卡，不再挤占画布宽度 */
 .mindmap-inspector {
-  width: 280px;
-  padding: 14px;
-  border-left: 1px solid var(--border);
-  background: var(--card);
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 11;
+  width: 300px;
+  max-width: calc(100% - 24px);
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 93%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px);
   overflow-y: auto;
+  animation: mindmap-panel-in 180ms var(--ease) both;
 }
 
-.mindmap-inspector h2 {
-  margin-bottom: 12px;
+.mindmap-inspector__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mindmap-inspector__header h2 {
+  flex: 1;
+  margin: 0;
   font-size: 14px;
   font-weight: 650;
+}
+
+.mindmap-inspector__close {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.mindmap-inspector__close:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .mindmap-inspector label {
@@ -250,13 +347,17 @@
 .mindmap-search {
   position: absolute;
   top: 14px;
-  right: 18px;
+  left: 50%;
+  /* 同样用 translate 属性居中，入场动画不得顶掉水平位移 */
+  translate: -50% 0;
   z-index: 12;
-  width: min(360px, calc(100% - 36px));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--popover);
+  width: min(380px, calc(100% - 36px));
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--popover) 94%, transparent);
   box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  animation: mindmap-panel-in 160ms var(--ease) both;
 }
 
 .mindmap-search input {
@@ -296,36 +397,40 @@
   .react-flow__node {
     transition: none;
   }
+
+  .mindmap-node-enter .mindmap-node {
+    animation: none;
+  }
 }
 
 /* ===== v2 · 结构/主题扩展 ===== */
 
-.mindmap-canvas[data-theme="rose"] {
+.mindmap-workspace[data-theme="rose"] {
   --mindmap-branch-0: #b06ab3;
   --mindmap-branch-1: #e07a8f;
   --mindmap-branch-2: #7c82b8;
 }
 
-.mindmap-canvas[data-theme="forest"] {
+.mindmap-workspace[data-theme="forest"] {
   --mindmap-branch-0: #3d8a7e;
   --mindmap-branch-1: #81b29a;
   --mindmap-branch-2: #64906f;
 }
 
-.mindmap-canvas[data-theme="sky"] {
+.mindmap-workspace[data-theme="sky"] {
   --mindmap-branch-0: #5b8fb5;
   --mindmap-branch-1: #7fb0d6;
   --mindmap-branch-2: #8fb8c9;
 }
 
-.mindmap-canvas[data-theme="plum"] {
+.mindmap-workspace[data-theme="plum"] {
   --mindmap-branch-0: #7c5cb8;
   --mindmap-branch-1: #b06ab3;
   --mindmap-branch-2: #5b8fb5;
 }
 
 /* 彩虹分支：任意主题下都按色相环取色 */
-.mindmap-canvas[data-coloring="rainbow"] {
+.mindmap-workspace[data-coloring="rainbow"] {
   --mindmap-branch-0: #e05f5f;
   --mindmap-branch-1: #e0a23f;
   --mindmap-branch-2: #8fbf4d;
@@ -345,13 +450,20 @@
 }
 
 .mindmap-node[data-shape="underline"] {
-  border: 0;
-  border-bottom: 2px solid var(--mindmap-underline, var(--border-strong));
-  border-radius: 0;
+  /* 下划线只去掉上/左/右描边，保留内容与浅色底，避免“变空”。 */
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-left-color: transparent;
+  border-bottom-width: 3px;
+  border-radius: 8px 8px 4px 4px;
+  background: color-mix(in srgb, var(--branch-color, var(--card)) 7%, var(--card));
+  box-shadow: none;
 }
 
-.mindmap-node[data-shape="underline"].is-styled {
-  border-bottom-color: var(--mindmap-underline, var(--border-strong));
+.mindmap-node[data-shape="underline"].is-selected {
+  border-top-color: color-mix(in srgb, var(--branch-color) 35%, transparent);
+  border-right-color: color-mix(in srgb, var(--branch-color) 35%, transparent);
+  border-left-color: color-mix(in srgb, var(--branch-color) 35%, transparent);
 }
 
 .mindmap-node[data-width="thin"] {
@@ -365,6 +477,28 @@
 .mindmap-node__marker {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.mindmap-node__marker--priority {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  color: #fff;
+  font: 700 9.5px var(--font-mono);
+}
+
+.mindmap-node__marker--progress {
+  padding: 0 4px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  font: 700 9px var(--font-mono);
+}
+
+.mindmap-node__marker--text {
+  font: 600 10px var(--font-ui);
 }
 
 .mindmap-node__marker-text {
@@ -376,11 +510,114 @@
 }
 
 .mindmap-node__chip {
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid color-mix(in srgb, var(--branch-color, var(--border)) 30%, var(--border));
   border-radius: 999px;
   padding: 0 5px;
-  font: 500 10px var(--font-mono);
-  line-height: 14px;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  color: var(--muted-foreground);
+  font: 500 10px var(--font-ui);
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.mindmap-node__chip--label {
+  color: color-mix(in srgb, var(--branch-color, var(--primary)) 72%, var(--foreground));
+}
+
+.mindmap-node__chip--link {
+  cursor: pointer;
+}
+
+.mindmap-node__chip--link:hover {
+  border-color: var(--branch-color, var(--primary));
+  color: var(--foreground);
+}
+
+/* 悬停卡：节点下方浮出备注、标签、链接与标记中文名 */
+.mindmap-node__hovercard {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  z-index: 40;
+  width: max-content;
+  min-width: 160px;
+  max-width: 280px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--branch-color, var(--border)) 32%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--popover) 96%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+  animation: mindmap-hover-in 140ms var(--ease) both;
+}
+
+.mindmap-node__hovercard-note {
+  margin: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  color: var(--popover-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mindmap-node__hovercard-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mindmap-node__hovercard-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--popover-foreground);
+  font-size: 11px;
+}
+
+.mindmap-node__hovercard-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--branch-color, var(--primary)) 80%, var(--foreground));
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mindmap-node__hovercard-link:hover {
+  text-decoration: underline;
+}
+
+.mindmap-node__hovercard-empty {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+@keyframes mindmap-hover-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 /* ===== v2 · 外框与概要 ===== */
@@ -506,7 +743,7 @@
 
 .mindmap-swatch-grid {
   display: grid;
-  grid-template-columns: repeat(6, 20px);
+  grid-template-columns: repeat(8, 20px);
   gap: 6px;
 }
 
@@ -639,79 +876,117 @@
 }
 
 .mindmap-node__number {
-  position: absolute;
-  top: -8px;
-  left: -8px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  flex: none;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
   border-radius: 999px;
-  background: var(--mindmap-branch-0);
-  color: var(--primary-foreground);
-  font: 700 10px var(--font-mono);
-  line-height: 18px;
+  background: color-mix(in srgb, var(--branch-color, var(--primary)) 16%, var(--card));
+  color: color-mix(in srgb, var(--branch-color, var(--primary)) 82%, var(--foreground));
+  font: 700 9.5px var(--font-mono);
+  line-height: 17px;
   text-align: center;
 }
 
 .mindmap-node__stickers {
-  position: absolute;
-  top: -9px;
-  right: -6px;
-  display: flex;
-  gap: 2px;
+  display: inline-flex;
+  gap: 3px;
 }
 
 .mindmap-node__sticker {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentcolor 12%, var(--card));
+  font-size: 10px;
   line-height: 1;
-  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.12));
 }
 
+/* 大纲：左侧浮动卡片，不改变画布尺寸 */
 .mindmap-outline {
-  width: 300px;
-  border-left: 1px solid var(--border);
-  background: var(--card);
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  bottom: 12px;
+  z-index: 10;
   display: flex;
+  width: 300px;
+  max-width: calc(100% - 24px);
   flex-direction: column;
   min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+  animation: mindmap-panel-in 180ms var(--ease) both;
 }
 
 .mindmap-outline__header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.mindmap-outline__count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font: 600 10.5px var(--font-mono);
+  line-height: 18px;
 }
 
 .mindmap-outline__list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0 12px;
+  padding: 6px 6px 12px;
 }
 
 .mindmap-outline__row {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 26px;
+  min-height: 28px;
   padding-right: 6px;
+  border-radius: 8px;
   cursor: default;
 }
 
 .mindmap-outline__row:hover {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
 .mindmap-outline__row.is-selected {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
   color: var(--accent-foreground);
+}
+
+.mindmap-outline__branch {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--outline-branch, var(--border-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--outline-branch, var(--border)) 18%, transparent);
+}
+
+.mindmap-outline__branch.is-root {
+  width: 8px;
+  height: 8px;
+  background: var(--mindmap-branch-0);
 }
 
 .mindmap-outline__toggle {
   display: inline-flex;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -738,6 +1013,25 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12.5px;
+  text-align: left;
+}
+
+.mindmap-outline__empty {
+  padding: 18px 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+
+@keyframes mindmap-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .mindmap-outline__input {

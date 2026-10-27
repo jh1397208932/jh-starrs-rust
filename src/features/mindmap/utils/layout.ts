@@ -62,8 +62,11 @@ export function layoutMindmap(content: MindmapContent): MindmapLayout {
     const sides = splitSides(sized.children, structure);
     const rightHeight = sides.right.reduce((total, child) => total + child.subtreeHeight + V_GAP, -V_GAP);
     const leftHeight = sides.left.reduce((total, child) => total + child.subtreeHeight + V_GAP, -V_GAP);
-    const rootY = Math.max(0, Math.max(rightHeight, leftHeight) / 2 - sized.height / 2);
-    const rootAt = placeWith(sized.topic, 0, rootY);
+    // 根主题中心固定在原点：内容增宽/增高时中心不漂移（问题 15）。
+    // 单根时 y = -高/2；有子树时根中心与较重一侧的中心对齐（空侧高度按 0 计）。
+    const sideHeight = Math.max(rightHeight, leftHeight, 0);
+    const rootY = sideHeight / 2 - sized.height / 2;
+    const rootAt = placeWith(sized.topic, -sized.width / 2, rootY);
     nodes.push(node(sized, rootAt.x, rootAt.y, 0, "root", 0));
     if (structure === "logic-left") {
       layoutHorizontal(sized, rootAt.x, rootAt.y, "left", sized.children, 1, nodes, edges);

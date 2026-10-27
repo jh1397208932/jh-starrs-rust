@@ -358,6 +358,17 @@ case "doubleclick":
     activate(app, axApp)
     click(at: CGPoint(x: x, y: y), count: 2)
     json(["ok": true, "action": "doubleclick", "x": x, "y": y])
+case "hover":
+    guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { failure("hover 需要 x y") }
+    activate(app, axApp)
+    let source = CGEventSource(stateID: .combinedSessionState)
+    // 先到目标附近再移到中心：WebKit 依赖连续 mouseMoved 触发 mouseenter。
+    CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x - 40, y: y - 40), mouseButton: .left)?
+        .post(tap: .cghidEventTap)
+    usleep(80_000)
+    CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)?
+        .post(tap: .cghidEventTap)
+    json(["ok": true, "action": "hover", "x": x, "y": y])
 case "scroll":
     guard args.count >= 5, let x = Double(args[2]), let y = Double(args[3]), let dy = Int32(args[4]) else {
         failure("scroll 需要 x y dy")

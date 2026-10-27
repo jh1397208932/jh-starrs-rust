@@ -1,32 +1,14 @@
-import { lazy, Suspense } from "react";
-import { EmptyState } from "@/components/ui/empty-state";
 import { useI18n } from "@/lib/i18n";
 import { useMindmapCommands } from "../hooks/useMindmapCommands";
 import { useMindmapExport } from "../hooks/useMindmapExport";
 import { useMindmapGroupActions } from "../hooks/useMindmapGroupActions";
 import { useMindmapKeymap } from "../hooks/useMindmapKeymap";
 import { useMindmapViewState } from "../hooks/useMindmapViewState";
-import { uploadTopicImage } from "../utils/topicImage";
-import {
-  attachFreeTopic,
-  clearTopicPositions,
-  expandAncestors,
-  parentIdOf,
-  reorderSibling,
-  setAllCollapsed,
-  setTopicPos,
-} from "../utils/tree";
+import { clearTopicPositions, parentIdOf, setAllCollapsed } from "../utils/tree";
 import { MindmapLoadShell } from "./MindmapLoadShell";
-import { MindmapOutlinePanel } from "./MindmapOutlinePanel";
 import { MindmapPageBarContainer } from "./MindmapPageBarContainer";
-import { MindmapSearch } from "./MindmapSidePanels";
-import { MindmapSidePanelsHost } from "./MindmapSidePanelsHost";
-import { MindmapToolbar } from "./MindmapToolbar";
+import { MindmapWorkspace } from "./MindmapWorkspace";
 import "../mindmap.css";
-
-const MindmapCanvas = lazy(() =>
-  import("./MindmapCanvas").then((module) => ({ default: module.MindmapCanvas })),
-);
 
 interface MindmapViewProps {
   nodeId: string;
@@ -38,7 +20,7 @@ interface MindmapViewProps {
   onExported?: (message: string) => void;
 }
 
-/** 思维导图节点页：组合页头、React Flow 画布、工具栏与右侧面板。 */
+/** 思维导图节点页：页头、加载状态与工作区装配。 */
 export function MindmapView({
   nodeId,
   title,
@@ -54,35 +36,18 @@ export function MindmapView({
     selectedId,
     setSelectedId,
     setSelectionSet,
-    selectedRelationshipId,
-    setSelectedRelationshipId,
-    selectedFrameId,
-    setSelectedFrameId,
-    editingId,
     setEditingId,
-    searchOpen,
     setSearchOpen,
     outlineOpen,
     setOutlineOpen,
-    search,
-    setSearch,
-    focusTarget,
     focusTopic,
     history,
     persistence,
     images,
     layout,
     commit,
-    selectedTopic,
-    selectedRelationship,
-    selectedFrame,
-    selectedFrameColor,
     groupSelection,
-    results,
     clearSelection,
-    onCommitText,
-    onMoveUnder,
-    onToggleCollapsed,
   } = state;
 
   const exportHandler = useMindmapExport({
@@ -176,121 +141,18 @@ export function MindmapView({
         onResetLayout={() => commit(clearTopicPositions(history.content))}
         onExport={(format) => void exportHandler.exportMindmapFile(format)}
       />
-      <div className="mindmap-workspace">
-        <Suspense fallback={<EmptyState glyph="✦" title={t("画布加载中…")} />}>
-          <MindmapCanvas
-            nodeId={nodeId}
-            content={history.content}
-            layout={layout}
-            selectedId={selectedId}
-            selectedFrameId={selectedFrameId}
-            selectedRelationshipId={selectedRelationshipId}
-            editingId={editingId}
-            images={images}
-            focusTarget={focusTarget}
-            initialViewport={persistence.initial.viewport}
-            onSelectionChange={(id, additive) => {
-              clearSelection();
-              setSelectedId(id);
-              if (!id) {
-                setSelectionSet([]);
-                return;
-              }
-              setSelectionSet((current) =>
-                additive ? (current.includes(id) ? current : [...current, id]) : [id],
-              );
-            }}
-            onRelationshipSelect={(id) => {
-              setSelectedId(null);
-              setSelectedFrameId(null);
-              setSelectedRelationshipId(id);
-            }}
-            onFrameSelect={(id) => {
-              setSelectedId(null);
-              setSelectedRelationshipId(null);
-              setSelectedFrameId(id);
-            }}
-            onStartEdit={setEditingId}
-            onCommitText={onCommitText}
-            onToggleCollapsed={onToggleCollapsed}
-            onMoveUnder={onMoveUnder}
-            onSetPosition={(id, pos) => commit(setTopicPos(history.content, id, pos))}
-            onReorder={(id, index) => commit(reorderSibling(history.content, id, index))}
-            onFreeAttach={(freeId, targetId) => commit(attachFreeTopic(history.content, freeId, targetId))}
-            onViewportChange={persistence.onViewportChange}
-          />
-        </Suspense>
-        <MindmapToolbar
-          selectedId={selectedId}
-          rootId={history.content.sheet.root.id}
-          collapsed={Boolean(selectedTopic?.collapsed)}
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          groupSize={groupSelection.length}
-          onAddChild={() => handlers["mindmap.addChild"]()}
-          onAddSibling={() => handlers["mindmap.addSibling"]()}
-          onToggle={() => handlers["mindmap.toggle"]()}
-          onUndo={() => handlers["mindmap.undo"]()}
-          onRedo={() => handlers["mindmap.redo"]()}
-          onDelete={() => handlers["mindmap.delete"]()}
-          onAddBoundary={addBoundaryForSelection}
-          onAddSummary={addSummaryForSelection}
-          onAddRelation={addRelationForSelection}
-          onAddFreeTopic={addFreeTopicAtCanvas}
-        />
-        <MindmapSidePanelsHost
-          content={history.content}
-          relationship={selectedRelationship}
-          frame={selectedFrame}
-          frameColor={selectedFrameColor}
-          topic={selectedTopic}
-          commit={commit}
-          clearSelection={clearSelection}
-          onUploadImage={(file) => {
-            if (!selectedTopic) return;
-            void uploadTopicImage({
-              nodeId,
-              topicId: selectedTopic.id,
-              file,
-              images,
-              content: history.content,
-              commit,
-              onError,
-            });
-          }}
-        />
-        {outlineOpen ? (
-          <MindmapOutlinePanel
-            content={history.content}
-            selectedId={selectedId}
-            onClose={() => setOutlineOpen(false)}
-            onSelectionChange={(id) => {
-              clearSelection();
-              setSelectedId(id);
-              setSelectionSet([id]);
-            }}
-            focusTopic={focusTopic}
-            commit={commit}
-            setSelectedId={setSelectedId}
-            setEditingId={setEditingId}
-          />
-        ) : null}
-        {searchOpen ? (
-          <MindmapSearch
-            value={search}
-            results={results}
-            onChange={setSearch}
-            onClose={() => setSearchOpen(false)}
-            onPick={(id) => {
-              commit(expandAncestors(history.content, id));
-              setSelectedId(id);
-              setSelectionSet([id]);
-              focusTopic(id);
-              setSearchOpen(false);
-            }}
-          />
-        ) : null}
-      </div>
+      <MindmapWorkspace
+        nodeId={nodeId}
+        state={state}
+        onError={onError}
+        handlers={handlers}
+        groupActions={{
+          addBoundaryForSelection,
+          addSummaryForSelection,
+          addRelationForSelection,
+          addFreeTopicAtCanvas,
+        }}
+      />
     </div>
   );
 }

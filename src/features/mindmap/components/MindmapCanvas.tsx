@@ -1,17 +1,15 @@
 import {
-  applyNodeChanges,
   Background,
   BackgroundVariant,
   type Edge,
   type Node,
-  type NodeChange,
   ReactFlow,
   ReactFlowProvider,
+  useNodesState,
   useReactFlow,
-  type XYPosition,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MindmapContent, MindmapEdgeStyle, MindmapFile, MindmapLayout } from "@/types/mindmap";
 import { useMindmapFlowViewport } from "../hooks/useMindmapFlowViewport";
 import { resolveDrop } from "../utils/dropTarget";
@@ -84,11 +82,76 @@ function MindmapCanvasInner({
   onViewportChange,
   initialViewport,
 }: MindmapCanvasProps) {
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [dragPositions, setDragPositions] = useState<Map<string, XYPosition>>(new Map());
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // 拖拽位置交给 React Flow 自己维护：每帧不再重建整批节点，保证 60fps。
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  // 入场动画只给首次出现的节点：onlyRenderVisibleElements 会在平移时重挂节点，
+  // 若动画常驻会在每次重挂时重播，看起来像闪烁。
+  const enteredIdsRef = useRef<Set<string>>(new Set());
+  const enterTimerRef = useRef<number | null>(null);
   const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
   const edgeStyle: MindmapEdgeStyle = content.sheet.edgeStyle ?? "curve";
   const background = content.sheet.background ?? "dots";
+
+  // 回调放进 ref：节点只在布局/选择/编辑变化时重建，父组件保存状态刷新不触发重建。
+  const callbacksRef = useRef({ onCommitText, onStartEdit, onToggleCollapsed });
+  callbacksRef.current = { onCommitText, onStartEdit, onToggleCollapsed };
+  const stableCallbacks = useMemo(
+    () => ({
+      onCommitText: (id: string, text: string) => callbacksRef.current.onCommitText(id, text),
+      onStartEdit: (id: string) => callbacksRef.current.onStartEdit(id),
+      onToggleCollapsed: (id: string) => callbacksRef.current.onToggleCollapsed(id),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    const built = buildFlowNodes({
+      layout,
+      selectedId,
+      selectedFrameId,
+      editingId,
+      images,
+      ...stableCallbacks,
+    });
+    const fresh = new Set<string>();
+    for (const node of built) {
+      if (enteredIdsRef.current.has(node.id)) continue;
+      enteredIdsRef.current.add(node.id);
+      fresh.add(node.id);
+    }
+    setNodes(
+      fresh.size > 0
+        ? built.map((node) => (fresh.has(node.id) ? { ...node, className: "mindmap-node-enter" } : node))
+        : built,
+    );
+    if (fresh.size > 0) {
+      if (enterTimerRef.current !== null) window.clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = window.setTimeout(() => {
+        enterTimerRef.current = null;
+        setNodes((current) =>
+          current.some((node) => node.className)
+            ? current.map((node) => (node.className ? { ...node, className: undefined } : node))
+            : current,
+        );
+      }, 240);
+    }
+  }, [editingId, images, layout, selectedFrameId, selectedId, setNodes, stableCallbacks]);
+
+  useEffect(
+    () => () => {
+      if (enterTimerRef.current !== null) window.clearTimeout(enterTimerRef.current);
+    },
+    [],
+  );
+
+  const { markUserMoved } = useMindmapFlowViewport({
+    nodeId,
+    initialViewport,
+    focusTarget,
+    layoutNodes: layout.nodes,
+    containerRef,
+  });
 
   const edges = useMemo<Edge[]>(() => {
     const treeEdges: Edge[] = layout.edges.map((edge) => ({
@@ -125,59 +188,8 @@ function MindmapCanvasInner({
     return [...treeEdges, ...relationEdges];
   }, [content.relationships, edgeStyle, layout.edges, layout.relationships, selectedRelationshipId]);
 
-  useEffect(() => {
-    setNodes(
-      buildFlowNodes({
-        layout,
-        dragPositions,
-        selectedId,
-        selectedFrameId,
-        editingId,
-        images,
-        onCommitText,
-        onStartEdit,
-        onToggleCollapsed,
-      }),
-    );
-  }, [
-    dragPositions,
-    editingId,
-    images,
-    layout,
-    onCommitText,
-    onStartEdit,
-    onToggleCollapsed,
-    selectedFrameId,
-    selectedId,
-  ]);
-
-  useMindmapFlowViewport({
-    nodeId,
-    initialViewport,
-    focusTarget,
-    layoutNodes: layout.nodes,
-  });
-
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((current) =>
-      applyNodeChanges(
-        changes.filter((change) => change.type !== "position"),
-        current,
-      ),
-    );
-  }, []);
-
-  const onNodeDrag = useCallback((_: MouseEvent | TouchEvent, node: Node) => {
-    setDragPositions((current) => new Map(current).set(node.id, node.position));
-  }, []);
-
   const onNodeDragStop = useCallback(
     (_: MouseEvent | TouchEvent, dragged: Node) => {
-      setDragPositions((current) => {
-        const next = new Map(current);
-        next.delete(dragged.id);
-        return next;
-      });
       const decision = resolveDrop({
         content,
         layoutNodes: layout.nodes,
@@ -196,20 +208,17 @@ function MindmapCanvasInner({
   );
 
   return (
-    <div
-      className="mindmap-canvas"
-      data-structure={content.sheet.structure}
-      data-theme={content.sheet.theme}
-      data-coloring={content.sheet.branchColoring ?? "theme"}
-    >
+    <div ref={containerRef} className="mindmap-canvas" data-structure={content.sheet.structure}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
-        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
+        onMoveStart={(event) => {
+          if (event) markUserMoved();
+        }}
         onNodeClick={(event, node) => {
           onRelationshipSelect(null);
           if (node.type === "mindmapFrame") {
@@ -224,7 +233,6 @@ function MindmapCanvasInner({
         onPaneClick={(event) => {
           onRelationshipSelect(null);
           onStartEdit(null);
-          // 外框/括号不接收指针事件：用流坐标做几何命中，点空白处也能选中它们。
           const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
           const frameId = hitTestFrame(layout, point);
           if (frameId) {
@@ -241,6 +249,7 @@ function MindmapCanvasInner({
           }
         }}
         onMoveEnd={(_, viewport) => onViewportChange(viewport)}
+        onlyRenderVisibleElements
         minZoom={0.12}
         maxZoom={3}
         nodesConnectable={false}

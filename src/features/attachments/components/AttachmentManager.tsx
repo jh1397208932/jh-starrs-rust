@@ -1,4 +1,4 @@
-import { FileText, Loader2, RefreshCw, Upload, X } from "lucide-react";
+import { ChevronDown, FileText, Loader2, RefreshCw, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { useI18n } from "@/lib/i18n";
@@ -107,18 +107,27 @@ export function AttachmentManager() {
         <label htmlFor="attachment-ttl" className="sr-only">
           {t("上传保留时间")}
         </label>
-        <select
-          id="attachment-ttl"
-          value={manager.ttlSeconds ?? ""}
-          disabled={manager.disabled}
-          onChange={(event) => manager.setTtlSeconds(event.target.value ? Number(event.target.value) : null)}
-          className="h-[31px] rounded-[8px] border border-input bg-background px-2 text-[12px] text-foreground outline-none"
-        >
-          <option value="">{t("永久保留")}</option>
-          <option value="86400">{t("保留 1 天")}</option>
-          <option value="604800">{t("保留 7 天")}</option>
-          <option value="2592000">{t("保留 30 天")}</option>
-        </select>
+        {/* 全代码库唯一的原生 select：必须去掉 macOS 系统外观并自绘箭头，否则与输入框风格不符 */}
+        <div className="relative">
+          <select
+            id="attachment-ttl"
+            value={manager.ttlSeconds ?? ""}
+            disabled={manager.disabled}
+            onChange={(event) =>
+              manager.setTtlSeconds(event.target.value ? Number(event.target.value) : null)
+            }
+            className="h-[31px] w-[104px] appearance-none rounded-[8px] border border-input bg-background pl-2 pr-7 text-[12px] text-foreground outline-none disabled:opacity-60"
+          >
+            <option value="">{t("永久保留")}</option>
+            <option value="86400">{t("保留 1 天")}</option>
+            <option value="604800">{t("保留 7 天")}</option>
+            <option value="2592000">{t("保留 30 天")}</option>
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </div>
         <Button size="sm" onClick={manager.upload} disabled={manager.disabled}>
           {busy === "upload" ? (
             <Loader2 className="size-3.5 animate-spin" />

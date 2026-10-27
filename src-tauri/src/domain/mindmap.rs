@@ -41,10 +41,12 @@ const MAX_STICKERS: usize = 8;
 /// 手动坐标的绝对值上限（防止异常数据把视口撑爆）。
 const MAX_POSITION: f64 = 1_000_000.0;
 
-/// 样式可用色板：12 色，深浅两套主题下都保证 ≥3:1 非文本对比。
+/// 样式可用色板：32 色（含旧 12 色中的 4 个历史值，保证旧导图可保存）；与前端一致。
 pub const STYLE_PALETTE: &[&str] = &[
-    "#e07a5f", "#f2b84b", "#f2cc8f", "#81b29a", "#5c8f83", "#3d8a7e", "#5b8fb5", "#7c82b8",
-    "#b06ab3", "#c0554e", "#b08a55", "#2f5c51",
+    "#e05f5f", "#e8873a", "#d9a72e", "#c9a227", "#7fa63c", "#4fae6b", "#3d8a7e", "#2f9e9a",
+    "#5b8fb5", "#4f7fd9", "#7c82b8", "#8e5fb5", "#b45aa8", "#d0647f", "#c0554e", "#a87a4a",
+    "#8a6a4f", "#2f5c51", "#5c8f83", "#81b29a", "#b08a55", "#7fb0d6", "#64906f", "#626663",
+    "#e07a5f", "#f2b84b", "#f2cc8f", "#b06ab3", "#6b8e23", "#4682b4", "#cd5c5c", "#9370db",
 ];
 
 /// 内置贴纸集合。
@@ -505,7 +507,7 @@ mod tests {
     fn accepts_v2_style_markers_and_groups() {
         let mut styled = topic("topic-styled", Vec::new());
         styled.style = Some(MindmapTopicStyle {
-            border_color: "#e07a5f".to_string(),
+            border_color: STYLE_PALETTE[0].to_string(),
             border_shape: crate::models::mindmap::MindmapBorderShape::Pill,
             fill: "auto".to_string(),
             border_width: crate::models::mindmap::MindmapBorderWidth::Bold,

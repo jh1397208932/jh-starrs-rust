@@ -42,6 +42,12 @@ function fontLicenseGuard(): Plugin {
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss(), fontLicenseGuard()],
 
+  // 预构建 Tauri 包：懒加载的插件包若在运行中被首次发现，Vite 会整页 reload，
+  // 冲掉标签页等内存状态（真机 E2E 因此在新建思维导图后丢失标签页）。
+  optimizeDeps: {
+    include: ["@tauri-apps/api", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-opener"],
+  },
+
   // 路径别名 @/ → src/（与 tsconfig paths 同步，AGENTS.md §3.7）
   resolve: {
     alias: {

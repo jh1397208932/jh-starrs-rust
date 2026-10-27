@@ -17,7 +17,7 @@ export type MindmapStructure =
   | "fishbone";
 
 /** 画布主题（分支配色方案）。 */
-export type MindmapTheme = "auto" | "warm" | "sea" | "mono" | "rose" | "forest" | "sky" | "plum";
+export type MindmapTheme = "vivid" | "auto" | "warm" | "sea" | "mono" | "rose" | "forest" | "sky" | "plum";
 
 /** 分支配色模式。 */
 export type MindmapBranchColoring = "theme" | "rainbow";
@@ -36,10 +36,10 @@ export type MindmapBorderWidth = "thin" | "normal" | "bold";
 
 /** 主题样式覆盖；缺省字段回落到主题/分支默认。 */
 export interface MindmapTopicStyle {
-  /** `auto`（跟随分支色）或 12 色板十六进制 */
+  /** `auto`（跟随分支色）或 32 色板十六进制 */
   borderColor?: string;
   borderShape?: MindmapBorderShape;
-  /** `auto` / `none` / 12 色板十六进制（低透明度渲染） */
+  /** `auto` / `none` / 32 色板十六进制（低透明度渲染） */
   fill?: string;
   borderWidth?: MindmapBorderWidth;
 }

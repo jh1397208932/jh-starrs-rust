@@ -2,14 +2,13 @@
  * 由布局结果构建 React Flow 节点数组：外框/概要图层在前，主题节点在后。
  */
 
-import type { Node, XYPosition } from "@xyflow/react";
+import type { Node } from "@xyflow/react";
 import type { MindmapFile, MindmapLayout } from "@/types/mindmap";
 import type { MindmapFrameData } from "../components/MindmapFrameNode";
 import type { MindmapNodeData } from "../components/MindmapTopicNode";
 
 export interface FlowNodesParams {
   layout: MindmapLayout;
-  dragPositions: Map<string, XYPosition>;
   selectedId: string | null;
   selectedFrameId?: string | null;
   editingId: string | null;
@@ -23,7 +22,6 @@ export interface FlowNodesParams {
 export function buildFlowNodes(params: FlowNodesParams): Node[] {
   const {
     layout,
-    dragPositions,
     selectedId,
     selectedFrameId,
     editingId,
@@ -78,23 +76,22 @@ export function buildFlowNodes(params: FlowNodesParams): Node[] {
   const next = [
     ...frameNodes,
     ...layout.nodes.map((node) => {
-      const position = dragPositions.get(node.id) ?? { x: node.x, y: node.y };
+      const position = { x: node.x, y: node.y };
       const data: MindmapNodeData = {
         topic: node.topic,
         isRoot: node.depth === 0,
+        depth: node.depth,
         side: node.side,
         editing: editingId === node.id,
         hiddenCount: node.hiddenCount,
         branchIndex: node.branchIndex,
         number: node.number,
         free: node.free ?? false,
-        stickers: node.topic.stickers ?? [],
         imageUrl: node.topic.image ? images.get(node.topic.image.objectId)?.dataUrl : undefined,
         onCommitText,
         onStartEdit: (id) => onStartEdit(id),
         onToggleCollapsed,
       };
-      const dragging = dragPositions.has(node.id);
       return {
         id: node.id,
         type: "mindmapTopic",
@@ -104,12 +101,7 @@ export function buildFlowNodes(params: FlowNodesParams): Node[] {
         selected: selectedId === node.id,
         draggable: true,
         data,
-        // 拖动中必须关掉过渡，否则节点会以 220ms 延迟追着指针走。
-        style: {
-          width: node.width,
-          height: node.height,
-          transition: dragging ? "none" : "transform 220ms var(--ease-pop)",
-        },
+        style: { width: node.width, height: node.height },
       } satisfies Node;
     }),
   ];

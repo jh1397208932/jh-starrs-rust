@@ -74,6 +74,9 @@ export function useMindmapPersistence({
     const requestVersion = reloadToken;
     setStatusValue("loading");
     setLoadError(null);
+    // 换图/重载必须先清空：否则画布会用上一张图的 content 与视口初始化，
+    // 且视口只初始化一次，新场景加载完也不会再纠正。
+    setInitial(null);
     void loadMindmap(nodeId)
       .then((result) => {
         if (cancelled || requestVersion !== reloadToken) return;

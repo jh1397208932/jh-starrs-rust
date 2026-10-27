@@ -9,6 +9,7 @@ import { resolveDrop } from "@/features/mindmap/utils/dropTarget";
 import { hitTestFrame } from "@/features/mindmap/utils/frameHit";
 import { pickDirectionalNode } from "@/features/mindmap/utils/navigation";
 import { renderMindmapSvg } from "@/features/mindmap/utils/exportGraphics";
+import { safeExternalUrl } from "@/api/urlSafety";
 import {
   addBoundary,
   addFreeTopic,
@@ -83,6 +84,58 @@ let content = baseContent();
 let layout = layoutMindmap(content);
 assert(layout.nodes.length === 4, `balanced 布局节点数=4（实际 ${layout.nodes.length}）`);
 
+const rootNode = layout.nodes.find((node) => node.id === "topic-root0001");
+assert(Boolean(rootNode && Math.abs(rootNode.x + rootNode.width / 2) < 1), "根主题以原点为中心");
+
+// 单根主题：水平与垂直中心都在原点，内容变化不会把中心推走
+const singleRoot = layoutMindmap({
+  ...baseContent(),
+  sheet: { ...baseContent().sheet, root: topic("topic-root0001", "根") },
+}).nodes.find((node) => node.id === "topic-root0001");
+assert(
+  Boolean(
+    singleRoot &&
+      Math.abs(singleRoot.x + singleRoot.width / 2) < 1 &&
+      Math.abs(singleRoot.y + singleRoot.height / 2) < 1,
+  ),
+  "单根主题中心在原点",
+);
+
+// 1.1) 元信息计入宽高：chip 溢出曾把标题顶出节点并被画布裁掉
+const decoratedRoot = layoutMindmap(
+  updateTopic(baseContent(), "topic-root0001", (item) => ({
+    ...item,
+    labels: ["灵感", "待办", "复盘"],
+    note: "备注",
+    link: "https://example.com",
+    markers: ["priority-1", "week-mon"],
+    stickers: ["idea"],
+  })),
+).nodes.find((node) => node.id === "topic-root0001");
+assert(Boolean(rootNode && decoratedRoot && decoratedRoot.height > rootNode.height), "元信息撑高主题");
+assert(Boolean(rootNode && decoratedRoot && decoratedRoot.width > rootNode.width), "元信息撑宽主题");
+
+// 1.2) 元信息多到换行时继续增高，不能溢出节点
+const crowdedRoot = layoutMindmap(
+  updateTopic(baseContent(), "topic-root0001", (item) => ({
+    ...item,
+    labels: Array.from({ length: 12 }, (_, index) => `标签${index}`),
+    markers: Array.from({ length: 12 }, (_, index) => `priority-${(index % 6) + 1}`),
+    stickers: ["check", "idea", "warning", "flame", "target", "pin", "heart", "thumb"],
+  })),
+).nodes.find((node) => node.id === "topic-root0001");
+assert(
+  Boolean(decoratedRoot && crowdedRoot && crowdedRoot.height > decoratedRoot.height),
+  "元信息换行继续撑高主题",
+);
+
+// 1.3) 外链协议白名单（系统浏览器只接收安全协议）
+assert(safeExternalUrl(" https://xmind.app ") === "https://xmind.app", "外链允许 https 并去空格");
+assert(safeExternalUrl("mailto:a@b.com") === "mailto:a@b.com", "外链允许 mailto");
+assert(safeExternalUrl("javascript:alert(1)") === null, "外链拒绝 javascript");
+assert(safeExternalUrl("file:///etc/passwd") === null, "外链拒绝 file");
+assert(safeExternalUrl("") === null, "外链拒绝空串");
+
 // 2) 自由主题参与布局并带 free 标记
 content = addFreeTopic(content, createTopic("浮动"), { x: 400, y: 100 });
 layout = layoutMindmap(content);
@@ -112,10 +165,13 @@ for (const structure of ["org-down", "timeline", "fishbone"] as const) {
 }
 
 const childBefore = layoutMindmap(baseContent()).nodes.find((node) => node.id === "topic-child001");
+const rootBefore = layoutMindmap(baseContent()).nodes.find((node) => node.id === "topic-root0001");
 let rootShifted = setTopicPos(baseContent(), "topic-root0001", { x: 1000, y: 400 }) ?? baseContent();
 const childAfter = layoutMindmap(rootShifted).nodes.find((node) => node.id === "topic-child001");
+// 根自动位置是以原点为中心的左上角（-宽/2），子树位移 = 目标坐标 - 原自动坐标。
+const childShift = 1000 - (rootBefore?.x ?? 0);
 assert(
-  Boolean(childBefore && childAfter && Math.round(childAfter.x - childBefore.x) === 1000),
+  Boolean(childBefore && childAfter && Math.round(childAfter.x - childBefore.x) === Math.round(childShift)),
   "根主题手动坐标带动子树",
 );
 

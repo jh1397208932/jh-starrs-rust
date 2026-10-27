@@ -1,4 +1,13 @@
-import { FoldVertical, ListPlus, Plus, Redo2, Trash2, Undo2, UnfoldVertical } from "lucide-react";
+import {
+  FoldVertical,
+  ListPlus,
+  Plus,
+  Redo2,
+  SlidersHorizontal,
+  Trash2,
+  Undo2,
+  UnfoldVertical,
+} from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
 export interface MindmapToolbarProps {
@@ -19,6 +28,8 @@ export interface MindmapToolbarProps {
   onAddSummary: () => void;
   onAddRelation: () => void;
   onAddFreeTopic: () => void;
+  /** 按需打开右侧详情浮层，避免点选就遮住画布 */
+  onOpenInspector: () => void;
 }
 
 /** 左下浮动工具栏：主题增删、撤销重做、外框/概要/关系线/自由主题。 */
@@ -39,6 +50,7 @@ export function MindmapToolbar({
   onAddSummary,
   onAddRelation,
   onAddFreeTopic,
+  onOpenInspector,
 }: MindmapToolbarProps) {
   const { t } = useI18n();
   return (
@@ -142,6 +154,16 @@ export function MindmapToolbar({
         title={t("在画布空白处新建自由主题")}
       >
         <span className="mindmap-glyph">◇</span>
+      </button>
+      <button
+        type="button"
+        className="mindmap-toolbar-button"
+        onClick={onOpenInspector}
+        disabled={!selectedId}
+        aria-label={t("主题详情")}
+        title={t("主题详情")}
+      >
+        <SlidersHorizontal className="size-3.5" aria-hidden="true" />
       </button>
     </div>
   );

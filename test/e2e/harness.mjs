@@ -80,6 +80,10 @@ export class NativeAX {
     return this._call(["scroll", String(x), String(y), String(dy)]);
   }
 
+  hover(x, y) {
+    return this._call(["hover", String(x), String(y)]);
+  }
+
   drag(x1, y1, x2, y2) {
     return this._call(["drag", String(x1), String(y1), String(x2), String(y2)]);
   }
@@ -248,6 +252,15 @@ export class TestContext {
   async scroll(x, y, dy) {
     this.ax.scroll(x, y, dy);
     await sleep(180);
+  }
+
+  /** 把鼠标移到目标元素中心；用于验证悬停卡等指针态。 */
+  async hover(text, note = "") {
+    const target = (await this.waitForText(text, { timeout: 8000 }))[0];
+    if (!target) throw new Error(`找不到悬停目标：${text}`);
+    this.ax.hover(target.point.x + target.size.width / 2, target.point.y + target.size.height / 2);
+    if (note) this.notes.push(note);
+    await sleep(320);
   }
 
   async drag(x1, y1, x2, y2, note = "") {

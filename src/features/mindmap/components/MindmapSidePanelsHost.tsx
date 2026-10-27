@@ -82,6 +82,7 @@ export function MindmapSidePanelsHost({
         )
       }
       onImage={async (file) => onUploadImage(file)}
+      onClose={clearSelection}
     />
   );
 }
