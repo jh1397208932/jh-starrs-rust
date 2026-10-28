@@ -1,13 +1,14 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import type { ComponentProps } from "react";
+import { type HTMLMotionProps, motion } from "motion/react";
+import { SPRING_PRESS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
  * 按钮：高度 31/38/44 三档（UX_SPEC），圆角 10px，
- * 动效 = 颜色/透明度/位移过渡（--dur-1）+ 按下微缩（active:scale，纯 transform 合成层动画）。
+ * 动效 = 颜色/透明度过渡（--dur-1）+ Motion 按压弹簧（whileTap，合成层动画）。
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-default items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-[color,background-color,opacity,transform] duration-150 ease-[var(--ease)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 cursor-default items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-[color,background-color,opacity] duration-150 ease-[var(--ease)] active:opacity-90 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -35,10 +36,18 @@ const buttonVariants = cva(
   },
 );
 
-export type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants>;
+export type ButtonProps = HTMLMotionProps<"button"> & VariantProps<typeof buttonVariants>;
 
 export function Button({ className, variant, size, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  return (
+    <motion.button
+      type={type}
+      whileTap={{ scale: 0.97 }}
+      transition={SPRING_PRESS}
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  );
 }
 
 export { buttonVariants };

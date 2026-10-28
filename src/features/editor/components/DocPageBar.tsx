@@ -35,7 +35,7 @@ export interface DocPageBarProps {
 }
 
 const ICON_BTN =
-  "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground";
+  "grid size-7 cursor-default place-items-center rounded-[9px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground active:scale-[0.94]";
 
 /**
  * 文档页头顶行：左侧面包屑（知识库 › 文档），右侧文档操作。

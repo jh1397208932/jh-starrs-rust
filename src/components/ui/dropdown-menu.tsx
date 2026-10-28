@@ -18,7 +18,8 @@ export function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "anim-pop-in data-[state=closed]:anim-pop-out z-50 min-w-[220px] rounded-[14px] border border-border/70 bg-popover/94 p-1.5 text-popover-foreground shadow-lg backdrop-blur-md focus:outline-none",
+          // transform-origin 跟随 Radix 触发器：菜单从触发按钮方向展开，而不是从自身中心“弹出来”。
+          "anim-pop-in z-50 min-w-[220px] rounded-[14px] border border-border/70 bg-popover/94 p-1.5 text-popover-foreground shadow-lg backdrop-blur-md focus:outline-none [transform-origin:var(--radix-dropdown-menu-content-transform-origin)]",
           className,
         )}
         {...props}

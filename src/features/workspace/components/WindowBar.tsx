@@ -1,8 +1,10 @@
 import { Minus, Search, Square, X } from "lucide-react";
+import { motion } from "motion/react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
+import { SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { runWindowAction, windowActions } from "@/lib/window";
 import { NODE_KIND_LABELS, type TabItem } from "@/types/notebook";
@@ -70,17 +72,24 @@ export function WindowBar({
               aria-label={`${kindLabel} · ${tab.title}`}
               tabIndex={-1}
               className={cn(
-                "group flex h-[30px] min-w-0 items-center gap-1 rounded-[9px] px-2 transition-[background-color,box-shadow] duration-150 ease-[var(--ease)]",
-                active
-                  ? "bg-card/80 shadow-sm ring-1 ring-border/60 ring-inset backdrop-blur-md"
-                  : "hover:bg-card/40",
+                "group relative flex h-[30px] min-w-0 items-center gap-1 rounded-[9px] px-2 transition-colors duration-150 ease-[var(--ease)]",
+                !active && "hover:bg-card/40",
               )}
             >
+              {/* 激活底片：layoutId 让药丸在标签之间滑动（弹簧），比底色瞬切更有连续性 */}
+              {active && (
+                <motion.span
+                  layoutId="window-tab-pill"
+                  aria-hidden="true"
+                  transition={SPRING_PANEL}
+                  className="absolute inset-0 rounded-[9px] bg-card/95 shadow-sm ring-1 ring-border/60 ring-inset"
+                />
+              )}
               <button
                 type="button"
                 title={tab.title}
                 onClick={() => onSelect(tab.id)}
-                className="flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px]"
+                className="relative flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px]"
               >
                 <NodeKindIcon
                   kind={tab.kind}
@@ -100,7 +109,7 @@ export function WindowBar({
                 aria-label={t("关闭标签页 {title}", { title: tab.title })}
                 onClick={() => onClose(tab.id)}
                 className={cn(
-                  "grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-opacity duration-150 ease-[var(--ease)] hover:bg-foreground/10",
+                  "relative grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-[opacity,background-color,scale] duration-150 ease-[var(--ease)] hover:scale-110 hover:bg-foreground/10 active:scale-95",
                   active
                     ? "opacity-50 hover:opacity-100"
                     : "opacity-0 group-hover:opacity-60 group-hover:hover:opacity-100 focus-visible:opacity-100",

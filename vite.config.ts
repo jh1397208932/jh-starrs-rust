@@ -73,7 +73,8 @@ export default defineConfig(() => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 4. tmp/ 是黑盒测试与导出的落盘目录；被监听到会触发 HMR / 整页重载，冲掉运行中的标签页
+      ignored: ["**/src-tauri/**", "**/tmp/**", "**/dist/**"],
     },
   },
 }));

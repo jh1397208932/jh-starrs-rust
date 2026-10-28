@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,21 +74,31 @@ function compileHelper() {
  * - AX 树正常且无 Cancel → 不动，避免把 Escape 送进下一个用例刚打开的弹窗。
  */
 async function dismissStrayPanels(context) {
+  let tree = null;
   try {
-    const tree = context.ax._call(["tree"]);
-    const dump = JSON.stringify(tree);
-    if (/取消|Cancel/.test(dump)) {
-      context.ax.key("escape");
-      await sleep(260);
-    }
+    tree = context.ax._call(["tree"]);
   } catch {
-    // AX 整树不可读：多半是原生面板处于模态循环，按一次 Escape 兜底解除。
+    tree = null;
+  }
+  let empty = (tree?.count ?? 0) === 0;
+  // 空树要复核一次再按键：AX 瞬时重建也会读到 0，盲按 Escape 可能关掉下一个用例刚打开的浮层。
+  if (empty) {
+    await sleep(250);
     try {
-      context.ax.key("escape");
-      await sleep(260);
+      empty = (context.ax._call(["tree"]).count ?? 0) === 0;
     } catch {
-      // 连按键都无法送达时放弃，交给后续用例的等待超时暴露问题。
+      empty = true;
     }
+  }
+  // 整树读不到（count=0）与出现「取消/Cancel」都按模态面板处理：
+  // 2026-10-28 现场发现旧版 tree 查询用空串匹配，Swift 里恒为 false，导致本函数从未真正兜底。
+  const stray = empty || /取消|Cancel/.test(JSON.stringify(tree));
+  if (!stray) return;
+  try {
+    context.ax.key("escape");
+    await sleep(260);
+  } catch {
+    // 连按键都无法送达时放弃，交给后续用例的等待超时暴露问题。
   }
 }
 
@@ -136,46 +146,24 @@ exec ${shellQuote(APP_BINARY)} >> ${shellQuote(APP_LOG)} 2>&1
   fs.chmodSync(APP_EXECUTABLE, 0o755);
 }
 
-async function waitForVite() {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch("http://localhost:1420/");
-      if (response.ok) return;
-    } catch {
-      // 继续等待
-    }
-    await sleep(300);
-  }
-  throw new Error("Vite 未在 60s 内启动");
-}
-
 async function startApp() {
-  const build = spawnSync(
-    "cargo",
-    ["build", "--manifest-path", "src-tauri/Cargo.toml"],
-    { cwd: ROOT, encoding: "utf8", timeout: 180_000 },
-  );
-  if (build.status !== 0) {
-    failSetup(`cargo build 失败：\n${build.stderr || build.stdout}`);
-  }
-  const viteLogPath = path.join(RUN_DIR, "vite.log");
-  const viteLog = fs.openSync(viteLogPath, "w");
-  const child = spawn("npm", ["run", "dev"], {
+  // 黑盒测试跑「生产前端」的内嵌构建，不挂 Vite dev server。
+  // 2026-10-28 真机取证：用例把导出/附件写进项目内 tmp/ 时，Vite 会对这些文件发 HMR/整页重载，
+  // 运行中的标签页与弹窗状态被清零（26-mindmap 在导出前丢掉了导图标签页）；内嵌构建没有这条通道。
+  const build = spawnSync("npm", ["run", "tauri", "build", "--", "--debug", "--no-bundle"], {
     cwd: ROOT,
-    detached: true,
-    stdio: ["ignore", viteLog, viteLog],
+    encoding: "utf8",
+    timeout: 600_000,
   });
-  child.on("error", (error) => {
-    console.error(`[测试启动失败] 无法启动 Vite：${error.message}`);
-  });
-  await waitForVite();
+  if (build.status !== 0) {
+    failSetup(`tauri build 失败：\n${build.stderr || build.stdout}`);
+  }
   prepareAppBundle();
   const opened = spawnSync("open", ["-n", APP_BUNDLE], { encoding: "utf8" });
   if (opened.status !== 0) {
     failSetup(`启动测试应用失败：\n${opened.stderr || opened.stdout}`);
   }
-  return child;
+  return null;
 }
 
 async function waitForWindow(ax) {
@@ -231,15 +219,17 @@ function stopApp(child, ax) {
     // 应用窗口未建立时按测试二进制兜底；测试前已检查无其他实例。
     spawnSync("pkill", ["-f", APP_BINARY]);
   }
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch {
-    // 进程组已退出
-  }
-  try {
-    child.kill("SIGTERM");
-  } catch {
-    // 已退出
+  if (child) {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      // 进程组已退出
+    }
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // 已退出
+    }
   }
   return appPid;
 }

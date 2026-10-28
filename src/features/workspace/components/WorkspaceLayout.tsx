@@ -70,10 +70,7 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
     }),
     [onDialogChange],
   );
-  const createChildNode = useCallback(
-    (parent: NodeItem) => requestNodeCreate(parent),
-    [requestNodeCreate],
-  );
+  const createChildNode = useCallback((parent: NodeItem) => requestNodeCreate(parent), [requestNodeCreate]);
   const toggleInfo = useCallback(() => setInfoOpen((value) => !value), [setInfoOpen]);
   const printCurrent = useCallback(() => void printActiveDocument(), [printActiveDocument]);
   const currentWorkspace = store.currentWorkspace;

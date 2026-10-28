@@ -190,6 +190,16 @@ export function useFileTreeDrag({
       handleRootDragOver,
       handleRootDrop,
     }),
-    [draggedId, dropHint, clear, handleDragStart, handleRowDragOver, handleRowDragLeave, handleRowDrop, handleRootDragOver, handleRootDrop],
+    [
+      draggedId,
+      dropHint,
+      clear,
+      handleDragStart,
+      handleRowDragOver,
+      handleRowDragLeave,
+      handleRowDrop,
+      handleRootDragOver,
+      handleRootDrop,
+    ],
   );
 }

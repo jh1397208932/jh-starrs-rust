@@ -23,7 +23,7 @@ type MarginType = UseInViewOptions["margin"];
  * @param direction 入场位移方向（默认 down = 从上方 -6px 进入）
  * @param offset 位移像素（默认 6px，守则要求 ≤12px）
  * @param blur 初始模糊（默认 6px，守则要求 ≤6px）
- * @param duration 时长秒数（默认 0.4，接近 --dur-2/3 之间）
+ * @param duration 时长秒数（默认取 TRANSITION_REVEAL.duration = 0.38，与 --dur-3 同步）
  * @param delay 延迟秒数（stagger 用）
  * @param inView 是否由视口进入触发（默认 false = 挂载即入场）
  */

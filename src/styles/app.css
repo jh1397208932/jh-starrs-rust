@@ -47,23 +47,26 @@ body {
 }
 
 /* ---------- 入出场动画（只动 transform / opacity / filter） ---------- */
+/* 统一语言（设计语言 §6）：浮层 6px 上移 + 0.97 缩放入场、120ms 快速出场；
+   弹窗 10px + 0.975；内容切换只上移不缩放（避免整块编辑器被拉伸）。
+   标准缓动 --ease-out 无过冲；弹性曲线只留给开关与细小点睛元素。 */
 @keyframes starris-pop-in {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.98);
+    transform: translateY(6px) scale(0.97);
   }
 }
 @keyframes starris-pop-out {
   to {
     opacity: 0;
-    transform: scale(0.98);
+    transform: translateY(2px) scale(0.98);
   }
 }
-/* 居中模态专用：keyframes 内保留 -50%/-50% 位移，避免动画期间跳位；+8px 上移入场 */
+/* 居中模态专用：keyframes 内保留 -50%/-50% 位移，避免动画期间跳位 */
 @keyframes starris-dialog-in {
   from {
     opacity: 0;
-    transform: translate(-50%, calc(-50% + 8px)) scale(0.97);
+    transform: translate(-50%, calc(-50% + 10px)) scale(0.975);
   }
   to {
     opacity: 1;
@@ -73,7 +76,7 @@ body {
 @keyframes starris-dialog-out {
   to {
     opacity: 0;
-    transform: translate(-50%, calc(-50% + 6px)) scale(0.98);
+    transform: translate(-50%, calc(-50% + 6px)) scale(0.985);
   }
 }
 @keyframes starris-fade-in {
@@ -89,23 +92,31 @@ body {
 @keyframes starris-slide-up-in {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.98);
+    transform: translateY(6px);
+  }
+}
+/* 提示条等极小浮层：只上移 2px，120ms 内看完 */
+@keyframes starris-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
   }
 }
 
-/* 弹簧质感：小元素 pop 与模态入场走 --ease-pop（越过终点 ~2% 后回落） */
+/* 不在这里设 transform-origin：Radix 浮层由 [transform-origin:var(--radix-*-…) ] 决定，
+   无层样式会压过 Tailwind 的工具类，菜单就会从自身中心而不是触发器展开。 */
 .anim-pop-in {
-  animation: starris-pop-in var(--dur-2) var(--ease-pop);
+  animation: starris-pop-in var(--dur-2) var(--ease-out);
 }
 .anim-pop-out {
-  animation: starris-pop-out var(--dur-1) var(--ease);
+  animation: starris-pop-out var(--dur-1) var(--ease-out);
 }
 .anim-dialog-in {
-  animation: starris-dialog-in var(--dur-2) var(--ease-pop);
+  animation: starris-dialog-in var(--dur-2) var(--ease-out);
   transform: translate(-50%, -50%);
 }
 .anim-dialog-out {
-  animation: starris-dialog-out var(--dur-1) var(--ease);
+  animation: starris-dialog-out var(--dur-1) var(--ease-out);
   transform: translate(-50%, -50%);
 }
 /* 顶部锚定弹层（搜索 / 快速跳转）：只在水平方向居中，垂直停靠在指定 top。
@@ -114,7 +125,7 @@ body {
 @keyframes starris-dialog-top-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 10px) scale(0.97);
+    transform: translate(-50%, 8px) scale(0.975);
   }
   to {
     opacity: 1;
@@ -122,21 +133,24 @@ body {
   }
 }
 .anim-dialog-in.dialog-top {
-  animation: starris-dialog-top-in var(--dur-2) var(--ease-pop);
+  animation: starris-dialog-top-in var(--dur-2) var(--ease-out);
   transform: translate(-50%, 0);
 }
 .anim-dialog-out.dialog-top {
-  animation: starris-dialog-out var(--dur-1) var(--ease);
+  animation: starris-dialog-out var(--dur-1) var(--ease-out);
   transform: translate(-50%, 0);
 }
 .anim-fade-in {
-  animation: starris-fade-in var(--dur-2) var(--ease);
+  animation: starris-fade-in var(--dur-2) var(--ease-out);
 }
 .anim-fade-out {
-  animation: starris-fade-out var(--dur-1) var(--ease);
+  animation: starris-fade-out var(--dur-1) var(--ease-out);
 }
 .anim-slide-up-in {
-  animation: starris-slide-up-in var(--dur-2) var(--ease-pop);
+  animation: starris-slide-up-in var(--dur-2) var(--ease-out);
+}
+.anim-fade-up {
+  animation: starris-fade-up var(--dur-1) var(--ease-out);
 }
 
 /* ---------- 主题切换 View Transitions（圆形揭示；不支持的平台由 JS 特性检测跳过） ---------- */
@@ -1700,7 +1714,13 @@ body.starris-image-resizing {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  transition: background-color var(--dur-1) var(--ease);
+  transition:
+    background-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.workspace-brand:active {
+  transform: scale(0.985);
 }
 
 /* 入口是透明品牌行：hover / 展开只用主题浅调，不再铺白卡 */
@@ -1713,7 +1733,12 @@ body.starris-image-resizing {
   border-radius: 12px;
   transition:
     background-color var(--dur-1) var(--ease),
-    color var(--dur-1) var(--ease);
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.sidebar-row:active {
+  transform: scale(0.99);
 }
 
 .sidebar-row:hover {
@@ -1762,7 +1787,8 @@ body.starris-image-resizing {
   border-radius: 10px;
   transition:
     background-color var(--dur-1) var(--ease),
-    border-color var(--dur-1) var(--ease);
+    border-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .quick-action[data-kind="starred"] .quick-action__icon {
@@ -1783,6 +1809,7 @@ body.starris-image-resizing {
 .quick-action:hover .quick-action__icon {
   border-color: color-mix(in srgb, currentColor 26%, transparent);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
+  transform: translateY(-1px);
 }
 
 /* 树行：选中 = 主题浅调药丸 + 左侧 2px 主色；图标默认不再满屏主题色 */
@@ -1800,6 +1827,18 @@ body.starris-image-resizing {
 
 .tree-row:not([data-selected="true"]):hover {
   background: color-mix(in srgb, var(--card) 28%, transparent);
+}
+
+/* 展开文件夹：子树整体 120ms 淡入上移；折叠走即时卸载，避免高度动画逐帧布局 */
+.tree-children {
+  animation: starris-tree-expand var(--dur-1) var(--ease-out);
+}
+
+@keyframes starris-tree-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
 }
 
 /* ---------- 空态 Hero：宋体标题 + 星屿线稿 + 雾光 ---------- */
@@ -2014,6 +2053,7 @@ body.starris-image-resizing {
 }
 
 /* 打印：只保留文档纸面，隐藏侧栏、顶栏、页头操作与信息浮窗。 */
+/* biome-ignore-start lint/complexity/noImportantStyles: 打印样式必须覆盖屏幕样式 */
 @media print {
   .sidebar-column,
   .window-bar,
@@ -2045,3 +2085,4 @@ body.starris-image-resizing {
     max-width: none !important;
   }
 }
+/* biome-ignore-end lint/complexity/noImportantStyles: 打印样式必须覆盖屏幕样式 */

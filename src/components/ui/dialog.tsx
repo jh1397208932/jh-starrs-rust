@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * 遮罩 = foreground 32% 纯色压暗（不做实时 backdrop-blur：全屏模糊层随透明度动画逐帧重算，
  * 是弹窗过渡掉帧的首要来源，2026-10-27 真机性能任务裁决）；容器 = popover + border + shadow-lg + radius-lg，
  * 只保留容器单层 12px 模糊（模糊预算：同屏实时模糊 ≤1 层、半径 ≤14px）；
- * 入出场 = opacity + scale(.97→1) + 上移 8px，时长 --dur-2 / 微回弹 --ease-pop；Esc 关闭、焦点由 Radix 管理。
+ * 入出场 = opacity + scale(.975→1) + 上移 10px，时长 --dur-2 / 标准缓动 --ease-out（大面板不做回弹）；Esc 关闭、焦点由 Radix 管理。
  *
  * 关闭行为契约（统一收编，调用方不得自行 preventDefault）：
  * - 默认（dismissible = true）：右上角 ×、Esc、点击遮罩 三种方式均可关闭；
@@ -56,7 +56,6 @@ export function DialogContent({
   const blockDismiss = (e: Event) => {
     if (!dismissible) e.preventDefault();
   };
-
   return (
     <DialogPrimitive.Portal>
       <DialogOverlay />

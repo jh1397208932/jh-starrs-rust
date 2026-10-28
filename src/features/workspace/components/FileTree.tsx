@@ -1,4 +1,5 @@
 import { Plus, Upload } from "lucide-react";
+import { AnimatePresence } from "motion/react";
 import { type KeyboardEvent, useCallback, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
@@ -153,23 +154,25 @@ export function FileTree({
             {t("还没有内容")}
           </p>
         ) : (
-          tree.map((entry) => (
-            <FileTreeRow
-              key={entry.node.id}
-              entry={entry}
-              depth={0}
-              collapsed={collapsed}
-              selectedNodeId={selectedNodeId}
-              drag={drag}
-              onToggleFolder={toggleFolder}
-              onOpenNode={onOpenNode}
-              onCreateChild={onCreateChild}
-              onRename={onRename}
-              onDelete={onDelete}
-              onImportToFolder={onImportToFolder}
-              onUploadAttachment={onUploadAttachment}
-            />
-          ))
+          <AnimatePresence initial={false}>
+            {tree.map((entry) => (
+              <FileTreeRow
+                key={entry.node.id}
+                entry={entry}
+                depth={0}
+                collapsed={collapsed}
+                selectedNodeId={selectedNodeId}
+                drag={drag}
+                onToggleFolder={toggleFolder}
+                onOpenNode={onOpenNode}
+                onCreateChild={onCreateChild}
+                onRename={onRename}
+                onDelete={onDelete}
+                onImportToFolder={onImportToFolder}
+                onUploadAttachment={onUploadAttachment}
+              />
+            ))}
+          </AnimatePresence>
         )}
         <fieldset
           aria-label={t("移动到顶层")}

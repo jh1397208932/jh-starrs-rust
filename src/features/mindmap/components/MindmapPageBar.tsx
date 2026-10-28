@@ -66,7 +66,7 @@ function StatusPill({
 }: Pick<MindmapPageBarProps, "status" | "onRetry" | "onReload" | "errorText">) {
   const { t } = useI18n();
   const base =
-    "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap";
+    "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap transition-[background-color,color,scale] duration-150 ease-[var(--ease)]";
   if (status === "loading") {
     return (
       <span className={`${base} text-muted-foreground`}>
@@ -85,7 +85,11 @@ function StatusPill({
   }
   if (status === "error") {
     return (
-      <button type="button" onClick={onRetry} className={`${base} text-destructive hover:bg-destructive/10`}>
+      <button
+        type="button"
+        onClick={onRetry}
+        className={`${base} text-destructive hover:bg-destructive/10 active:scale-[0.97]`}
+      >
         <TriangleAlert className="size-3" aria-hidden="true" />
         {errorText ?? t("保存失败 · 重试")}
       </button>
@@ -93,7 +97,11 @@ function StatusPill({
   }
   if (status === "conflict") {
     return (
-      <button type="button" onClick={onReload} className={`${base} text-[var(--logo-c)] hover:bg-accent`}>
+      <button
+        type="button"
+        onClick={onReload}
+        className={`${base} text-[var(--logo-c)] hover:bg-accent active:scale-[0.97]`}
+      >
         <RotateCcw className="size-3" aria-hidden="true" />
         {t("已更新 · 重新加载")}
       </button>
@@ -161,7 +169,7 @@ export function MindmapPageBar({
             <button
               type="button"
               onClick={onOpenKb}
-              className="truncate rounded-[6px] px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              className="truncate rounded-[6px] px-1 py-0.5 text-muted-foreground transition-[background-color,color] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground"
             >
               {kbName}
             </button>

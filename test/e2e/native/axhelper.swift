@@ -201,7 +201,8 @@ func collect(_ element: AXUIElement, query: String, roleFilter: String?, depth: 
     let haystacks = [title, description, value, placeholder].map { $0.lowercased() }
     let needle = query.lowercased()
     let roleMatches = roleFilter == nil || role == roleFilter
-    if roleMatches && haystacks.contains(where: { $0.contains(needle) }) {
+    // Swift 的 String.contains("") 恒为 false；tree 命令用空查询表示“整树转储”，必须单独匹配。
+    if roleMatches && (query.isEmpty || haystacks.contains(where: { $0.contains(needle) })) {
         let (point, size) = frame(element)
         matches.append(Match(
             element: element, role: role, title: title, description: description,
@@ -221,6 +222,18 @@ func allMatches(axApp: AXUIElement, query: String, roleFilter: String?) -> [Matc
     var visited = 0
     collect(axApp, query: query, roleFilter: roleFilter, depth: 0, visited: &visited, matches: &matches)
     return matches
+}
+
+/// 查询根：默认只遍历应用主窗口。
+/// 系统菜单栏（Apple/文件/编辑…）也是 AXMenuItem，会把「设置/删除/关闭」等文本提前命中，
+/// 导致按角色查找菜单项时选到 macOS 系统菜单（2026-10-28 真机取证）；`--app` 可显式回到整应用树。
+func queryRoot(_ axApp: AXUIElement, _ args: [String]) -> AXUIElement {
+    if args.contains("--app") { return axApp }
+    if let focused = attr(axApp, kAXFocusedWindowAttribute) { return focused as! AXUIElement }
+    if let windows = attr(axApp, kAXWindowsAttribute) as? [AXUIElement], let first = windows.first {
+        return first
+    }
+    return axApp
 }
 
 func matchJSON(_ match: Match) -> [String: Any] {
@@ -295,7 +308,7 @@ case "find", "tree":
     if let index = args.firstIndex(of: "--role"), index + 1 < args.count {
         roleFilter = args[index + 1]
     }
-    let matches = allMatches(axApp: axApp, query: query, roleFilter: roleFilter)
+    let matches = allMatches(axApp: queryRoot(axApp, args), query: query, roleFilter: roleFilter)
     json(["ok": true, "count": matches.count, "matches": matches.map(matchJSON)])
 case "press", "fill":
     guard args.count >= 3, let query = decodeBase64(args[2]) else { failure("查询参数不是 base64") }
@@ -305,7 +318,7 @@ case "press", "fill":
         roleFilter = args[index + 1]
     }
     activate(app, axApp)
-    let matches = allMatches(axApp: axApp, query: query, roleFilter: roleFilter)
+    let matches = allMatches(axApp: queryRoot(axApp, args), query: query, roleFilter: roleFilter)
     guard !matches.isEmpty else { failure("找不到元素: \(query)") }
     let ordered = matches.sorted { left, right in
         let leftExact = [left.title, left.description, left.value].contains { $0.caseInsensitiveCompare(query) == .orderedSame }

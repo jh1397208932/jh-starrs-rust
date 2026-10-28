@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, Ellipsis, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { ChevronDown, Ellipsis, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { memo } from "react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import {
@@ -8,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/i18n";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { NodeItem, TreeNode } from "@/types/notebook";
 import type { FileTreeDragController } from "../hooks/useFileTreeDrag";
@@ -40,12 +42,18 @@ export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
   const { node, children } = entry;
   const isFolder = node.kind === "folder";
   const isCollapsed = collapsed.has(node.id);
+  const isPresent = useIsPresent();
   const selected = selectedNodeId === node.id;
   const hint = drag.dropHint?.targetId === node.id ? drag.dropHint.position : null;
-  const Chevron = isCollapsed ? ChevronRight : ChevronDown;
 
   return (
-    <div>
+    <motion.div
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.14, ease: EASE_STANDARD }}
+      style={{ pointerEvents: isPresent ? undefined : "none" }}
+    >
       <div
         data-selected={selected}
         className={cn(
@@ -83,7 +91,12 @@ export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           {isFolder ? (
-            <Chevron className="size-3.5 shrink-0 text-sidebar-muted" />
+            <ChevronDown
+              className={cn(
+                "size-3.5 shrink-0 text-sidebar-muted transition-transform duration-150 ease-[var(--ease)]",
+                isCollapsed && "-rotate-90",
+              )}
+            />
           ) : (
             <span className="size-3.5 shrink-0" />
           )}
@@ -142,11 +155,15 @@ export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {isFolder &&
-        !isCollapsed &&
-        children.map((child) => (
-          <FileTreeRow key={child.node.id} {...props} entry={child} depth={depth + 1} />
-        ))}
-    </div>
+      {isFolder && !isCollapsed && (
+        <div className="tree-children">
+          <AnimatePresence initial={false}>
+            {children.map((child) => (
+              <FileTreeRow key={child.node.id} {...props} entry={child} depth={depth + 1} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </motion.div>
   );
 });

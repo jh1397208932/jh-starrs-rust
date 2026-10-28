@@ -103,7 +103,7 @@ export function DocFindBar({ editor, onClose }: DocFindBarProps) {
         aria-label={t("上一处")}
         onClick={() => jump("prev")}
         disabled={find.matches.length === 0}
-        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-foreground active:scale-[0.94] disabled:opacity-40"
       >
         <ChevronUp className="size-3.5" />
       </button>
@@ -112,7 +112,7 @@ export function DocFindBar({ editor, onClose }: DocFindBarProps) {
         aria-label={t("下一处")}
         onClick={() => jump("next")}
         disabled={find.matches.length === 0}
-        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-foreground active:scale-[0.94] disabled:opacity-40"
       >
         <ChevronDown className="size-3.5" />
       </button>
@@ -120,7 +120,7 @@ export function DocFindBar({ editor, onClose }: DocFindBarProps) {
         type="button"
         aria-label={t("关闭查找")}
         onClick={close}
-        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="grid size-6 cursor-default place-items-center rounded-[6px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-foreground active:scale-[0.94]"
       >
         <X className="size-3.5" />
       </button>

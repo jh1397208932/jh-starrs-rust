@@ -147,7 +147,7 @@ export function AttachmentManager() {
           <button
             type="button"
             aria-label={t("关闭错误提示")}
-            className="rounded-sm text-muted-foreground hover:text-foreground"
+            className="rounded-sm text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:text-foreground"
             onClick={() => manager.setError(null)}
           >
             <X className="size-3.5" />

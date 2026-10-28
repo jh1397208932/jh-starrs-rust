@@ -53,7 +53,7 @@ function StatusPill({
 }: Pick<BoardPageBarProps, "status" | "onRetry" | "onReload">) {
   const { t } = useI18n();
   const base =
-    "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap";
+    "inline-flex h-[22px] items-center gap-1 rounded-full border border-border/50 bg-card/45 px-2 text-[11.5px] whitespace-nowrap transition-[background-color,color,scale] duration-150 ease-[var(--ease)]";
   if (status === "loading") {
     return (
       <span className={`${base} text-muted-foreground`}>
@@ -135,7 +135,7 @@ export function BoardPageBar({
         <button
           type="button"
           onClick={onOpenLibrary}
-          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground active:scale-[0.97]"
           aria-label={t("组件库")}
         >
           <Layers className="size-3.5" aria-hidden="true" />
@@ -144,7 +144,7 @@ export function BoardPageBar({
         <button
           type="button"
           onClick={onInsertAttachment}
-          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground active:scale-[0.97]"
           aria-label={t("插入附件")}
         >
           <Paperclip className="size-3.5" aria-hidden="true" />
@@ -153,7 +153,7 @@ export function BoardPageBar({
         <button
           type="button"
           onClick={onPresent}
-          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground active:scale-[0.97]"
           aria-label={t("放映画板")}
         >
           <Play className="size-3.5" aria-hidden="true" />
@@ -164,7 +164,7 @@ export function BoardPageBar({
             <button
               type="button"
               disabled={exporting !== null}
-              className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[11.5px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-[var(--ease)] hover:bg-accent hover:text-accent-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
               aria-label={t("导出画板")}
             >
               {exporting ? (

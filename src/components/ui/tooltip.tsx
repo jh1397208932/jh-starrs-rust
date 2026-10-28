@@ -16,7 +16,7 @@ export function TooltipContent({
       <TooltipPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "anim-fade-in z-50 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[12px] text-popover-foreground shadow-md focus:outline-none",
+          "anim-fade-up z-50 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[12px] text-popover-foreground shadow-md focus:outline-none [transform-origin:var(--radix-tooltip-content-transform-origin)]",
           className,
         )}
         {...props}

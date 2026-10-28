@@ -264,7 +264,12 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
   );
 
   return (
-    <div className={cn("flex min-h-0 flex-col", presenting ? "fixed inset-0 z-50 bg-background" : "h-full")}>
+    <div
+      className={cn(
+        "flex min-h-0 flex-col",
+        presenting ? "anim-fade-in fixed inset-0 z-50 bg-background" : "h-full",
+      )}
+    >
       {!presenting && (
         <BoardPageBar
           kbName={kbName}
@@ -296,7 +301,7 @@ export function BoardView({ nodeId, title, kbName, onSaved, onError, onOpenKb, o
             <button
               type="button"
               onClick={persistence.reload}
-              className="rounded-[8px] border border-border bg-card px-3 py-1.5 text-[12.5px] text-foreground hover:bg-accent"
+              className="rounded-[8px] border border-border bg-card px-3 py-1.5 text-[12.5px] text-foreground transition-[background-color,border-color,scale] duration-150 ease-[var(--ease)] hover:bg-accent active:scale-[0.97]"
             >
               {t("重新加载")}
             </button>

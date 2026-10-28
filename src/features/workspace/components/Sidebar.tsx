@@ -1,8 +1,10 @@
 import { ChevronsUpDown, Ellipsis, Plus, Star, StickyNote } from "lucide-react";
+import { motion } from "motion/react";
 import { memo } from "react";
 import { BrandLogo } from "@/components/common/BrandLogo";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { useI18n } from "@/lib/i18n";
+import { SPRING_PRESS } from "@/lib/motion";
 import type { KnowledgeBase, NodeItem, TreeNode, Workspace } from "@/types/notebook";
 import { FileTree } from "./FileTree";
 import { MoreMenu } from "./MoreMenu";
@@ -110,10 +112,12 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
 
       <div className="mx-3 mt-2 grid grid-cols-3 gap-1">
         {QUICK_ACTIONS.map(({ id, icon: Icon, label }) => (
-          <button
+          <motion.button
             key={id}
             type="button"
             data-kind={id}
+            whileTap={{ scale: 0.94 }}
+            transition={SPRING_PRESS}
             onClick={() => {
               if (id === "starred") props.onShowStarred();
               else if (id === "note") props.onCreateNote();
@@ -125,7 +129,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               <Icon className="size-4" strokeWidth={1.8} />
             </span>
             <span>{t(label)}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 

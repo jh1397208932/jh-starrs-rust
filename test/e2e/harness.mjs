@@ -197,25 +197,93 @@ export class TestContext {
     await sleep(options.settle ?? 220);
   }
 
-  async menu(trigger, item, options = {}) {
-    await this.press(trigger, { settle: 280, ...options });
-    try {
-      await this.waitForText(item, { timeout: 1800 });
-    } catch {
-      const matches = await this.find(trigger);
-      const target =
-        matches.matches.find((match) => ["AXPopUpButton", "AXButton"].includes(match.role)) ??
-        matches.matches[0];
-      if (!target) throw new Error(`找不到菜单触发器：${trigger}`);
-      await this.click(
-        target.point.x + target.size.width / 2,
-        target.point.y + target.size.height / 2,
-        `回退点击菜单触发器：${trigger}`,
-      );
-      await this.waitForText(item);
+  /**
+   * 打开触发器菜单并等待目标项出现。
+   * Radix 触发器只认真实指针事件时 AXPress 会被忽略，因此保留坐标点击回退；
+   * 两次都失败时再抛错，由用例失败信息暴露真实状态。
+   */
+  async _openMenu(trigger, item, options = {}) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0) {
+        // 上一轮可能把菜单开在半途：先按键归零，避免再按触发器时把菜单又关掉。
+        try {
+          this.ax.key("escape");
+        } catch {
+          // 按键失败时直接重试
+        }
+        await sleep(220);
+      }
+      await this.press(trigger, { settle: 280, ...options });
+      try {
+        return await this.waitForText(item, { timeout: attempt === 0 ? 1800 : 3000 });
+      } catch {
+        if (attempt > 0) break;
+        const triggerMatches = await this.find(trigger);
+        const target =
+          triggerMatches.matches.find((match) => ["AXPopUpButton", "AXButton"].includes(match.role)) ??
+          triggerMatches.matches[0];
+        if (!target) throw new Error(`找不到菜单触发器：${trigger}`);
+        await this.click(
+          target.point.x + target.size.width / 2,
+          target.point.y + target.size.height / 2,
+          `回退点击菜单触发器：${trigger}`,
+        );
+        try {
+          return await this.waitForText(item, { timeout: 2600 });
+        } catch {
+          // 下一轮从头打开
+        }
+      }
     }
-    await this.press(item, { role: "AXMenuItem", settle: 320, ...options });
+    throw new Error(`菜单项未出现：${trigger} → ${item}`);
+  }
+
+  /** 同文本可能同时命中标题/说明；菜单语义优先，其次按钮类。 */
+  _pickMenuItem(matches) {
+    const score = (match) =>
+      match.role === "AXMenuItem" ? 0 : ["AXButton", "AXCheckBox", "AXRadioButton"].includes(match.role) ? 1 : 2;
+    return [...matches].sort((left, right) => score(left) - score(right))[0];
+  }
+
+  /** 菜单是否仍然打开（按 AXMenuItem 角色探测，避免命中弹窗里的同名文本）。 */
+  _menuOpenCount(item) {
+    try {
+      return this.ax.find(item, { role: "AXMenuItem" }).count;
+    } catch {
+      return 0;
+    }
+  }
+
+  async menu(trigger, item, options = {}) {
+    let matches = await this._openMenu(trigger, item, options);
+    // 读到目标后菜单可能已被后台刷新关掉；此时再点击会落到画布/树行上，重开一次再动。
+    if (this._menuOpenCount(item) === 0) {
+      matches = await this._openMenu(trigger, item, options);
+      if (this._menuOpenCount(item) === 0) throw new Error(`菜单未能保持打开：${trigger} → ${item}`);
+    }
+    const target = this._pickMenuItem(matches);
+    const center = {
+      x: target.point.x + target.size.width / 2,
+      y: target.point.y + target.size.height / 2,
+    };
+    // 菜单项优先 AXPress（不依赖坐标）；Radix 对合成指针更敏感时退回真实点击。
+    if (target.role === "AXMenuItem") {
+      try {
+        this.ax.press(item, { role: "AXMenuItem" });
+      } catch {
+        await this.click(center.x, center.y, `菜单项：${item}`);
+      }
+    } else {
+      await this.click(center.x, center.y, `菜单项：${item}`);
+    }
     this.metrics.dialogs += 1;
+    await sleep(280);
+    // 仍开着说明这次没命中（坐标随动画偏移/焦点被抢）；补一次真实点击后交给调用方断言。
+    if (this._menuOpenCount(item) > 0) {
+      await this.click(center.x, center.y, `菜单项重试：${item}`);
+      this.metrics.dialogs += 1;
+      await sleep(220);
+    }
   }
 
   async click(x, y, note = "") {

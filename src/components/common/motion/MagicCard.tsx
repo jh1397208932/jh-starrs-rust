@@ -104,7 +104,7 @@ export function MagicCard({
 
       {/* 悬浮聚光层：跟随指针的柔光 */}
       <motion.div
-        className="pointer-events-none absolute inset-px z-30 rounded-[inherit] opacity-0 transition-opacity duration-300 ease-[var(--ease)] group-hover:opacity-100"
+        className="pointer-events-none absolute inset-px z-30 rounded-[inherit] opacity-0 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)] group-hover:opacity-100"
         style={{
           background: useMotionTemplate`
             radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px,

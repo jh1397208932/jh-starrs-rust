@@ -95,7 +95,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
         <button
           type="button"
           onClick={onRetry}
-          className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 hover:bg-destructive/10"
+          className="cursor-default rounded-sm px-1 text-[11px] underline underline-offset-2 transition-colors duration-150 ease-[var(--ease)] hover:bg-destructive/10"
         >
           {t("重试")}
         </button>

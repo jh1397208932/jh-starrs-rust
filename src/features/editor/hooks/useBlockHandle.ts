@@ -110,7 +110,14 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
         const dom = view.nodeDOM(offset);
         if (dom instanceof HTMLElement) {
           const rect = dom.getBoundingClientRect();
-          blocks.push({ pos: offset, type: node.type.name, element: dom, top: rect.top, bottom: rect.bottom, height: rect.height });
+          blocks.push({
+            pos: offset,
+            type: node.type.name,
+            element: dom,
+            top: rect.top,
+            bottom: rect.bottom,
+            height: rect.height,
+          });
         }
         offset += node.nodeSize;
       }

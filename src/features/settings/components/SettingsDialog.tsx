@@ -40,7 +40,7 @@ function ModeCard({ target, label }: { target: ThemeMode; label: string }) {
       aria-pressed={active}
       onClick={() => setMode(target)}
       className={cn(
-        "flex cursor-default items-center gap-3 rounded-[12px] border p-3 text-left transition-colors duration-150 ease-[var(--ease)]",
+        "flex cursor-default items-center gap-3 rounded-[12px] border p-3 text-left transition-[background-color,border-color,box-shadow,translate,scale] duration-150 ease-[var(--ease)] hover:-translate-y-px active:scale-[0.99]",
         active ? "border-primary/35 bg-accent/45 shadow-sm" : "border-border/70 hover:bg-accent/30",
       )}
     >
@@ -84,7 +84,7 @@ function AppearanceSection() {
               aria-pressed={active}
               onClick={() => setTheme(themeName as ThemeName)}
               className={cn(
-                "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-colors duration-150 ease-[var(--ease)]",
+                "flex cursor-default flex-col gap-2 rounded-[12px] border p-2.5 text-left transition-[background-color,border-color,box-shadow,translate,scale] duration-150 ease-[var(--ease)] hover:-translate-y-px active:scale-[0.99]",
                 active
                   ? "border-primary/40 bg-accent/40 shadow-sm ring-1 ring-primary/15"
                   : "border-border/70 hover:bg-accent/30",
@@ -203,7 +203,7 @@ export function SettingsDialog({ open, onOpenChange, workspacePath }: SettingsDi
                 aria-selected={tab === id}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] transition-colors duration-150 ease-[var(--ease)]",
+                  "flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-[13px] transition-[background-color,color,transform] duration-150 ease-[var(--ease)] active:scale-[0.99]",
                   tab === id
                     ? "bg-accent/80 font-semibold text-accent-foreground shadow-sm"
                     : "text-sidebar-foreground hover:bg-accent/35",
