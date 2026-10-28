@@ -258,9 +258,10 @@
   padding: 4px;
   border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--card) 92%, transparent);
+  /* 2026-10-27 模糊预算：画布平移/缩放时磨砂面板要逐帧重算模糊，导图交互全程掉帧；
+     工具栏/检查器/搜索/悬浮卡/大纲全部改为不透明面板，动效只走 transform/opacity。 */
+  background: var(--card);
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(14px);
   transition: translate 200ms var(--ease);
   animation: mindmap-panel-in 180ms var(--ease) both;
 }
@@ -282,9 +283,8 @@
   padding: 12px 13px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 93%, transparent);
+  background: var(--card);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(16px);
   overflow-y: auto;
   animation: mindmap-panel-in 180ms var(--ease) both;
 }
@@ -354,9 +354,8 @@
   width: min(380px, calc(100% - 36px));
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--popover) 94%, transparent);
+  background: var(--popover);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(14px);
   animation: mindmap-panel-in 160ms var(--ease) both;
 }
 
@@ -552,9 +551,8 @@
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--branch-color, var(--border)) 32%, var(--border));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--popover) 96%, transparent);
+  background: var(--popover);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(14px);
   pointer-events: auto;
   animation: mindmap-hover-in 140ms var(--ease) both;
 }
@@ -919,9 +917,8 @@
   min-height: 0;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 94%, transparent);
+  background: var(--card);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(16px);
   overflow: hidden;
   animation: mindmap-panel-in 180ms var(--ease) both;
 }

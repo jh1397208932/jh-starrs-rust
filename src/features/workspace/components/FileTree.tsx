@@ -1,5 +1,5 @@
 import { Plus, Upload } from "lucide-react";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useCallback, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -52,13 +52,14 @@ export function FileTree({
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
-  const expandFolder = (id: string) => {
+  // 稳定引用：作为 drag 控制器的依赖，保证 FileTreeRow 的 memo 生效。
+  const expandFolder = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
-  };
+  }, []);
 
   const toggleFolder = (id: string) => {
     setCollapsed((prev) => {

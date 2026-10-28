@@ -54,19 +54,36 @@ export function useTabSession() {
 
   /**
    * 与最新节点列表同步：移除已删除节点标签、更新改名后的标题、剔除文件夹标签。
+   * 无实际变化时保持原数组引用，避免每次自动保存都触发标签组重渲染（2026-10-27 性能任务 B2）。
    * @param nodes 当前知识库平表节点
    */
   const syncTabs = useCallback((nodes: NodeItem[]) => {
     const byId = new Map(nodes.map((node) => [node.id, node]));
     setTabs((prev) => {
-      const next = prev.flatMap<TabItem>((tab) => {
-        if (tab.nodeId === null) return [tab];
+      let changed = false;
+      const next: TabItem[] = [];
+      for (const tab of prev) {
+        if (tab.nodeId === null) {
+          next.push(tab);
+          continue;
+        }
         const node = byId.get(tab.nodeId);
-        if (!node) return [];
-        const kind = node.kind;
-        if (kind === "folder") return [];
-        return [{ ...tab, kind, title: node.title }];
-      });
+        if (!node) {
+          changed = true;
+          continue;
+        }
+        if (node.kind === "folder") {
+          changed = true;
+          continue;
+        }
+        if (node.kind !== tab.kind || node.title !== tab.title) {
+          changed = true;
+          next.push({ ...tab, kind: node.kind, title: node.title });
+        } else {
+          next.push(tab);
+        }
+      }
+      if (!changed) return prev;
       setActiveTabId((current) =>
         next.some((tab) => tab.id === current) ? current : (next[next.length - 1]?.id ?? ""),
       );

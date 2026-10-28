@@ -92,6 +92,7 @@ pub fn run() {
             commands::app::app_confirm_exit,
             commands::app::app_cancel_exit,
             commands::app::app_print_main_window,
+            commands::log::log_write,
             commands::workspace::app_bootstrap,
             commands::workspace::workspace_list,
             commands::workspace::workspace_create,

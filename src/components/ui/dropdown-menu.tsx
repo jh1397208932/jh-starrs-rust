@@ -18,7 +18,7 @@ export function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "anim-pop-in data-[state=closed]:anim-pop-out z-50 min-w-[220px] rounded-[14px] border border-border/70 bg-popover/88 p-1.5 text-popover-foreground shadow-lg backdrop-blur-2xl focus:outline-none",
+          "anim-pop-in data-[state=closed]:anim-pop-out z-50 min-w-[220px] rounded-[14px] border border-border/70 bg-popover/94 p-1.5 text-popover-foreground shadow-lg backdrop-blur-md focus:outline-none",
           className,
         )}
         {...props}
@@ -31,7 +31,7 @@ export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof 
   return (
     <DropdownMenuPrimitive.Item
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm px-2.5 py-[7px] text-[13.5px] text-foreground outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2.5 py-[7px] text-[13.5px] text-foreground outline-none select-none transition-colors duration-150 ease-[var(--ease)] focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
         className,
       )}
       {...props}

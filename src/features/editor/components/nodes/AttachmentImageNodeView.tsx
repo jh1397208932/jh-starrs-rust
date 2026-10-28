@@ -107,20 +107,33 @@ export function AttachmentImageNodeView(props: ReactNodeViewProps) {
     }
     document.body.classList.add("starris-image-resizing");
 
+    // pointermove 事件频率高于显示帧率；setState 合帧到 rAF，pointerup 直接取最新值提交。
+    let frame = 0;
+    let pendingWidth = startWidth;
     const finish = () => {
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       document.body.classList.remove("starris-image-resizing");
       cleanupResizeRef.current = null;
       if (aliveRef.current) {
-        updateAttributes({ width: Math.round(widthRef.current) });
+        updateAttributes({ width: Math.round(pendingWidth) });
       }
     };
     const handleMove = (move: PointerEvent) => {
       const delta = side === "right" ? move.clientX - startX : startX - move.clientX;
-      const next = Math.min(Math.max(startWidth + delta, MIN_IMAGE_WIDTH), maxWidth);
-      setDraftWidth(Math.round(next));
+      pendingWidth = Math.min(Math.max(startWidth + delta, MIN_IMAGE_WIDTH), maxWidth);
+      if (frame === 0) {
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          widthRef.current = Math.round(pendingWidth);
+          setWidth(Math.round(pendingWidth));
+        });
+      }
     };
 
     cleanupResizeRef.current = finish;

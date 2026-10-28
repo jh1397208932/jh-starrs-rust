@@ -904,10 +904,10 @@ body.starris-block-dragging .editor-block-handle {
   gap: 7px;
   border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--popover) 96%, transparent);
+  /* 拖拽 chip 跟手逐帧位移，实时模糊会被逐帧重算（2026-10-27 模糊预算）：改不透明。 */
+  background: var(--popover);
   padding: 4px 9px;
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(12px);
   color: var(--foreground);
   font-size: 12px;
   font-weight: 500;
@@ -944,9 +944,9 @@ body.starris-block-dragging .doc-editor * {
 .editor-float {
   border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--popover) 88%, transparent);
+  background: color-mix(in srgb, var(--popover) 94%, transparent);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(22px) saturate(1.12);
+  backdrop-filter: blur(12px);
 }
 
 .editor-menu-label {
@@ -1028,10 +1028,10 @@ body.starris-block-dragging .doc-editor * {
   gap: 1px;
   border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   border-radius: 13px;
-  background: color-mix(in srgb, var(--popover) 88%, transparent);
+  background: color-mix(in srgb, var(--popover) 94%, transparent);
   padding: 4px;
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(22px) saturate(1.12);
+  backdrop-filter: blur(12px);
 }
 
 .editor-bubble__button {

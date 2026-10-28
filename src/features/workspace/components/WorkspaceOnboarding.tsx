@@ -65,7 +65,7 @@ export function WorkspaceOnboarding({
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-onboarding-title"
-        className="w-[520px] max-w-full rounded-[22px] border border-border/60 bg-card/88 p-6 text-popover-foreground shadow-lg backdrop-blur-2xl"
+        className="w-[520px] max-w-full rounded-[22px] border border-border/60 bg-card/92 p-6 text-popover-foreground shadow-lg backdrop-blur-md"
       >
         <div className="flex items-center gap-3">
           <span className="sidebar-mark size-11 rounded-[14px]">

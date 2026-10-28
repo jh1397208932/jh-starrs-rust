@@ -17,6 +17,8 @@ export interface InfoFloatProps {
 /**
  * 信息浮窗容器：文档独有附加浮层，悬浮于内容区右上（absolute，不占主布局）。
  * 展开 = 右滑弹簧入场 + 左缘骑缝把手（收起）；折叠 = 右缘小钮（展开）。
+ * 面板本体不透明化（2026-10-27 模糊预算）：264px 通高磨砂层随弹簧位移逐帧重算模糊，
+ * 是浮窗过渡掉帧主因；改为不透明卡片后弹簧位移走纯合成。
  */
 export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
   const { t } = useI18n();
@@ -34,7 +36,7 @@ export function InfoFloat({ visible, onToggle, children }: InfoFloatProps) {
           >
             <aside
               aria-label={t("文档信息浮窗")}
-              className="anim-fade-in h-full w-full overflow-hidden rounded-[18px] border border-border/60 bg-card/80 shadow-lg backdrop-blur-2xl"
+              className="h-full w-full overflow-hidden rounded-[18px] border border-border/60 bg-card shadow-lg"
             >
               {children}
             </aside>

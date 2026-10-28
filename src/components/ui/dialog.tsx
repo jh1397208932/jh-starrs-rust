@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * 模态弹窗通用规格（UX_SPEC §3）：
- * 遮罩 = foreground 32% + backdrop-blur；容器 = popover + border + shadow-lg + radius-lg；
+ * 遮罩 = foreground 32% 纯色压暗（不做实时 backdrop-blur：全屏模糊层随透明度动画逐帧重算，
+ * 是弹窗过渡掉帧的首要来源，2026-10-27 真机性能任务裁决）；容器 = popover + border + shadow-lg + radius-lg，
+ * 只保留容器单层 12px 模糊（模糊预算：同屏实时模糊 ≤1 层、半径 ≤14px）；
  * 入出场 = opacity + scale(.97→1) + 上移 8px，时长 --dur-2 / 微回弹 --ease-pop；Esc 关闭、焦点由 Radix 管理。
  *
  * 关闭行为契约（统一收编，调用方不得自行 preventDefault）：
@@ -22,7 +24,7 @@ export function DialogOverlay({ className, ...props }: ComponentProps<typeof Dia
   return (
     <DialogPrimitive.Overlay
       className={cn(
-        "anim-fade-in data-[state=closed]:anim-fade-out fixed inset-0 z-40 bg-foreground/25 backdrop-blur-md",
+        "anim-fade-in data-[state=closed]:anim-fade-out fixed inset-0 z-40 bg-foreground/25",
         className,
       )}
       {...props}
@@ -72,7 +74,7 @@ export function DialogContent({
           onInteractOutside?.(e);
         }}
         className={cn(
-          "anim-dialog-in data-[state=closed]:anim-dialog-out fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] flex-col overflow-hidden rounded-lg border border-border/70 bg-popover/92 text-popover-foreground shadow-lg backdrop-blur-2xl focus:outline-none",
+          "anim-dialog-in data-[state=closed]:anim-dialog-out fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] flex-col overflow-hidden rounded-lg border border-border/70 bg-popover/94 text-popover-foreground shadow-lg backdrop-blur-md focus:outline-none",
           className,
         )}
         {...props}

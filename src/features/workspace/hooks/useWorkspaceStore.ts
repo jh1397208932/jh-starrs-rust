@@ -77,6 +77,7 @@ export function useWorkspaceStore(): WorkspaceStore {
   const currentKbRef = useRef<string | null>(null);
   const currentWorkspaceIdRef = useRef<string | null>(null);
   const nodesRef = useRef<NodeItem[]>([]);
+  const prevTreeRef = useRef<TreeNode[]>([]);
   const contentSeq = useRef(0);
   const bootstrapSeq = useRef(0);
   const initialized = useRef(false);
@@ -84,7 +85,9 @@ export function useWorkspaceStore(): WorkspaceStore {
   const applyNodes = useCallback((next: NodeItem[]) => {
     nodesRef.current = next;
     setNodes(next);
-    setTree(buildTree(next));
+    const built = buildTree(next, prevTreeRef.current);
+    prevTreeRef.current = built;
+    setTree(built);
   }, []);
 
   const loadContent = useCallback(
@@ -313,6 +316,12 @@ export function useWorkspaceStore(): WorkspaceStore {
 
   const applyDocumentSaved = useCallback(
     (nodeId: string, info: { wordCount: number; updatedAt: number }) => {
+      // 字数与编辑时间都没变时跳过整树更新：自动保存每秒可能触发一次，
+      // 每次 map + buildTree + 全树 render 是打字期周期性掉帧来源（2026-10-27 性能任务 B2）。
+      const current = nodesRef.current.find((node) => node.id === nodeId);
+      if (current && current.wordCount === info.wordCount && current.updatedAt === info.updatedAt) {
+        return;
+      }
       applyNodes(
         nodesRef.current.map((node) =>
           node.id === nodeId ? { ...node, wordCount: info.wordCount, updatedAt: info.updatedAt } : node,

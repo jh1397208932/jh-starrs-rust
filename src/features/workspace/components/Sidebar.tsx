@@ -1,4 +1,5 @@
 import { ChevronsUpDown, Ellipsis, Plus, Star, StickyNote } from "lucide-react";
+import { memo } from "react";
 import { BrandLogo } from "@/components/common/BrandLogo";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { useI18n } from "@/lib/i18n";
@@ -65,8 +66,11 @@ const QUICK_ACTIONS = [
 /**
  * 232px 通高左侧列：窗口拖拽带（macOS 红绿灯）→ 工作区入口 → 三快捷钮
  * → 文件树（任意层级 + 拖拽）→ 底部更多(⌘J)。全部使用 --sidebar-* 令牌组。
+ *
+ * memo：弹窗/Toast/主题等顶层状态变化不再连带重渲染整列与文件树
+ * （回调引用已由 WorkspaceLayout 统一收敛；2026-10-27 性能任务 B2）。
  */
-export function Sidebar(props: SidebarProps) {
+export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const { t } = useI18n();
   return (
     <div className="flex h-full flex-col text-sidebar-foreground">
@@ -166,4 +170,4 @@ export function Sidebar(props: SidebarProps) {
       </div>
     </div>
   );
-}
+});

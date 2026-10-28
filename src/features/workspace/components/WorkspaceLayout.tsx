@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useMemo } from "react";
 import { SearchPalette } from "@/features/search/components/SearchPalette";
 import { TRANSITION_VIEW } from "@/lib/motion";
-import type { WorkspaceMainController } from "../hooks/useWorkspaceMainController";
+import type { NodeItem } from "@/types/notebook";
+import type { useWorkspaceMainController } from "../hooks/useWorkspaceMainController";
 import { InfoFloat } from "./InfoFloat";
 import { InfoPanel } from "./InfoPanel";
 import { LibraryManagerDialog } from "./LibraryManagerDialog";
@@ -11,7 +13,7 @@ import { TabContentView } from "./TabContentView";
 import { WindowBar } from "./WindowBar";
 
 export interface WorkspaceLayoutProps {
-  controller: WorkspaceMainController;
+  controller: ReturnType<typeof useWorkspaceMainController>;
 }
 
 /** 主界面布局：左列侧栏 + 右列顶栏（标签/搜索）、正文与信息浮窗；文档操作随正文页头下沉。 */
@@ -49,6 +51,31 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
     tabSession,
     actions,
   } = controller;
+  // 稳定引用：弹窗开启器与子组件回调统一收敛，保证 memo(Sidebar/TabContentView) 生效（2026-10-27 性能任务 B2）。
+  // 钩子必须位于 early return 之前，保证 hook 顺序稳定。
+  const openDialog = useMemo(
+    () => ({
+      createWorkspace: () => onDialogChange({ type: "createWorkspace" }),
+      newKb: () => onDialogChange({ type: "newKb" }),
+      kbManage: () => onDialogChange({ type: "kbManage" }),
+      wsManage: () => onDialogChange({ type: "wsManage" }),
+      settings: () => onDialogChange({ type: "settings" }),
+      exportKb: () => onDialogChange({ type: "exportKb" }),
+      importRoot: () => onDialogChange({ type: "import", parentId: null }),
+      library: () => onDialogChange({ type: "library" }),
+      backup: () => onDialogChange({ type: "backup" }),
+      templates: () => onDialogChange({ type: "templates" }),
+      nodeTrash: () => onDialogChange({ type: "nodeTrash" }),
+      share: () => onDialogChange({ type: "share" }),
+    }),
+    [onDialogChange],
+  );
+  const createChildNode = useCallback(
+    (parent: NodeItem) => requestNodeCreate(parent),
+    [requestNodeCreate],
+  );
+  const toggleInfo = useCallback(() => setInfoOpen((value) => !value), [setInfoOpen]);
+  const printCurrent = useCallback(() => void printActiveDocument(), [printActiveDocument]);
   const currentWorkspace = store.currentWorkspace;
   if (!currentWorkspace) return null;
 
@@ -67,26 +94,26 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
           onMoreMenuOpenChange={setMoreMenuOpen}
           onSwitchWorkspace={handleSwitchWorkspace}
           onSwitchKb={handleSwitchKb}
-          onCreateWorkspace={() => onDialogChange({ type: "createWorkspace" })}
+          onCreateWorkspace={openDialog.createWorkspace}
           onOpenWorkspace={onOpenExistingWorkspace}
-          onCreateKb={() => onDialogChange({ type: "newKb" })}
-          onManageKbs={() => onDialogChange({ type: "kbManage" })}
-          onManageWorkspaces={() => onDialogChange({ type: "wsManage" })}
-          onOpenSettings={() => onDialogChange({ type: "settings" })}
-          onAllExport={() => onDialogChange({ type: "exportKb" })}
-          onImport={() => onDialogChange({ type: "import", parentId: null })}
+          onCreateKb={openDialog.newKb}
+          onManageKbs={openDialog.kbManage}
+          onManageWorkspaces={openDialog.wsManage}
+          onOpenSettings={openDialog.settings}
+          onAllExport={openDialog.exportKb}
+          onImport={openDialog.importRoot}
           onImportMindmap={importMindmapFiles}
           onImportToFolder={(parent) => onDialogChange({ type: "import", parentId: parent.id })}
-          onOpenLibrary={() => onDialogChange({ type: "library" })}
-          onBackup={() => onDialogChange({ type: "backup" })}
-          onTemplates={() => onDialogChange({ type: "templates" })}
-          onNodeTrash={() => onDialogChange({ type: "nodeTrash" })}
+          onOpenLibrary={openDialog.library}
+          onBackup={openDialog.backup}
+          onTemplates={openDialog.templates}
+          onNodeTrash={openDialog.nodeTrash}
           onShowStarred={tabSession.showStarred}
           onCreateNote={createNote}
           onCreateDoc={createDoc}
           onOpenNode={tabSession.openNode}
-          onCreateRootNode={() => requestNodeCreate(null)}
-          onCreateChildNode={(parent) => requestNodeCreate(parent)}
+          onCreateRootNode={createDoc}
+          onCreateChildNode={createChildNode}
           onUploadAttachment={uploadAttachmentsToTree}
           onRenameNode={controller.setNodeRename}
           onDeleteNode={controller.setNodeDelete}
@@ -107,10 +134,12 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
         />
         <main className="app-sheet m-2 mt-1 flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            <AnimatePresence mode="wait" initial={false}>
+            {/* 标签切换 = 并行交叉淡入：新视图立即挂载（absolute 叠放），旧视图 140ms 淡出。
+                mode="wait" 的串行结构会让重型编辑器挂载被推迟一整个退场时长，切换发涩（2026-10-27 性能任务 B3）。 */}
+            <AnimatePresence initial={false}>
               <motion.div
                 key={activeTab?.id ?? "empty"}
-                className="h-full"
+                className="absolute inset-0"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
@@ -124,10 +153,10 @@ export function WorkspaceLayout({ controller }: WorkspaceLayoutProps) {
                   starred={activeNode?.starred ?? false}
                   infoOpen={infoVisible}
                   onToggleStar={toggleStar}
-                  onToggleInfo={() => setInfoOpen((value) => !value)}
-                  onShare={() => onDialogChange({ type: "share" })}
-                  onPrint={() => void printActiveDocument()}
-                  onOpenKb={() => onDialogChange({ type: "kbManage" })}
+                  onToggleInfo={toggleInfo}
+                  onShare={openDialog.share}
+                  onPrint={printCurrent}
+                  onOpenKb={openDialog.kbManage}
                   onOpenNode={tabSession.openNode}
                   onCreateDoc={createDoc}
                   onDocumentSaved={store.applyDocumentSaved}

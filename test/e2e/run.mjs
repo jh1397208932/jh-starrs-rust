@@ -67,18 +67,28 @@ function compileHelper() {
  * 关闭上一用例可能遗留的系统面板。
  *
  * 2026-10-26 现场：文件面板的「前往文件夹」sheet 未被确认时，模态循环让 AX 整树为空。
- * 只在本机确实检测到系统面板（AX 树里出现「取消/Cancel」）时才按 Escape——
- * 无差别连按 Escape 会把排队按键送进下一个用例刚打开的弹窗，导致弹窗中途关闭。
+ * 2026-10-28 现场：`30-doc` 导出失败后系统保存面板常驻，后续 19 个用例全部因 AX 不可用而连环失败。
+ * 判定：
+ * - AX 树可读且出现「取消/Cancel」→ 按 Escape；
+ * - AX 树不可读或为空（原生 sheet 模态的典型表现）→ 也按一次 Escape（这是唯一能解除模态的手段）；
+ * - AX 树正常且无 Cancel → 不动，避免把 Escape 送进下一个用例刚打开的弹窗。
  */
 async function dismissStrayPanels(context) {
   try {
     const tree = context.ax._call(["tree"]);
     const dump = JSON.stringify(tree);
-    if (!/取消|Cancel/.test(dump)) return;
-    context.ax.key("escape");
-    await sleep(260);
+    if (/取消|Cancel/.test(dump)) {
+      context.ax.key("escape");
+      await sleep(260);
+    }
   } catch {
-    // 面板探测失败时不做任何按键，避免污染后续用例
+    // AX 整树不可读：多半是原生面板处于模态循环，按一次 Escape 兜底解除。
+    try {
+      context.ax.key("escape");
+      await sleep(260);
+    } catch {
+      // 连按键都无法送达时放弃，交给后续用例的等待超时暴露问题。
+    }
   }
 }
 

@@ -1,0 +1,92 @@
+[
+  {
+    "name": "fixture_setup",
+    "start": 1793094994148,
+    "end": 1793095013162,
+    "error": null
+  },
+  {
+    "name": "01_idle",
+    "start": 1793095013163,
+    "end": 1793095025164,
+    "error": null
+  },
+  {
+    "name": "02_dialog_settings",
+    "start": 1793095025164,
+    "end": 1793095042712,
+    "error": null
+  },
+  {
+    "name": "03_dialog_theme",
+    "start": 1793095042713,
+    "end": 1793095054714,
+    "error": null
+  },
+  {
+    "name": "04_info_float",
+    "start": 1793095054715,
+    "end": 1793095071153,
+    "error": null
+  },
+  {
+    "name": "05_tab_switch",
+    "start": 1793095071154,
+    "end": 1793095087752,
+    "error": null
+  },
+  {
+    "name": "06_doc_typing",
+    "start": 1793095087753,
+    "end": 1793095110838,
+    "error": null
+  },
+  {
+    "name": "07_doc_scroll",
+    "start": 1793095110839,
+    "end": 1793095122840,
+    "error": null
+  },
+  {
+    "name": "08_board_canvas",
+    "start": 1793095122841,
+    "end": 1793095138842,
+    "error": null
+  },
+  {
+    "name": "09_mindmap",
+    "start": 1793095138843,
+    "end": 1793095156843,
+    "error": null
+  },
+  {
+    "name": "10_sidebar_toggle",
+    "start": 1793095156844,
+    "end": 1793095168845,
+    "error": null
+  },
+  {
+    "name": "11_bigdoc_hover",
+    "start": 1793095168845,
+    "end": 1793095186630,
+    "error": null
+  },
+  {
+    "name": "12_bigdoc_typing",
+    "start": 1793095186631,
+    "end": 1793095214709,
+    "error": null
+  },
+  {
+    "name": "13_bigdoc_scroll",
+    "start": 1793095214710,
+    "end": 1793095226711,
+    "error": null
+  },
+  {
+    "name": "14_bigtree_sidebar",
+    "start": 1793095226711,
+    "end": 1793095244370,
+    "error": null
+  }
+]

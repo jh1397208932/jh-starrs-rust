@@ -24,6 +24,23 @@ export interface UseBlockHandleOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
+interface CachedBlock {
+  pos: number;
+  type: string;
+  element: HTMLElement;
+  /** 相对视口的块顶边（缓存期内的快照） */
+  top: number;
+  bottom: number;
+  height: number;
+}
+
+interface BlockCache {
+  blocks: CachedBlock[];
+  containerTop: number;
+  /** 手柄相对容器的横坐标 */
+  handleLeft: number;
+}
+
 /**
  * 自绘块级手柄：根据鼠标所在顶层块计算手柄位置，并管理显隐时机。
  *
@@ -38,6 +55,8 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
   const visibleRef = useRef(false);
   const hideTimerRef = useRef(0);
   const hideRef = useRef<() => void>(() => undefined);
+  const cacheRef = useRef<BlockCache | null>(null);
+  const dirtyRef = useRef(true);
 
   const getAnchorPos = useCallback(() => anchorRef.current?.pos ?? null, []);
   const hideHandle = useCallback(() => hideRef.current(), []);
@@ -74,39 +93,69 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
       }, delay);
     };
 
-    const measure = (clientY: number): BlockAnchor | null => {
-      if (!editor.isEditable || editor.isDestroyed) return null;
-      const view = editor.view;
+    const view = editor.view;
+
+    /**
+     * 重建块矩形缓存。文档变更（update/selectionUpdate）、滚动、窗口尺寸变化后失效；
+     * mousemove 只做 rAF 合帧 + 读缓存，不再每次事件都逐块 getBoundingClientRect。
+     */
+    const rebuildCache = (): BlockCache => {
       const containerRect = container.getBoundingClientRect();
       const editorRect = view.dom.getBoundingClientRect();
       const doc = view.state.doc;
-      let best: { pos: number; type: string; element: HTMLElement; rect: DOMRect } | null = null;
-      let bestIndex = -1;
+      const blocks: CachedBlock[] = [];
       let offset = 0;
       for (let index = 0; index < doc.childCount; index += 1) {
         const node = doc.child(index);
         const dom = view.nodeDOM(offset);
         if (dom instanceof HTMLElement) {
           const rect = dom.getBoundingClientRect();
-          if (rect.height > 0 && clientY >= rect.top - BLOCK_TOP_TOLERANCE) {
-            best = { pos: offset, type: node.type.name, element: dom, rect };
-            bestIndex = index;
-          }
+          blocks.push({ pos: offset, type: node.type.name, element: dom, top: rect.top, bottom: rect.bottom, height: rect.height });
         }
         offset += node.nodeSize;
       }
+      const cache: BlockCache = {
+        blocks,
+        containerTop: containerRect.top,
+        handleLeft: editorRect.left - containerRect.left - HANDLE_WIDTH - HANDLE_GAP,
+      };
+      cacheRef.current = cache;
+      dirtyRef.current = false;
+      return cache;
+    };
+
+    const anchorFromCache = (clientY: number): BlockAnchor | null => {
+      const cache = cacheRef.current;
+      if (!cache) return null;
+      let best: CachedBlock | null = null;
+      let bestIndex = -1;
+      for (let index = 0; index < cache.blocks.length; index += 1) {
+        const block = cache.blocks[index];
+        if (block.height > 0 && clientY >= block.top - BLOCK_TOP_TOLERANCE) {
+          best = block;
+          bestIndex = index;
+        }
+      }
       if (!best) return null;
-      const lastBlock = bestIndex === doc.childCount - 1;
-      if (lastBlock && clientY > best.rect.bottom + BLOCK_BOTTOM_TOLERANCE) return null;
+      const isLast = bestIndex === cache.blocks.length - 1;
+      if (isLast && clientY > best.bottom + BLOCK_BOTTOM_TOLERANCE) return null;
       const style = window.getComputedStyle(best.element);
       const lineHeight = Number.parseFloat(style.lineHeight) || 24;
-      const offsetInBlock = Math.min(Math.max(lineHeight / 2, 10), Math.max(best.rect.height / 2, 10));
+      const offsetInBlock = Math.min(Math.max(lineHeight / 2, 10), Math.max(best.height / 2, 10));
       return {
         pos: best.pos,
         type: best.type,
-        top: best.rect.top - containerRect.top + offsetInBlock - HANDLE_HEIGHT / 2,
-        left: editorRect.left - containerRect.left - HANDLE_WIDTH - HANDLE_GAP,
+        top: best.top - cache.containerTop + offsetInBlock - HANDLE_HEIGHT / 2,
+        left: cache.handleLeft,
       };
+    };
+
+    const measure = (clientY: number): BlockAnchor | null => {
+      if (!editor.isEditable || editor.isDestroyed) return null;
+      if (dirtyRef.current || !cacheRef.current) {
+        rebuildCache();
+      }
+      return anchorFromCache(clientY);
     };
 
     const show = (next: BlockAnchor) => {
@@ -126,6 +175,46 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
         visibleRef.current = true;
         setVisible(true);
       }
+    };
+
+    const handleMouseLeave = () => {
+      if (document.body.classList.contains("starris-block-dragging")) return;
+      scheduleHide();
+    };
+
+    const handleMouseOver = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".editor-block-handle")) cancelHide();
+    };
+
+    const handleScroll = () => {
+      if (document.body.classList.contains("starris-block-dragging")) return;
+      dirtyRef.current = true;
+      hide();
+    };
+
+    const handleKeyDown = () => hide();
+
+    // 文档内容变化后块矩形缓存失效；滚动/resize 走 handleScroll 统一标脏。
+    const onDocChange = () => {
+      dirtyRef.current = true;
+    };
+    editor.on("update", onDocChange);
+
+    // mousemove 每帧可能触发多次；合帧到 rAF，一次事件批次最多一次测量。
+    let pendingY: number | null = null;
+    let moveFrame = 0;
+    const runMeasure = () => {
+      moveFrame = 0;
+      const clientY = pendingY;
+      pendingY = null;
+      if (clientY === null) return;
+      const next = measure(clientY);
+      if (!next) {
+        scheduleHide(120);
+        return;
+      }
+      show(next);
     };
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -150,30 +239,9 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
           return;
         }
       }
-      const next = measure(event.clientY);
-      if (!next) {
-        scheduleHide(120);
-        return;
-      }
-      show(next);
+      pendingY = event.clientY;
+      if (moveFrame === 0) moveFrame = window.requestAnimationFrame(runMeasure);
     };
-
-    const handleMouseLeave = () => {
-      if (document.body.classList.contains("starris-block-dragging")) return;
-      scheduleHide();
-    };
-
-    const handleMouseOver = (event: MouseEvent) => {
-      const target = event.target;
-      if (target instanceof Element && target.closest(".editor-block-handle")) cancelHide();
-    };
-
-    const handleScroll = () => {
-      if (document.body.classList.contains("starris-block-dragging")) return;
-      hide();
-    };
-
-    const handleKeyDown = () => hide();
 
     container.addEventListener("mousemove", handleMouseMove);
     container.addEventListener("mouseleave", handleMouseLeave);
@@ -184,6 +252,10 @@ export function useBlockHandle({ editor, containerRef }: UseBlockHandleOptions) 
 
     return () => {
       cancelHide();
+      if (moveFrame !== 0) window.cancelAnimationFrame(moveFrame);
+      editor.off("update", onDocChange);
+      cacheRef.current = null;
+      dirtyRef.current = true;
       hideRef.current = () => undefined;
       container.removeEventListener("mousemove", handleMouseMove);
       container.removeEventListener("mouseleave", handleMouseLeave);

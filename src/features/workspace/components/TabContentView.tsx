@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { memo } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AttachmentNodeView } from "@/features/attachments/components/AttachmentNodeView";
 import { BoardView } from "@/features/board/components/BoardView";
@@ -46,8 +47,11 @@ export interface TabContentViewProps {
 /**
  * 标签内容路由：按激活标签类型选择视图——
  * 无标签 → 空状态引导；flow → 画板；starred → 收藏列表；table → 文档编辑器；doc → 编辑器。
+ *
+ * memo：弹窗/Toast/侧栏等顶层状态变化不再连带重渲染编辑器/画板/导图
+ * （回调引用已由 WorkspaceLayout 统一收敛；2026-10-27 性能任务 B2）。
  */
-export function TabContentView({
+export const TabContentView = memo(function TabContentView({
   activeTab,
   activeNode,
   starredNodes,
@@ -143,4 +147,4 @@ export function TabContentView({
       onError={onError}
     />
   );
-}
+});

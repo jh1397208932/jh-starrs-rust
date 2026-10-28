@@ -303,7 +303,9 @@ export function useWorkspaceMainController({
         showToast(failures[0], "destructive");
       }
     },
-    [showToast, store, tabSession],
+    // 依赖收窄到稳定字段：裸 store / tabSession 对象每次渲染都是新引用，
+    // 会让 onUploadAttachment 失稳并击穿 Sidebar 的 memo（2026-10-27 性能任务 B2）。
+    [showToast, store.currentKb, store.refresh, tabSession.openNode],
   );
 
   const handleSwitchWorkspace = useCallback(
@@ -534,7 +536,7 @@ export function useWorkspaceMainController({
       const first = result.files.find((file) => file.ok && file.nodeId)?.nodeId;
       // refresh 后必须读 ref 里的新节点；闭包里的 store.nodes 还是刷新前的快照。
       const node = first ? findNode(nodesRef.current, first) : null;
-      if (node) guardedTabSession.openNode(node);
+      if (node) openNodeGuarded(node);
       showToast(
         result.failed > 0
           ? t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })
@@ -544,7 +546,7 @@ export function useWorkspaceMainController({
     } catch (error) {
       showError(toErrorMessage(error));
     }
-  }, [guardedTabSession.openNode, nodesRef, showError, showToast, store.currentKb, store.refresh]);
+  }, [openNodeGuarded, nodesRef, showError, showToast, store.currentKb, store.refresh]);
 
   /** 新建节点弹窗提交：成功后非文件夹自动打开标签 */
   const submitNodeCreate = useCallback(

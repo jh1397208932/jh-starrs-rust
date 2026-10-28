@@ -660,10 +660,12 @@ export function DocEditor({
     persistence.markDirty();
     if (node?.id) {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      // 草稿仅用于崩溃恢复；长文档 getJSON+stringify 每 500ms 一次会拖慢打字（B6），
+      // 放宽到 2s，崩溃最多丢最近 2s 输入。
       draftTimerRef.current = setTimeout(() => {
         draftTimerRef.current = null;
         saveDraft(node.id, current.getJSON());
-      }, 500);
+      }, 2000);
     }
   };
   onSelectionUpdateRef.current = (current) => {

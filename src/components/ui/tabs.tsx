@@ -27,5 +27,6 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
 }
 
 export function TabsContent({ className, ...props }: ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content className={cn("flex-1 outline-none", className)} {...props} />;
+  // 激活切换时内容淡入上移（复用全局 anim-slide-up-in，transform/opacity 合成层动画）。
+  return <TabsPrimitive.Content className={cn("anim-slide-up-in flex-1 outline-none", className)} {...props} />;
 }

@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Ellipsis, FileUp, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { memo } from "react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import {
   DropdownMenu,
@@ -28,8 +29,12 @@ export interface FileTreeRowProps {
   onUploadAttachment: (parent: NodeItem) => void;
 }
 
-/** 单个树行（递归）：展开/折叠、选中、拖放提示与节点操作菜单。 */
-export function FileTreeRow(props: FileTreeRowProps) {
+/**
+ * 单个树行（递归）：展开/折叠、选中、拖放提示与节点操作菜单。
+ * memo：配合 buildTree 的节点/children 复用与稳定的 drag 控制器，
+ * 自动保存等局部更新只重渲染受影响的行，不再整树 diff（2026-10-27 性能任务 B2）。
+ */
+export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
   const { t } = useI18n();
   const { entry, depth, collapsed, selectedNodeId, drag } = props;
   const { node, children } = entry;
@@ -74,7 +79,7 @@ export function FileTreeRow(props: FileTreeRowProps) {
             if (isFolder) props.onToggleFolder(node.id);
             else props.onOpenNode(node);
           }}
-          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-[10px] pr-1 text-left text-[13px]"
+          className="flex min-w-0 flex-1 cursor-default items-center gap-1.5 self-stretch rounded-[10px] pr-1 text-left text-[13px] transition-colors duration-150 ease-[var(--ease)] active:bg-sidebar-active/60"
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           {isFolder ? (
@@ -144,4 +149,4 @@ export function FileTreeRow(props: FileTreeRowProps) {
         ))}
     </div>
   );
-}
+});

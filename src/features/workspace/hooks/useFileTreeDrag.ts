@@ -1,4 +1,4 @@
-import { type DragEvent, useState } from "react";
+import { type DragEvent, useCallback, useMemo, useRef, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { t } from "@/lib/i18n";
 import type { NodeItem } from "@/types/notebook";
@@ -49,102 +49,147 @@ export function useFileTreeDrag({
 }: FileTreeDragOptions): FileTreeDragController {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
+  // dragover 事件每帧触发一次以上；镜像最新 hint，落点未变化时保持引用（React bail-out），
+  // 避免每次 dragover 都重渲染整棵文件树（2026-10-27 真机性能任务 B4）。
+  const dropHintRef = useRef<DropHint | null>(null);
+  const updateHint = useCallback((next: DropHint | null) => {
+    const current = dropHintRef.current;
+    if (current === next) return;
+    if (current && next && current.targetId === next.targetId && current.position === next.position) {
+      return;
+    }
+    dropHintRef.current = next;
+    setDropHint(next);
+  }, []);
 
-  const clear = () => {
+  const clear = useCallback(() => {
     setDraggedId(null);
-    setDropHint(null);
-  };
+    updateHint(null);
+  }, [updateHint]);
 
-  const runMove = async (id: string, parentId: string | null, index: number) => {
-    try {
-      await onMove(id, parentId, index);
-    } catch (caught) {
-      onError(toErrorMessage(caught));
-    }
-  };
+  const runMove = useCallback(
+    async (id: string, parentId: string | null, index: number) => {
+      try {
+        await onMove(id, parentId, index);
+      } catch (caught) {
+        onError(toErrorMessage(caught));
+      }
+    },
+    [onMove, onError],
+  );
 
-  const handleDragStart = (event: DragEvent<HTMLButtonElement>, node: NodeItem) => {
-    setDraggedId(node.id);
-    setDropHint(null);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", node.id);
-  };
+  const handleDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>, node: NodeItem) => {
+      setDraggedId(node.id);
+      updateHint(null);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", node.id);
+    },
+    [updateHint],
+  );
 
-  const handleRowDragOver = (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
-    if (!draggedId || draggedId === target.id) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
-    const position: DropPosition =
-      target.kind === "folder"
-        ? ratio < 0.28
-          ? "before"
-          : ratio > 0.72
-            ? "after"
-            : "inside"
-        : ratio < 0.5
-          ? "before"
-          : "after";
-    const resolved = resolveDropTarget(nodes, draggedId, target.id, position);
-    if (!resolved) {
-      event.dataTransfer.dropEffect = "none";
-      setDropHint(null);
-      return;
-    }
-    event.dataTransfer.dropEffect = "move";
-    setDropHint({ targetId: target.id, position });
-  };
+  const handleRowDragOver = useCallback(
+    (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
+      if (!draggedId || draggedId === target.id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
+      const position: DropPosition =
+        target.kind === "folder"
+          ? ratio < 0.28
+            ? "before"
+            : ratio > 0.72
+              ? "after"
+              : "inside"
+          : ratio < 0.5
+            ? "before"
+            : "after";
+      // 同一目标同一落位：跳过重复的落点解析与状态更新（dragover 每帧触发）。
+      const current = dropHintRef.current;
+      if (current && current.targetId === target.id && current.position === position) {
+        event.dataTransfer.dropEffect = "move";
+        return;
+      }
+      const resolved = resolveDropTarget(nodes, draggedId, target.id, position);
+      if (!resolved) {
+        event.dataTransfer.dropEffect = "none";
+        updateHint(null);
+        return;
+      }
+      event.dataTransfer.dropEffect = "move";
+      updateHint({ targetId: target.id, position });
+    },
+    [draggedId, nodes, updateHint],
+  );
 
-  const handleRowDragLeave = (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
-    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-    setDropHint((prev) => (prev?.targetId === target.id ? null : prev));
-  };
+  const handleRowDragLeave = useCallback(
+    (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
+      if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+      const current = dropHintRef.current;
+      if (current && current.targetId === target.id) updateHint(null);
+    },
+    [updateHint],
+  );
 
-  const handleRowDrop = (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const movingId = draggedId;
-    const hint = dropHint;
-    if (!movingId || !hint || hint.targetId !== target.id || hint.position === "root") {
+  const handleRowDrop = useCallback(
+    (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const movingId = draggedId;
+      // 读 ref 而不是 state：drop 只发生一次，ref 与最新 hint 一致且避免多余依赖。
+      const hint = dropHintRef.current;
+      if (!movingId || !hint || hint.targetId !== target.id || hint.position === "root") {
+        clear();
+        return;
+      }
+      if (hint.position === "inside") onExpand(target.id);
+      const resolved = resolveDropTarget(nodes, movingId, target.id, hint.position);
       clear();
-      return;
-    }
-    if (hint.position === "inside") onExpand(target.id);
-    const resolved = resolveDropTarget(nodes, movingId, target.id, hint.position);
-    clear();
-    if (!resolved) {
-      onError(t("不能放到这里"));
-      return;
-    }
-    void runMove(movingId, resolved.parentId, resolved.index);
-  };
+      if (!resolved) {
+        onError(t("不能放到这里"));
+        return;
+      }
+      void runMove(movingId, resolved.parentId, resolved.index);
+    },
+    [clear, draggedId, nodes, onExpand, onError, runMove],
+  );
 
-  const handleRootDragOver = (event: DragEvent<HTMLFieldSetElement>) => {
-    if (!draggedId) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDropHint({ targetId: null, position: "root" });
-  };
+  const handleRootDragOver = useCallback(
+    (event: DragEvent<HTMLFieldSetElement>) => {
+      if (!draggedId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      updateHint({ targetId: null, position: "root" });
+    },
+    [draggedId, updateHint],
+  );
 
-  const handleRootDrop = (event: DragEvent<HTMLFieldSetElement>) => {
-    event.preventDefault();
-    const movingId = draggedId;
-    if (!movingId) return;
-    const target = resolveRootDrop(nodes, movingId);
-    clear();
-    void runMove(movingId, target.parentId, target.index);
-  };
+  const handleRootDrop = useCallback(
+    (event: DragEvent<HTMLFieldSetElement>) => {
+      event.preventDefault();
+      const movingId = draggedId;
+      if (!movingId) return;
+      const target = resolveRootDrop(nodes, movingId);
+      clear();
+      void runMove(movingId, target.parentId, target.index);
+    },
+    [clear, draggedId, nodes, runMove],
+  );
 
-  return {
-    draggedId,
-    dropHint,
-    handleDragStart,
-    handleDragEnd: clear,
-    handleRowDragOver,
-    handleRowDragLeave,
-    handleRowDrop,
-    handleRootDragOver,
-    handleRootDrop,
-  };
+  // 控制器对象引用稳定：只有拖拽状态变化时才换新对象，配合 memo(FileTreeRow) 避免整树重渲染。
+  return useMemo(
+    () => ({
+      draggedId,
+      dropHint,
+      handleDragStart,
+      handleDragEnd: clear,
+      handleRowDragOver,
+      handleRowDragLeave,
+      handleRowDrop,
+      handleRootDragOver,
+      handleRootDrop,
+    }),
+    [draggedId, dropHint, clear, handleDragStart, handleRowDragOver, handleRowDragLeave, handleRowDrop, handleRootDragOver, handleRootDrop],
+  );
 }

@@ -4,12 +4,27 @@ import type { NodeItem, TreeDropTarget, TreeNode } from "@/types/notebook";
  * 由平表节点组装递归树：按 `parentId` 归组，按 `sortOrder` 排序。
  * 父节点缺失的孤儿节点会提升为根，避免数据异常时整棵树消失。
  * @param nodes 同一知识库的全部节点
+ * @param previous 上一次构建的树；节点对象身份未变的条目复用旧 TreeNode 与 children 数组，
+ *                 配合 memo 化的树行组件，让自动保存等局部更新不再整树重渲染（2026-10-27 性能任务 B2）。
  * @returns 已排序的递归树
  * @example const tree = buildTree(await listNodes(kb.id));
  */
-export function buildTree(nodes: NodeItem[]): TreeNode[] {
+export function buildTree(nodes: NodeItem[], previous?: TreeNode[]): TreeNode[] {
+  const prevById = new Map<string, TreeNode>();
+  if (previous) {
+    const walk = (list: TreeNode[]) => {
+      for (const entry of list) {
+        prevById.set(entry.node.id, entry);
+        walk(entry.children);
+      }
+    };
+    walk(previous);
+  }
   const map = new Map<string, TreeNode>();
-  for (const node of nodes) map.set(node.id, { node, children: [] });
+  for (const node of nodes) {
+    const prev = prevById.get(node.id);
+    map.set(node.id, prev && prev.node === node ? prev : { node, children: [] });
+  }
   const roots: TreeNode[] = [];
   for (const node of nodes) {
     const treeNode = map.get(node.id);
@@ -17,6 +32,18 @@ export function buildTree(nodes: NodeItem[]): TreeNode[] {
     const parent = node.parentId ? map.get(node.parentId) : undefined;
     if (parent) parent.children.push(treeNode);
     else roots.push(treeNode);
+  }
+  // 子数组复用：被复用的节点若子项全部同一实例，则沿用旧数组，保住下游 memo。
+  for (const node of nodes) {
+    const treeNode = map.get(node.id);
+    const prev = prevById.get(node.id);
+    if (!treeNode || !prev || prev.node !== node) continue;
+    if (
+      prev.children.length === treeNode.children.length &&
+      prev.children.every((child, index) => child === treeNode.children[index])
+    ) {
+      treeNode.children = prev.children;
+    }
   }
   sortTree(roots);
   return roots;

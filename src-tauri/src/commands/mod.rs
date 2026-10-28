@@ -12,6 +12,7 @@ pub mod history;
 pub mod import;
 pub mod knowledge_base;
 pub mod library;
+pub mod log;
 pub mod mcp;
 pub mod memory;
 pub mod mindmap;
