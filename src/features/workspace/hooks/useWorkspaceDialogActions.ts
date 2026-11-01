@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { UpdateKnowledgeBaseParams } from "@/api/knowledgeBase";
 import type { CreateNodeParams } from "@/api/node";
 import type { CreateWorkspaceParams } from "@/api/workspace";
+import { bindingLabel } from "@/features/shortcuts/shortcutKeys";
 import type { useToast } from "@/hooks/useToast";
 import { t } from "@/lib/i18n";
 import type { DeleteWorkspaceResult, NodeItem } from "@/types/notebook";
@@ -122,7 +123,7 @@ export function useWorkspaceDialogActions(
   const toggleStar = useCallback(
     async (node: NodeItem) => {
       const updated = await store.toggleStar(node);
-      showToast(updated.starred ? t("已收藏") : t("已取消收藏"), "primary", "⌘D");
+      showToast(updated.starred ? t("已收藏") : t("已取消收藏"), "primary", bindingLabel("Mod+D"));
       return updated;
     },
     [store, showToast],

@@ -19,6 +19,7 @@
     "package": "tauri build",
     "package:dmg": "tauri build --bundles dmg",
     "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
+    "package:win": "tauri build --bundles nsis",
     "test:mcp": "node test/mcp/smoke.mjs"
   },
   "dependencies": {

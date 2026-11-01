@@ -136,8 +136,54 @@ pub fn verify_workspace_deletable(root: &Path) -> AppResult<PathBuf> {
 }
 
 /// 把路径转为 UTF-8 字符串返回给前端。
+///
+/// Windows 的 `canonicalize` 会返回 verbatim 前缀（`\\?\C:\...`），
+/// 直接展示或持久化会让用户看到怪异前缀，也会让部分外部工具无法识别；
+/// 这里在输出前还原为普通路径。Unicode 长路径仍然可用，Rust 内部
+/// 会按需重新规范化。
 pub fn path_to_string(path: &Path) -> AppResult<String> {
-    path.to_str()
-        .map(str::to_string)
-        .ok_or_else(|| AppError::validation("路径包含无法识别的字符"))
+    let text = path
+        .to_str()
+        .ok_or_else(|| AppError::validation("路径包含无法识别的字符"))?;
+    Ok(strip_verbatim_prefix(text))
+}
+
+/// 去掉 Windows verbatim 前缀；UNC 路径还原为 `\\server\share`。
+fn strip_verbatim_prefix(text: &str) -> String {
+    #[cfg(windows)]
+    {
+        // 普通字符串：`"\\\\?\\"` 即字面量 `\\?\`。
+        if let Some(rest) = text.strip_prefix("\\\\?\\UNC\\") {
+            return format!("\\\\{rest}");
+        }
+        if let Some(rest) = text.strip_prefix("\\\\?\\") {
+            return rest.to_string();
+        }
+    }
+    text.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Windows 的 canonicalize 会带 `\\?\` 前缀；输出给前端前必须还原。
+    #[test]
+    fn path_to_string_strips_verbatim_prefix() {
+        let raw = "\\\\?\\C:\\Users\\me\\Starris";
+        let output = path_to_string(Path::new(raw)).expect("路径应可转为字符串");
+        #[cfg(windows)]
+        assert_eq!(output, "C:\\Users\\me\\Starris");
+        #[cfg(not(windows))]
+        assert_eq!(output, raw);
+    }
+
+    /// UNC 共享路径不能被还原成单反斜杠。
+    #[cfg(windows)]
+    #[test]
+    fn path_to_string_restores_unc_prefix() {
+        let raw = "\\\\?\\UNC\\server\\share\\Starris";
+        let output = path_to_string(Path::new(raw)).expect("路径应可转为字符串");
+        assert_eq!(output, "\\\\server\\share\\Starris");
+    }
 }

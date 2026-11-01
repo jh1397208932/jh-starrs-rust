@@ -18,13 +18,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-libc = "0.2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 uuid = { version = "1", features = ["v7"] }
 chrono = "0.4"
@@ -45,6 +44,18 @@ quick-xml = { version = "0.42", default-features = false }
 # 客户端内置 MCP HTTP 服务：成熟 HTTP 栈 + 与 Tauri 相同的 tokio 运行时。
 axum = "0.8"
 tokio = { version = "1", features = ["net", "sync"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS 的标题栏 Overlay（红绿灯）需要 private API；Windows/Linux 不启用。
+tauri = { version = "2", features = [] }
+
+[target.'cfg(unix)'.dependencies]
+# Unix 平台读取磁盘可用空间（附件统计）。
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Windows 平台读取磁盘可用空间（附件统计）；只启用文件系统子集，控制体积。
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile = "3"

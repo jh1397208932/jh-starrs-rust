@@ -1,7 +1,6 @@
 import { t } from "@/lib/i18n";
+import { IS_MAC } from "@/lib/platform";
 import type { ShortcutAction, ShortcutScope, ShortcutValidation } from "./types";
-
-const IS_MAC = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("macintosh");
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn", "Dead"]);
 const PUNCTUATION_TOKENS: Record<string, string> = {
@@ -21,9 +20,9 @@ const PUNCTUATION_TOKENS: Record<string, string> = {
 const TOKEN_LABELS: Record<string, string> = {
   Mod: IS_MAC ? "⌘" : "Ctrl",
   Control: IS_MAC ? "⌃" : "Ctrl",
-  Meta: "⌘",
+  Meta: IS_MAC ? "⌘" : "Win",
   Alt: IS_MAC ? "⌥" : "Alt",
-  Shift: "⇧",
+  Shift: IS_MAC ? "⇧" : "Shift",
   Comma: ",",
   Backslash: "\\",
   Slash: "/",
@@ -83,9 +82,12 @@ export function bindingTokens(binding: string): string[] {
   return binding.split("+").map((token) => TOKEN_LABELS[token] ?? token);
 }
 
-/** 组合键的可读文本。 */
+/**
+ * 组合键的可读文本：macOS 连写成「⌘⇧F」，Windows/Linux 用「Ctrl+Shift+F」。
+ * 展示层统一走这里，避免各页面手写平台符号。
+ */
 export function bindingLabel(binding: string): string {
-  return bindingTokens(binding).join(" ");
+  return bindingTokens(binding).join(IS_MAC ? "" : "+");
 }
 
 /** 校验组合是否可保存。 */

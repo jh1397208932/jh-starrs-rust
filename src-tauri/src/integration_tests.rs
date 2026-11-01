@@ -2861,8 +2861,10 @@ fn export_knowledge_base_preserves_tree_and_all_attachments() {
         .iter()
         .find(|file| file.kind == "attachment" && file.path.ends_with("树附件.txt"))
         .expect("文档引用附件未出现在导出清单");
+    // 导出路径使用平台分隔符（Windows 反斜杠），断言前统一成正斜杠。
+    let normalized_attachment_path = tree_attachment.path.replace('\\', "/");
     assert!(
-        tree_attachment.path.contains("/设计/attach/"),
+        normalized_attachment_path.contains("/设计/attach/"),
         "{}",
         tree_attachment.path
     );

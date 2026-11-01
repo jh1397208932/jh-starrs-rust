@@ -38,6 +38,32 @@ export async function pickAttachmentFiles(options: PickAttachmentOptions = {}): 
 }
 
 /**
+ * 把任意标题整理成跨平台合法的文件名（Windows 规则最严，取交集）。
+ *
+ * 1. 替换 `\ / : * ? " < > |` 与控制字符；
+ * 2. 去掉末尾的点与空格（Windows 会静默截断）；
+ * 3. 避开 CON/PRN/NUL/COM1… 等设备保留名。
+ *
+ * @param raw 原始文件名或标题
+ * @param fallback 清理后为空时的兜底名
+ * @returns 可直接交给保存对话框的文件名
+ * @example safeFileName("设计:稿.pdf", "未命名") // "设计_稿.pdf"
+ */
+export function safeFileName(raw: string, fallback: string): string {
+  const replaced = [...raw.replace(/[\\/:*?"<>|]/g, "_")]
+    // 去掉 C0/C1 控制字符（码点判断避免正则里的不可见字符）。
+    .filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code > 0x1f && code !== 0x7f;
+    })
+    .join("")
+    .replace(/[. ]+$/g, "")
+    .trim();
+  const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(replaced);
+  return replaced && !reserved ? replaced : fallback;
+}
+
+/**
  * 选择附件导出目标路径。
  * @param defaultName 默认文件名
  * @returns 绝对路径；用户取消时为 null
@@ -46,7 +72,7 @@ export async function pickAttachmentFiles(options: PickAttachmentOptions = {}): 
 export async function pickAttachmentExportPath(defaultName: string): Promise<string | null> {
   return save({
     title: t("导出附件"),
-    defaultPath: defaultName,
+    defaultPath: safeFileName(defaultName, t("附件")),
   });
 }
 
@@ -86,7 +112,7 @@ export async function pickExportPath(
   defaultName: string,
 ): Promise<ExportPathGrant | null> {
   const filter = EXPORT_FILTERS[format];
-  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名文档");
+  const safeName = safeFileName(defaultName, t("未命名文档"));
   return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
     suggestedName: `${safeName}.${filter.extensions[0]}`,
     filterName: t(filter.name),
@@ -159,7 +185,7 @@ export async function pickBoardExportPath(
   defaultName: string,
 ): Promise<ExportPathGrant | null> {
   const filter = BOARD_EXPORT_FILTERS[format];
-  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名画板");
+  const safeName = safeFileName(defaultName, t("未命名画板"));
   return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
     suggestedName: `${safeName}.${filter.extensions[0]}`,
     filterName: t(filter.name),
@@ -190,7 +216,7 @@ export async function pickMindmapExportPath(
   defaultName: string,
 ): Promise<ExportPathGrant | null> {
   const filter = MINDMAP_EXPORT_FILTERS[format];
-  const safeName = defaultName.replace(/[\\/:*?"<>|]/g, "_").trim() || t("未命名思维导图");
+  const safeName = safeFileName(defaultName, t("未命名思维导图"));
   const extension = format === "native" ? "starris-mindmap.json" : filter.extensions[0];
   return invokeCommand<ExportPathGrant | null>("dialog_pick_export_file", {
     suggestedName: `${safeName}.${extension}`,

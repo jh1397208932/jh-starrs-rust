@@ -38,7 +38,11 @@ pub struct LogWriteInput {
 #[tauri::command(async)]
 pub fn log_write(input: LogWriteInput) {
     let source: String = input.source.trim().chars().take(48).collect();
-    let source = if source.is_empty() { "app" } else { source.as_str() };
+    let source = if source.is_empty() {
+        "app"
+    } else {
+        source.as_str()
+    };
     match input.level {
         LogLevelInput::Info => logging::info(source, &input.message),
         LogLevelInput::Debug => logging::debug(source, &input.message),

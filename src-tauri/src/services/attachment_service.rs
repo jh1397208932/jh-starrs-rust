@@ -651,7 +651,10 @@ pub fn stats(context: &AttachmentContext) -> AppResult<AttachmentStatsDto> {
     })
 }
 
-/// 存储所在磁盘剩余字节；非 Unix 平台返回 None。
+/// 存储所在磁盘的当前用户可用字节；查询失败返回 None。
+///
+/// Unix 用 `statvfs`，Windows 用 `GetDiskFreeSpaceExW` 的调用者可用空间，
+/// 两者都返回「本进程可写」的口径，避免把系统保留块算进去。
 fn storage_free_bytes(path: &std::path::Path) -> Option<i64> {
     #[cfg(unix)]
     {
@@ -664,7 +667,32 @@ fn storage_free_bytes(path: &std::path::Path) -> Option<i64> {
         }
         i64::try_from(stat.f_bavail as u64 * stat.f_frsize as u64).ok()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut available: u64 = 0;
+        // SAFETY: wide 是带 NUL 结尾的有效 UTF-16 缓冲；其余输出指针传 null，
+        // 只读取调用者可用空间，不写入未初始化内存。
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                &mut available,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return None;
+        }
+        i64::try_from(available).ok()
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
         None
@@ -919,5 +947,17 @@ impl Drop for PackAppendGuard {
         {
             let _ = fs::remove_file(self.storage_root.join(relative));
         }
+    }
+}
+
+#[cfg(test)]
+mod platform_tests {
+    use super::storage_free_bytes;
+
+    /// 临时目录所在磁盘必须能返回正数可用空间（Windows 走 GetDiskFreeSpaceExW）。
+    #[test]
+    fn storage_free_bytes_reports_positive() {
+        let free = storage_free_bytes(&std::env::temp_dir()).expect("临时目录应可查询磁盘空间");
+        assert!(free > 0, "可用空间应为正数，实际 {free}");
     }
 }

@@ -50,11 +50,14 @@ function validatePath(path: string): string | null {
 /** 由名称推导默认目标目录：<父目录>/<安全名称> */
 function derivePath(parent: string, name: string): string {
   if (!parent) return "";
-  const safeName =
+  const cleaned =
     Array.from(name.trim())
       .map((char) => (char.charCodeAt(0) < 32 || /[\\/:*?"<>|]/.test(char) ? "-" : char))
       .join("")
       .replace(/^[.\s]+|[.\s]+$/g, "") || t("新工作区");
+  // Windows 设备保留名（CON/PRN/NUL/COM1…）不能作为目录名，追加后缀规避。
+  const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(cleaned);
+  const safeName = reserved ? `${cleaned}-1` : cleaned;
   return `${parent.replace(/[\\/]+$/, "")}/${safeName}`;
 }
 

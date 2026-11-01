@@ -8,6 +8,7 @@ import {
 } from "react";
 import { loadMemory, MEMORY_KEYS, saveMemory } from "@/api/memory";
 import { enUS } from "./messages/en-US";
+import { platformizeShortcutText } from "./platform";
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -66,7 +67,7 @@ const SERVER_PATTERNS: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
 
 export function t(source: string, vars?: Record<string, string | number>): string {
   const translated = MESSAGES[activeLocale][source] ?? source;
-  const output = interpolate(translated, vars);
+  const output = interpolate(platformizeShortcutText(translated), vars);
   if (output === source && activeLocale === "en-US") {
     for (const [pattern, render] of SERVER_PATTERNS) {
       const match = output.match(pattern);

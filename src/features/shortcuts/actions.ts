@@ -1,3 +1,4 @@
+import { platformKey } from "@/lib/platform";
 import type { ShortcutAction, ShortcutConfig } from "./types";
 
 /** 应用级快捷键；与 WorkspaceMainController 的动作一一对应。 */
@@ -83,12 +84,12 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
   ...MINDMAP_SHORTCUT_ACTIONS,
 ];
 
-/** 第三方/未接管的只读内置快捷键；仅展示。 */
+/** 第三方/未接管的只读内置快捷键；仅展示，按运行平台转换键帽。 */
 export const BUILTIN_SHORTCUTS: { keys: string[]; label: string; group: string }[] = [
-  { keys: ["⌘", "Z"], label: "画板撤销", group: "画板内置" },
-  { keys: ["⌘", "⇧", "Z"], label: "画板重做", group: "画板内置" },
-  { keys: ["⌘", "C"], label: "画板复制", group: "画板内置" },
-  { keys: ["⌘", "V"], label: "画板粘贴", group: "画板内置" },
+  { keys: [platformKey("⌘"), "Z"], label: "画板撤销", group: "画板内置" },
+  { keys: [platformKey("⌘"), platformKey("⇧"), "Z"], label: "画板重做", group: "画板内置" },
+  { keys: [platformKey("⌘"), "C"], label: "画板复制", group: "画板内置" },
+  { keys: [platformKey("⌘"), "V"], label: "画板粘贴", group: "画板内置" },
   { keys: ["Delete"], label: "删除选中图元", group: "画板内置" },
   { keys: ["Tab"], label: "表格内跳到下一格", group: "编辑器内置" },
 ];

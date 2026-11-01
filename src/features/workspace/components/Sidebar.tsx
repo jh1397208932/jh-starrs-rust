@@ -3,8 +3,10 @@ import { motion } from "motion/react";
 import { memo } from "react";
 import { BrandLogo } from "@/components/common/BrandLogo";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
+import { bindingLabel } from "@/features/shortcuts/shortcutKeys";
 import { useI18n } from "@/lib/i18n";
 import { SPRING_PRESS } from "@/lib/motion";
+import { IS_MAC } from "@/lib/platform";
 import type { KnowledgeBase, NodeItem, TreeNode, Workspace } from "@/types/notebook";
 import { FileTree } from "./FileTree";
 import { MoreMenu } from "./MoreMenu";
@@ -66,8 +68,9 @@ const QUICK_ACTIONS = [
 ] as const;
 
 /**
- * 232px 通高左侧列：窗口拖拽带（macOS 红绿灯）→ 工作区入口 → 三快捷钮
- * → 文件树（任意层级 + 拖拽）→ 底部更多(⌘J)。全部使用 --sidebar-* 令牌组。
+ * 232px 通高左侧列：窗口拖拽带（macOS 红绿灯 / Windows 顶部拖拽带）→ 工作区入口
+ * → 三快捷钮 → 文件树（任意层级 + 拖拽）→ 底部更多（平台化快捷键）。
+ * 全部使用 --sidebar-* 令牌组。
  *
  * memo：弹窗/Toast/主题等顶层状态变化不再连带重渲染整列与文件树
  * （回调引用已由 WorkspaceLayout 统一收敛；2026-10-27 性能任务 B2）。
@@ -76,7 +79,12 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const { t } = useI18n();
   return (
     <div className="flex h-full flex-col text-sidebar-foreground">
-      <TrafficLightSlot className="h-[44px]" />
+      {/* macOS 用系统红绿灯槽位；Windows/Linux 用同高拖拽带承担窗口拖动与双击最大化 */}
+      {IS_MAC ? (
+        <TrafficLightSlot className="h-[44px]" />
+      ) : (
+        <div data-tauri-drag-region className="h-[44px] shrink-0" aria-hidden="true" />
+      )}
 
       <WorkspaceSwitchPopover
         workspaces={props.workspaces}
@@ -168,7 +176,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           >
             <Ellipsis className="size-4 text-sidebar-muted" />
             {t("更多")}
-            <span className="ml-auto font-mono text-[11px] text-sidebar-muted">⌘J</span>
+            <span className="ml-auto font-mono text-[11px] text-sidebar-muted">{bindingLabel("Mod+J")}</span>
           </button>
         </MoreMenu>
       </div>

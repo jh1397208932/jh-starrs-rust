@@ -56,7 +56,10 @@ pub fn run() {
                 )?
                 .unwrap_or_else(|| "zh-CN".to_string())
             };
-            app.set_menu(menu::build(app.handle(), &locale)?)?;
+            // macOS 挂原生菜单（Quit/Find 走自定义事件）；Windows/Linux 无边框窗口不挂菜单栏。
+            if let Some(native_menu) = menu::build(app.handle(), &locale)? {
+                app.set_menu(native_menu)?;
+            }
             app.manage(state);
             bootstrap::spawn_startup(app.handle().clone());
             // MCP 是客户端能力：进程内起本机 HTTP 服务，随窗口启动；失败只记录状态。
