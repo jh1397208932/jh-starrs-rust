@@ -351,7 +351,7 @@ pub fn new_sheet(root: MindmapTopic, structure: MindmapStructure) -> MindmapCont
         sheet: MindmapSheet {
             id: format!("sheet-{}", crate::utils::new_id()),
             structure,
-            theme: MindmapTheme::Auto,
+            theme: MindmapTheme::Vivid,
             branch_coloring: Default::default(),
             edge_style: Default::default(),
             background: Default::default(),

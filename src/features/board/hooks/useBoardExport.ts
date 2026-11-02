@@ -3,16 +3,14 @@ import { toErrorMessage } from "@/api/client";
 import { writeExportFile } from "@/api/exchange";
 import { pickBoardExportPath } from "@/api/fileDialog";
 import { t } from "@/lib/i18n";
-import type { BoardExportFormat } from "@/types/board";
+import type { BoardCanvasApi, BoardExportFormat } from "@/types/board";
 import {
   boardFilesToBinary,
-  hasBoardFileCards,
   renderBoardPng,
   renderBoardSvg,
   serializeBoardExcalidraw,
   textToBase64,
 } from "../utils/exportScene";
-import type { BoardCanvasApi } from "./useBoardFileIntake";
 
 interface UseBoardExportOptions {
   api: BoardCanvasApi | null;
@@ -65,9 +63,7 @@ export function useBoardExport({
           message = t("已导出 SVG 矢量图");
         } else {
           dataBase64 = textToBase64(await serializeBoardExcalidraw(elements, appState, files));
-          message = hasBoardFileCards(elements)
-            ? t("已导出；文件附件请用「全部导出」")
-            : t("已导出 Excalidraw 文件");
+          message = t("已导出 Excalidraw 文件");
         }
         await writeExportFile({ token: grant.token, path: grant.path, dataBase64, overwrite: true });
         onExported?.(message);

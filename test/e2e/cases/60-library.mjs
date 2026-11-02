@@ -33,9 +33,16 @@ export default {
       clicks: 1,
       dialogs: 0,
     },
+    {
+      action: "画板面板「我的组件」查看导入库",
+      ui: "画板右缘组件 → 我的组件",
+      clicks: 3,
+      dialogs: 0,
+      note: "导入库按库名分组出现在我的组件，不与内置组件重复。",
+    },
   ],
   complexity: {
-    clickTotal: 8,
+    clickTotal: 11,
     dialogs: 2,
     typingFields: 0,
     assessment:
@@ -78,5 +85,18 @@ export default {
     await ctx.press("关闭");
     ctx.metrics.dialogs += 1;
     ctx.log(`导入库：${imported[0].name}，${imported[0].item_count} 个组件`);
+
+    const boardTitle = ctx.shared.boardTitle;
+    if (!boardTitle) {
+      ctx.log("跳过「我的组件」：本运行未创建画板");
+      return;
+    }
+    await ctx.press(boardTitle);
+    await ctx.press("展开组件库");
+    await ctx.press("我的组件");
+    await ctx.expectText(imported[0].name, { timeout: 8000 });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await ctx.screenshot("library-mine");
+    await ctx.press("收起组件库");
   },
 };

@@ -84,7 +84,8 @@ export function useMindmapFlowViewport({
     const node = layoutRef.current.find((item) => item.id === focusTarget.id);
     if (!node) return;
     userMovedRef.current = true;
-    void setCenter(node.x + node.width / 2, node.y + node.height / 2, { zoom: 1.05, duration: 240 });
+    // 固定 100%：1.05 这类非整数缩放会让整屏文字按非整数设备像素重采样，看起来发虚。
+    void setCenter(node.x + node.width / 2, node.y + node.height / 2, { zoom: 1, duration: 240 });
   }, [focusTarget, setCenter]);
 
   const markUserMoved = useCallback(() => {

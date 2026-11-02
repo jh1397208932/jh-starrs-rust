@@ -68,6 +68,36 @@ export async function uploadAttachmentToTree(params: {
   return mapNode(dto);
 }
 
+/** 目录导入结果：创建数量、跳过数量与逐条失败原因。 */
+export interface FolderImportResult {
+  folders: number;
+  files: number;
+  skipped: number;
+  failures: { path: string; message: string }[];
+}
+
+/**
+ * 上传整个文件夹：按目录层级创建文件夹节点并递归上传文件。
+ * @param params.knowledgeBaseId 目标知识库
+ * @param params.parentId 挂载位置，空表示根
+ * @param params.folderPath 本地目录绝对路径
+ * @returns 创建的文件夹数、文件数、跳过数与失败明细
+ * @example await uploadFolderToTree({ knowledgeBaseId: kb.id, folderPath: "/Users/me/资料" });
+ */
+export async function uploadFolderToTree(params: {
+  knowledgeBaseId: string;
+  parentId?: string | null;
+  folderPath: string;
+}): Promise<FolderImportResult> {
+  return invokeCommand<FolderImportResult>("attachment_upload_folder", {
+    input: {
+      knowledgeBaseId: params.knowledgeBaseId,
+      parentId: params.parentId ?? null,
+      folderPath: params.folderPath,
+    },
+  });
+}
+
 /**
  * 按附件节点读取其对象。
  * @param nodeId 附件节点 id
@@ -76,6 +106,21 @@ export async function uploadAttachmentToTree(params: {
  */
 export async function getAttachmentByNode(nodeId: string): Promise<Attachment> {
   return invokeCommand<Attachment>("attachment_get_by_node", { nodeId });
+}
+
+/** 附件可预览内容：图片另走 `readAttachmentBytes`，这里只覆盖文字类。 */ export type AttachmentPreview =
+  | { kind: "text"; text: string; truncated: boolean }
+  | { kind: "blocks"; format: "markdown" | "docx"; blocks: unknown[]; truncated: boolean }
+  | { kind: "unsupported" };
+
+/**
+ * 读取纯文本 / Markdown / Word 附件的可预览内容。
+ * @param nodeId 附件节点 id（不是附件 id）
+ * @returns 文本、块 JSON 或「不支持预览」
+ * @example const preview = await getAttachmentPreview(node.id);
+ */
+export async function getAttachmentPreview(nodeId: string): Promise<AttachmentPreview> {
+  return invokeCommand<AttachmentPreview>("attachment_preview", { nodeId });
 }
 
 /**

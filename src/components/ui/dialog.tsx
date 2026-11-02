@@ -1,36 +1,64 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import { AnimatePresence, motion, useDragControls } from "motion/react";
+import {
+  type ComponentProps,
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
 import { t } from "@/lib/i18n";
+import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
  * 模态弹窗通用规格（UX_SPEC §3）：
- * 遮罩 = foreground 32% 纯色压暗（不做实时 backdrop-blur：全屏模糊层随透明度动画逐帧重算，
+ * 遮罩 = foreground 25% 纯色压暗（不做实时 backdrop-blur：全屏模糊层随透明度动画逐帧重算，
  * 是弹窗过渡掉帧的首要来源，2026-10-27 真机性能任务裁决）；容器 = popover + border + shadow-lg + radius-lg，
  * 只保留容器单层 12px 模糊（模糊预算：同屏实时模糊 ≤1 层、半径 ≤14px）；
- * 入出场 = opacity + scale(.975→1) + 上移 10px，时长 --dur-2 / 标准缓动 --ease-out（大面板不做回弹）；Esc 关闭、焦点由 Radix 管理。
+ * 入出场 = opacity + scale(.975→1) + 上移 10px（标准缓动 --ease-out，大面板不做回弹）；
+ * 出场用 Motion 真退场：Radix 关闭会立刻卸载内容，纯 CSS 的 closed 动画从未生效；
+ * 遮罩与容器各自淡出，退场瞬间设 pointer-events:none，不再拦截点击。Esc 关闭、焦点由 Radix 管理。
  *
  * 关闭行为契约（统一收编，调用方不得自行 preventDefault）：
  * - 默认（dismissible = true）：右上角 ×、Esc、点击遮罩 三种方式均可关闭；
  * - dismissible = false：三种方式全部阻止——必须显式声明并注释业务原因。
  */
 
-export const Dialog = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose = DialogPrimitive.Close;
+/** Content 需要知道 Root 的 open 才能驱动退场；Radix Root 本身不向子树暴露该状态。 */
+const DialogOpenContext = createContext<{ open: boolean } | null>(null);
 
-export function DialogOverlay({ className, ...props }: ComponentProps<typeof DialogPrimitive.Overlay>) {
+/**
+ * 弹窗根：同时支持受控（open + onOpenChange）与非受控（defaultOpen）用法，
+ * 并把解析后的 open 交给 Content 做进出场。
+ */
+export function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Root>) {
+  const [uncontrolled, setUncontrolled] = useState(defaultOpen ?? false);
+  const resolvedOpen = open ?? uncontrolled;
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (open === undefined) setUncontrolled(next);
+      onOpenChange?.(next);
+    },
+    [open, onOpenChange],
+  );
   return (
-    <DialogPrimitive.Overlay
-      className={cn(
-        "anim-fade-in data-[state=closed]:anim-fade-out fixed inset-0 z-40 bg-foreground/25",
-        className,
-      )}
-      {...props}
-    />
+    <DialogOpenContext.Provider value={{ open: resolvedOpen }}>
+      <DialogPrimitive.Root {...props} open={resolvedOpen} onOpenChange={handleOpenChange} />
+    </DialogOpenContext.Provider>
   );
 }
+
+export const DialogTrigger = DialogPrimitive.Trigger;
+export const DialogClose = DialogPrimitive.Close;
 
 export interface DialogContentProps extends ComponentProps<typeof DialogPrimitive.Content> {
   /** 是否显示右上角关闭按钮（默认显示） */
@@ -40,54 +68,121 @@ export interface DialogContentProps extends ComponentProps<typeof DialogPrimitiv
    * 设为 false 时三种关闭途径全部阻止——仅限确有业务理由的场景，并在调用处注释原因。
    */
   dismissible?: boolean;
+  /**
+   * 垂直定位：center = 垂直水平居中（默认）；top = 只做水平居中，由调用方给 top 值
+   * （搜索面板避免被再抬半个高度）。
+   */
+  align?: "center" | "top";
 }
+
+const OVERLAY_CLASS = "fixed inset-0 z-40 bg-foreground/25";
+const CONTENT_BASE =
+  "fixed left-1/2 z-50 flex max-h-[86vh] -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-border/70 bg-popover/90 text-popover-foreground shadow-lg backdrop-blur-md backdrop-saturate-150 focus:outline-none";
 
 export function DialogContent({
   className,
   children,
   showClose = true,
   dismissible = true,
+  align = "center",
   onEscapeKeyDown,
   onPointerDownOutside,
   onInteractOutside,
   ...props
 }: DialogContentProps) {
+  const state = useContext(DialogOpenContext);
+  const open = state?.open ?? false;
+  // 拖动：只在标题区/顶边条起拖，避免在输入框、按钮或选中文本时误拖整个弹窗。
+  const dragControls = useDragControls();
+  const viewportRef = useRef<HTMLElement | null>(document.body);
   /** dismissible=false 时统一阻止三种关闭途径（收编自各弹窗散落的 preventDefault） */
   const blockDismiss = (e: Event) => {
     if (!dismissible) e.preventDefault();
   };
+
   return (
-    <DialogPrimitive.Portal>
-      <DialogOverlay />
-      <DialogPrimitive.Content
-        onEscapeKeyDown={(e) => {
-          blockDismiss(e);
-          onEscapeKeyDown?.(e);
-        }}
-        onPointerDownOutside={(e) => {
-          blockDismiss(e);
-          onPointerDownOutside?.(e);
-        }}
-        onInteractOutside={(e) => {
-          blockDismiss(e);
-          onInteractOutside?.(e);
-        }}
-        className={cn(
-          "anim-dialog-in data-[state=closed]:anim-dialog-out fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] flex-col overflow-hidden rounded-lg border border-border/70 bg-popover/94 text-popover-foreground shadow-lg backdrop-blur-md focus:outline-none",
-          className,
+    <DialogPrimitive.Portal forceMount>
+      <AnimatePresence>
+        {open && (
+          <DialogPrimitive.Overlay key="overlay" asChild forceMount>
+            <motion.div
+              initial={{ opacity: 0, pointerEvents: "auto" }}
+              animate={{ opacity: 1, pointerEvents: "auto" }}
+              exit={{
+                opacity: 0,
+                pointerEvents: "none",
+                transition: { duration: 0.16, ease: EASE_STANDARD },
+              }}
+              transition={{ duration: 0.2, ease: EASE_STANDARD }}
+              className={OVERLAY_CLASS}
+            />
+          </DialogPrimitive.Overlay>
         )}
-        {...props}
-      >
-        {children}
-        {showClose && (
-          <DialogPrimitive.Close
-            aria-label={t("关闭")}
-            className="absolute top-3 right-3 grid size-8 cursor-default place-items-center rounded-md text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground"
+      </AnimatePresence>
+      <AnimatePresence>
+        {open && (
+          <DialogPrimitive.Content
+            key="content"
+            asChild
+            forceMount
+            onEscapeKeyDown={(e) => {
+              blockDismiss(e);
+              onEscapeKeyDown?.(e);
+            }}
+            onPointerDownOutside={(e) => {
+              blockDismiss(e);
+              onPointerDownOutside?.(e);
+            }}
+            onInteractOutside={(e) => {
+              blockDismiss(e);
+              onInteractOutside?.(e);
+            }}
+            {...props}
           >
-            <X className="size-4" />
-          </DialogPrimitive.Close>
+            <motion.div
+              drag
+              dragControls={dragControls}
+              dragListener={false}
+              dragMomentum={false}
+              dragElastic={0.06}
+              dragConstraints={viewportRef}
+              onPointerDown={(event) => {
+                const target = event.target as HTMLElement;
+                if (!target.closest("[data-dialog-drag-handle]")) return;
+                if (target.closest("button,a,input,textarea,select,[role=button]")) return;
+                dragControls.start(event);
+              }}
+              initial={{ opacity: 0, scale: 0.975, y: 10, pointerEvents: "auto" }}
+              animate={{ opacity: 1, scale: 1, y: 0, pointerEvents: "auto" }}
+              exit={{
+                opacity: 0,
+                scale: 0.985,
+                y: 6,
+                pointerEvents: "none",
+                transition: { duration: 0.16, ease: EASE_STANDARD },
+              }}
+              transition={{ duration: 0.2, ease: EASE_STANDARD }}
+              className={cn(CONTENT_BASE, align === "center" && "top-1/2 -translate-y-1/2", className)}
+            >
+              {/* 顶边 10px 起拖区：不覆盖右上角关闭键（top-3 = 12px） */}
+              <div
+                data-dialog-drag-handle=""
+                aria-hidden="true"
+                className="absolute inset-x-0 top-0 h-2.5 cursor-grab active:cursor-grabbing"
+              />
+              {children}
+              {showClose && (
+                <DialogPrimitive.Close
+                  aria-label={t("关闭")}
+                  className="absolute top-3 right-3 grid size-8 cursor-default place-items-center rounded-md text-muted-foreground transition-colors duration-150 ease-[var(--ease)] hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </DialogPrimitive.Close>
+              )}
+            </motion.div>
+          </DialogPrimitive.Content>
         )}
-      </DialogPrimitive.Content>
+      </AnimatePresence>
     </DialogPrimitive.Portal>
   );
 }
@@ -108,7 +203,13 @@ export interface DialogHeaderProps {
  */
 export function DialogHeader({ title, description, actions, className }: DialogHeaderProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-3 pr-8", className)}>
+    <div
+      data-dialog-drag-handle=""
+      className={cn(
+        "flex cursor-grab items-start justify-between gap-3 pr-8 select-none active:cursor-grabbing",
+        className,
+      )}
+    >
       <div className="min-w-0">
         <DialogTitle>{title}</DialogTitle>
         {description ? <DialogDescription className="mt-0.5">{description}</DialogDescription> : null}

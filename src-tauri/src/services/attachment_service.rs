@@ -11,8 +11,8 @@ use rusqlite::TransactionBehavior;
 
 use crate::db;
 use crate::domain::attachment::{
-    StoragePolicy, big_relative_path, ensure_storage_layout, normalize_logical_path,
-    pack_relative_path, resolve_mime, validate_file_name,
+    StoragePolicy, TEMP_DIR_RELATIVE, big_relative_path, ensure_storage_layout,
+    normalize_logical_path, pack_relative_path, resolve_mime, validate_file_name,
 };
 use crate::errors::{AppError, AppResult};
 use crate::logging;
@@ -21,10 +21,12 @@ use crate::models::attachment::{
     AttachmentListQuery, AttachmentPackRow, AttachmentRow, AttachmentStatsDto,
     AttachmentVerifyResult, DownloadAttachmentInput, DownloadAttachmentResult, KIND_BIG, KIND_PACK,
     SCOPE_LIBRARY, SCOPE_NODE, STATUS_ACTIVE, STATUS_DELETED, UpdateAttachmentInput,
-    UploadAttachmentInput,
+    UploadAttachmentInput, WorkspaceStorageStatsDto,
 };
 use crate::repositories::attachment_repository as repository;
 use crate::repositories::node_attachment_repository;
+use crate::services::attachment_maintenance_service::QUARANTINE_DIR;
+use crate::services::attachment_preview_service;
 use crate::services::attachment_store::{self, StagedFile};
 use crate::services::storage_lock;
 use crate::state::AppState;
@@ -238,7 +240,11 @@ fn upload_staged(
         guard.disarm();
     }
     published.disarm();
-    Ok(attachment.to_dto())
+    let dto = attachment.to_dto();
+    // 写入时预转换：文本/Markdown/Word 的预览在落库后立刻排队生成并入库，
+    // 打开附件页时直接取现成结果，不再现算。
+    attachment_preview_service::schedule_precompute(context.clone(), dto.clone());
+    Ok(dto)
 }
 
 /// 选择活跃 pack；必要时滚动或新建。返回 pack 行与是否本轮新建。
@@ -368,7 +374,17 @@ pub fn read_image_object(
     max_bytes: i64,
 ) -> AppResult<(AttachmentDto, Vec<u8>)> {
     let connection = context.connection()?;
-    let attachment = repository::find_active(&connection, id)?
+    read_image_object_with(&connection, &context.storage_root, id, max_bytes)
+}
+
+/// 用调用方连接读取图片对象：批量读取时复用同一个连接，避免每张图重开库。
+pub(crate) fn read_image_object_with(
+    connection: &rusqlite::Connection,
+    storage_root: &std::path::Path,
+    id: &str,
+    max_bytes: i64,
+) -> AppResult<(AttachmentDto, Vec<u8>)> {
+    let attachment = repository::find_active(connection, id)?
         .ok_or_else(|| AppError::not_found("附件不存在或已删除"))?;
     if !attachment.mime.starts_with("image/") {
         return Err(AppError::validation("此附件不是图片"));
@@ -376,10 +392,10 @@ pub fn read_image_object(
     if attachment.size > max_bytes {
         return Err(AppError::validation("图片过大"));
     }
-    let blob = repository::find_blob(&connection, &attachment.content_hash)?
+    let blob = repository::find_blob(connection, &attachment.content_hash)?
         .ok_or_else(|| AppError::not_found("附件内容不存在"))?;
     let mut bytes = Vec::with_capacity(attachment.size.max(0) as usize);
-    attachment_store::read_blob(&blob, &context.storage_root, |chunk| {
+    attachment_store::read_blob(&blob, storage_root, |chunk| {
         bytes.extend_from_slice(chunk);
         Ok(())
     })?;
@@ -644,6 +660,7 @@ pub fn stats(context: &AttachmentContext) -> AppResult<AttachmentStatsDto> {
         linked_count: stats.linked_count,
         unlinked_count: stats.unlinked_count,
         trash_count: stats.trash_count,
+        trash_bytes: stats.trash_bytes,
         disk_bytes: pack_disk_bytes + big_disk_bytes,
         disk_free_bytes: storage_free_bytes(&context.storage_root),
         reclaimable_bytes,
@@ -669,6 +686,103 @@ fn storage_free_bytes(path: &std::path::Path) -> Option<i64> {
         let _ = path;
         None
     }
+}
+
+/// 工作区存储统计的递归遍历深度上限；防止损坏的超深目录树拖垮统计调用。
+const STATS_WALK_MAX_DEPTH: usize = 16;
+/// 单次统计允许访问的目录条目上限；超出即停止，保证调用有界返回。
+const STATS_WALK_MAX_ENTRIES: usize = 50_000;
+
+/// 当前工作区的分类磁盘占用（Settings 存储页）。
+///
+/// 口径约定：
+/// - `attachment_bytes` 复用 [`stats`]（pack 与 big 对象实际文件长度），不重复扫描 objects 目录；
+/// - 软删除附件的物理对象仍留在 pack/big 文件内，因此 `trash_bytes`（逻辑字节）已被
+///   `attachment_bytes` 覆盖，`total_bytes` 不再单独加它，避免双重计数；
+/// - `temp_bytes`（storage/tmp 上传暂存区）与 `quarantine_bytes`（storage/quarantine 隔离区）
+///   是 objects 之外的独立子目录，按真实文件递归统计后计入 `total_bytes`；
+/// - `total_bytes` = database_bytes + attachment_bytes + temp_bytes + quarantine_bytes。
+pub fn workspace_storage_stats(context: &AttachmentContext) -> AppResult<WorkspaceStorageStatsDto> {
+    let attachment = stats(context)?;
+    // 暂存区与隔离区共享同一条目预算，保证整次调用的遍历规模有界。
+    let mut entry_budget = STATS_WALK_MAX_ENTRIES;
+    let temp_bytes = dir_files_bytes(
+        &context.storage_root.join(TEMP_DIR_RELATIVE),
+        &mut entry_budget,
+    );
+    let quarantine_bytes = dir_files_bytes(
+        &context.storage_root.join(QUARANTINE_DIR),
+        &mut entry_budget,
+    );
+    let database_bytes = database_file_bytes(&context.db_path);
+    let total_bytes = database_bytes
+        .saturating_add(attachment.disk_bytes)
+        .saturating_add(temp_bytes)
+        .saturating_add(quarantine_bytes);
+    Ok(WorkspaceStorageStatsDto {
+        total_bytes,
+        database_bytes,
+        attachment_bytes: attachment.disk_bytes,
+        trash_bytes: attachment.trash_bytes,
+        temp_bytes,
+        quarantine_bytes,
+        reclaimable_bytes: attachment.reclaimable_bytes,
+        disk_free_bytes: attachment.disk_free_bytes,
+        last_maintenance_at: attachment.last_maintenance_at,
+    })
+}
+
+/// 递归统计目录下普通文件的实际字节数。
+///
+/// 目录缺失或不可读按 0 处理；单个条目错误直接忽略，不让整个统计失败。
+/// 符号链接（Unix 下 `entry.metadata()` 走 lstat）既不计入也不下钻，
+/// 配合深度与条目数上限，保证损坏/异常目录树不会让调用失控。
+fn dir_files_bytes(root: &std::path::Path, entry_budget: &mut usize) -> i64 {
+    let mut total = 0_i64;
+    let mut pending: Vec<(PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    while let Some((directory, depth)) = pending.pop() {
+        if *entry_budget == 0 {
+            break;
+        }
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if *entry_budget == 0 {
+                break;
+            }
+            *entry_budget -= 1;
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if metadata.is_file() {
+                total = total.saturating_add(i64::try_from(metadata.len()).unwrap_or(i64::MAX));
+            } else if metadata.is_dir() && depth < STATS_WALK_MAX_DEPTH {
+                pending.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    total
+}
+
+/// 数据库字节：SQLite 主文件与其 `-wal`、`-shm` 伴生文件；缺失的文件按 0 计。
+fn database_file_bytes(db_path: &std::path::Path) -> i64 {
+    let mut paths: Vec<PathBuf> = vec![db_path.to_path_buf()];
+    if let Some(file_name) = db_path.file_name().and_then(|value| value.to_str()) {
+        let parent = db_path.parent().unwrap_or(db_path);
+        for suffix in ["-wal", "-shm"] {
+            paths.push(parent.join(format!("{file_name}{suffix}")));
+        }
+    }
+    let mut total = 0_i64;
+    for path in paths {
+        if let Ok(metadata) = fs::metadata(&path)
+            && metadata.is_file()
+        {
+            total = total.saturating_add(i64::try_from(metadata.len()).unwrap_or(i64::MAX));
+        }
+    }
+    total
 }
 
 /// 后台 compaction 入口；可重入地检查 pack 是否仍有压缩价值。

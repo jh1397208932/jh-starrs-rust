@@ -5,7 +5,7 @@ import { BrandLogo } from "@/components/common/BrandLogo";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { useI18n } from "@/lib/i18n";
 import { SPRING_PRESS } from "@/lib/motion";
-import type { KnowledgeBase, NodeItem, TreeNode, Workspace } from "@/types/notebook";
+import type { KnowledgeBase, NodeItem, TreeNode, UploadMode, Workspace } from "@/types/notebook";
 import { FileTree } from "./FileTree";
 import { MoreMenu } from "./MoreMenu";
 import { WorkspaceSwitchPopover } from "./WorkspaceSwitchPopover";
@@ -33,12 +33,10 @@ export interface SidebarProps {
   onAllExport: () => void;
   /** 打开导入弹窗（根级） */
   onImport: () => void;
-  /** 直接导入思维导图文件 */
-  onImportMindmap: () => void;
   /** 导入到指定文件夹 */
   onImportToFolder: (parent: NodeItem) => void;
   /** 上传附件到根或指定文件夹 */
-  onUploadAttachment: (parent: NodeItem | null) => void;
+  onUploadAttachment: (parent: NodeItem | null, mode?: UploadMode) => void;
   /** 打开组件库管理 */
   onOpenLibrary: () => void;
   /** 打开备份与恢复 */
@@ -156,7 +154,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           onOpenSettings={props.onOpenSettings}
           onAllExport={props.onAllExport}
           onImport={props.onImport}
-          onImportMindmap={props.onImportMindmap}
           onOpenLibrary={props.onOpenLibrary}
           onBackup={props.onBackup}
           onTemplates={props.onTemplates}

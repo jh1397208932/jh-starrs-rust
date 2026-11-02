@@ -11,7 +11,7 @@ export default {
       ui: "文件树标题右侧 +",
       clicks: 1,
       dialogs: 1,
-      note: "新建弹窗提供文件夹/文档/画板/表格/流程图。",
+      note: "新建弹窗提供文件夹/文档/画板/思维导图。",
     },
     {
       action: "新建文件夹 E2E Folder",

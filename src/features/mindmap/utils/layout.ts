@@ -6,6 +6,7 @@
  */
 
 import type {
+  ConnectorSide,
   LayoutBoundary,
   LayoutRelationship,
   LayoutSide,
@@ -210,8 +211,8 @@ function layoutChildren(
 function edge(
   parent: SizedTopic,
   child: SizedTopic,
-  sourceHandle: string,
-  targetHandle: string,
+  sourceHandle: ConnectorSide,
+  targetHandle: ConnectorSide,
   branchIndex: number,
   depth: number,
 ): MindmapLayout["edges"][number] {

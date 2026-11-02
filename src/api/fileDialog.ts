@@ -105,7 +105,7 @@ export async function pickExportDirectory(title: string): Promise<ExportPathGran
 }
 
 /**
- * 选择一批 Markdown / Word / Excalidraw 文件。
+ * 选择一批 Markdown / Word / PDF / Excalidraw 文件。
  * @returns 绝对路径数组；取消时为空数组
  * @example const paths = await pickImportFiles();
  */
@@ -116,7 +116,7 @@ export async function pickImportFiles(): Promise<string[]> {
     title: t("选择要导入的文件"),
     filters: [
       {
-        name: "Markdown / Word / Excalidraw / 思维导图",
+        name: t("支持的文件"),
         extensions: [
           "md",
           "markdown",
@@ -127,6 +127,7 @@ export async function pickImportFiles(): Promise<string[]> {
           "dotx",
           "dotm",
           "doc",
+          "pdf",
           "excalidraw",
           "xmind",
           "mm",
@@ -197,25 +198,4 @@ export async function pickMindmapExportPath(
     filterName: t(filter.name),
     extensions: format === "native" ? ["json"] : filter.extensions,
   });
-}
-
-/**
- * 选择思维导图导入文件。
- * @returns 绝对路径数组；取消时为空数组
- * @example const paths = await pickMindmapImportFiles();
- */
-export async function pickMindmapImportFiles(): Promise<string[]> {
-  const selected = await open({
-    multiple: true,
-    directory: false,
-    title: t("选择思维导图文件"),
-    filters: [
-      {
-        name: "XMind / FreeMind / OPML / Markdown / Starris",
-        extensions: ["xmind", "mm", "opml", "md", "markdown", "json"],
-      },
-    ],
-  });
-  if (selected === null) return [];
-  return Array.isArray(selected) ? selected : [selected];
 }

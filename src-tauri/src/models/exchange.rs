@@ -199,3 +199,30 @@ pub struct ImportResult {
     pub files: Vec<ImportFileResult>,
     pub created_folder_ids: Vec<String>,
 }
+
+/// 混合导入跳过项；只含用户可见的相对路径。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportScanSkippedFile {
+    pub path: String,
+    pub extension: String,
+}
+
+/// 混合导入预扫描结果；只读，不创建节点或对象。
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportScanResult {
+    pub root: String,
+    pub total_files: usize,
+    /// 会转成文档的 Markdown / Word / PDF
+    pub documents: usize,
+    /// 会转成画板的 Excalidraw 文件
+    pub boards: usize,
+    /// 会转成思维导图的 XMind / FreeMind / OPML / Starris 导图
+    pub mindmaps: usize,
+    /// 被 Markdown 以本地路径引用、会进对象库的附件
+    pub attachments: usize,
+    /// 不支持且未被引用的文件数（可能大于 `unsupported` 长度）
+    pub unsupported_count: usize,
+    pub unsupported: Vec<ImportScanSkippedFile>,
+}

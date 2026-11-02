@@ -9,6 +9,10 @@ use crate::utils::new_id;
 const SNAPSHOT_INTERVAL_MS: i64 = 10 * 60 * 1000;
 /// 单篇文档保留份数。
 const SNAPSHOT_KEEP: i64 = 50;
+/// 单篇文档历史快照的总字节预算；超出时从最旧开始删，至少保留 1 份。
+///
+/// 只按份数裁剪时，一篇 2 MiB 的正文最多会留下 100 MiB 历史，长文反复编辑会把工作区库撑大。
+const SNAPSHOT_BYTES_BUDGET: i64 = 16 * 1024 * 1024;
 
 /// 按间隔写快照并裁剪；返回是否写入。
 pub fn maybe_snapshot(
@@ -42,7 +46,33 @@ pub fn maybe_snapshot(
          )",
         params![node_id, SNAPSHOT_KEEP],
     )?;
+    trim_to_budget(connection, node_id)?;
     Ok(true)
+}
+
+/// 按总字节预算从最旧开始裁剪；最新一份无论多大都保留。
+fn trim_to_budget(connection: &Connection, node_id: &str) -> rusqlite::Result<()> {
+    let mut statement = connection.prepare(
+        "SELECT id, LENGTH(CAST(content AS BLOB)) FROM doc_history
+         WHERE node_id = ?1 ORDER BY created_at ASC, id ASC",
+    )?;
+    let rows = statement.query_map([node_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut snapshots = Vec::new();
+    for row in rows {
+        snapshots.push(row?);
+    }
+    let mut total: i64 = snapshots.iter().map(|(_, size)| *size).sum();
+    let mut remove = 0usize;
+    while total > SNAPSHOT_BYTES_BUDGET && snapshots.len() - remove > 1 {
+        total -= snapshots[remove].1;
+        remove += 1;
+    }
+    for (id, _) in &snapshots[..remove] {
+        connection.execute("DELETE FROM doc_history WHERE id = ?1", [id])?;
+    }
+    Ok(())
 }
 
 /// 列出历史快照（不含正文）。

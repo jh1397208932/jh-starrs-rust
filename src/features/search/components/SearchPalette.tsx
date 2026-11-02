@@ -34,11 +34,14 @@ export function SearchPalette({ open, mode, knowledgeBaseId, onOpenChange, onSel
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const requestRef = useRef(0);
+  // 已发起过的查询文本：打开面板时 already load("")，防抖那一路不要再重复发一次同样的请求。
+  const loadedQueryRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
     async (nextQuery: string) => {
       if (!knowledgeBaseId) return;
+      loadedQueryRef.current = nextQuery;
       const request = ++requestRef.current;
       setLoading(true);
       setError(null);
@@ -68,14 +71,17 @@ export function SearchPalette({ open, mode, knowledgeBaseId, onOpenChange, onSel
     setHits([]);
     setError(null);
     setActiveIndex(0);
+    loadedQueryRef.current = null;
     void load("");
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open, load]);
 
   useEffect(() => {
     if (!open) return;
+    const nextQuery = query.trim();
+    if (loadedQueryRef.current === nextQuery) return;
     const timer = setTimeout(() => {
-      void load(query.trim());
+      void load(nextQuery);
     }, 160);
     return () => clearTimeout(timer);
   }, [open, query, load]);
@@ -88,10 +94,11 @@ export function SearchPalette({ open, mode, knowledgeBaseId, onOpenChange, onSel
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* dialog-top：只做水平居中；基类的 -50% Y 平移会把 12% top 再抬半个面板高度。
+      {/* align="top"：只做水平居中；居中模式的 -50% Y 平移会把 12% top 再抬半个面板高度。
           showClose=false：行内已有 Esc 徽标，右上角 × 会与之重叠。 */}
       <DialogContent
-        className="dialog-top top-[12%] w-[560px] gap-0 p-0"
+        align="top"
+        className="top-[12%] w-[560px] gap-0 p-0"
         aria-describedby={undefined}
         showClose={false}
       >

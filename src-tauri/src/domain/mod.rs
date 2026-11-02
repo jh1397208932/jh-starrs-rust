@@ -18,8 +18,6 @@ pub enum NodeType {
     Folder = 1,
     Doc = 2,
     Board = 3,
-    Table = 4,
-    Flow = 5,
     Attachment = 6,
     Mindmap = 7,
 }
@@ -31,8 +29,6 @@ impl NodeType {
             1 => Ok(Self::Folder),
             2 => Ok(Self::Doc),
             3 => Ok(Self::Board),
-            4 => Ok(Self::Table),
-            5 => Ok(Self::Flow),
             6 => Ok(Self::Attachment),
             7 => Ok(Self::Mindmap),
             _ => Err(AppError::validation("内容类型无效")),
@@ -213,9 +209,11 @@ mod tests {
     #[test]
     fn node_type_rejects_out_of_range() {
         assert!(NodeType::from_i64(1).is_ok());
-        assert!(NodeType::from_i64(5).is_ok());
         assert!(NodeType::from_i64(6).is_ok());
         assert!(NodeType::from_i64(7).is_ok());
+        // 4/5 不是当前节点类型
+        assert!(NodeType::from_i64(4).is_err());
+        assert!(NodeType::from_i64(5).is_err());
         assert!(NodeType::from_i64(0).is_err());
         assert!(NodeType::from_i64(8).is_err());
     }

@@ -19,7 +19,10 @@ export function useBoardKeymap(handlers: BoardShortcutHandlers) {
     const listener = (event: KeyboardEvent) => {
       if (!config.enabled || !config.scopes.board) return;
       if (event.defaultPrevented || event.isComposing || event.repeat) return;
-      if (document.querySelector("[role='dialog']")) return;
+      // 弹窗打开时 Radix 把焦点锁在弹窗内；按焦点归属判断，避免被残留的弹窗 DOM
+      // 误伤（打开过一次设置后画板键位不应失效；扫描整棵 DOM 的 role=dialog 不可靠）。
+      const activeElement = document.activeElement;
+      if (activeElement instanceof Element && activeElement.closest("[role='dialog']")) return;
       const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
       if (isEditableTarget(event.target) && !hasModifier) return;
       if (!hasModifier) {

@@ -14,13 +14,18 @@
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  /* 默认「缤纷」：分支色定义在画布与大纲的共同父层，大纲色点才能继承。 */
-  --mindmap-branch-0: #e05f5f;
-  --mindmap-branch-1: #e8873a;
-  --mindmap-branch-2: #3d8a7e;
-  --mindmap-branch-3: #5b8fb5;
-  --mindmap-branch-4: #9a6ab8;
-  --mindmap-branch-5: #d0647f;
+  /* 默认「缤纷」：分支色定义在画布与大纲的共同父层，大纲色点才能继承。
+     2026-10-29 提亮：同色相提高饱和度，边框强度从 62% 提到 88%，填充从 16% 提到 22%。
+     强度写在变量里，scripts/check-contrast.mjs 直接读同一份，避免第二条事实。 */
+  --mindmap-branch-0: #e0433c;
+  --mindmap-branch-1: #c25c04;
+  --mindmap-branch-2: #07947a;
+  --mindmap-branch-3: #2277e0;
+  --mindmap-branch-4: #9b47e8;
+  --mindmap-branch-5: #dd3e7b;
+  --mindmap-border-strength: 88%;
+  --mindmap-fill-strength: 22%;
+  --mindmap-root-fill-strength: 30%;
 }
 
 .mindmap-canvas {
@@ -57,9 +62,14 @@
   justify-content: center;
   gap: 2px;
   padding: 6px 10px;
-  border: 1.5px solid color-mix(in srgb, var(--branch-color, var(--border)) 62%, var(--border));
+  border: 1.5px solid
+    color-mix(in srgb, var(--branch-color, var(--border)) var(--mindmap-border-strength, 88%), var(--border));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--branch-color, var(--card)) 16%, var(--card));
+  background: color-mix(
+    in srgb,
+    var(--branch-color, var(--card)) var(--mindmap-fill-strength, 22%),
+    var(--card)
+  );
   color: var(--foreground);
   box-shadow:
     0 1px 2px rgb(20 18 12 / 0.05),
@@ -86,9 +96,13 @@
 
 .mindmap-node--root {
   border-width: 2px;
-  border-color: color-mix(in srgb, var(--branch-color, var(--primary)) 78%, var(--border));
+  border-color: var(--branch-color, var(--primary));
   border-radius: 14px;
-  background: color-mix(in srgb, var(--branch-color, var(--card)) 20%, var(--card));
+  background: color-mix(
+    in srgb,
+    var(--branch-color, var(--card)) var(--mindmap-root-fill-strength, 30%),
+    var(--card)
+  );
   box-shadow:
     0 2px 6px rgb(20 18 12 / 0.07),
     0 12px 30px color-mix(in srgb, var(--branch-color, var(--border)) 20%, transparent);
@@ -102,9 +116,13 @@
     0 10px 26px color-mix(in srgb, var(--branch-color, var(--border)) 20%, transparent);
 }
 
+/* 编辑态不再把节点换成不透明白卡：周围节点是彩色淡底，一换白会让整屏看起来被压灰。
+   只加一圈描边提示"正在输入"。 */
 .mindmap-node.is-editing {
   border-color: var(--branch-color, var(--ring));
-  background: var(--card);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--branch-color, var(--ring)) 36%, transparent),
+    0 10px 26px color-mix(in srgb, var(--branch-color, var(--border)) 20%, transparent);
 }
 
 @keyframes mindmap-node-in {
@@ -201,14 +219,21 @@
   left: -10px;
 }
 
-.react-flow__handle {
+/* 自绘连线层：挂在 React Flow 的视口门户里随平移缩放一起变换；
+   坐标直接用布局坐标，端点节点在不在视口内都不影响画线。
+   视口加 isolation，让负 z-index 的连线层稳定压在节点之下、画布背景之上。 */
+.mindmap-canvas .react-flow__viewport {
+  isolation: isolate;
+}
+
+.mindmap-connectors {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
-  min-width: 0;
-  min-height: 0;
-  border: 0;
-  background: transparent;
-  opacity: 0;
+  overflow: visible;
+  z-index: -1;
   pointer-events: none;
 }
 
@@ -666,8 +691,14 @@
 /* ===== v2 · 关系线 ===== */
 
 .mindmap-relation {
+  fill: none;
   stroke-dasharray: 6 4;
   stroke-width: 1.5;
+  /* 关系线可点选：只有笔画本身接收指针事件（父子线整层 pointer-events: none）。
+     同样不随缩放改变线宽与虚线节奏，避免缩小时虚线糊成断续的点。 */
+  pointer-events: stroke;
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
 }
 
 .mindmap-relation.is-selected {
@@ -951,6 +982,7 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
+  min-width: 0;
   padding-right: 6px;
   border-radius: 8px;
   cursor: default;
@@ -1003,6 +1035,17 @@
   background: var(--border-strong);
 }
 
+/* 缩进封顶后标注还深几层：保证文本尾巴与动作按钮始终留在 300px 面板内 */
+.mindmap-outline__depth-more {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-foreground) 12%, transparent);
+  color: var(--muted-foreground);
+  font: 600 10px var(--font-mono);
+  line-height: 16px;
+}
+
 .mindmap-outline__text {
   flex: 1;
   min-width: 0;
@@ -1046,6 +1089,8 @@
 
 .mindmap-outline__actions {
   display: none;
+  flex: none;
+  margin-left: auto;
   gap: 0;
 }
 
@@ -1059,22 +1104,10 @@
   height: 20px;
 }
 
-/* 分支线入场：淡入 + 轻微生长，仅首次挂载触发 */
+/* 分支线：不再做逐条入场动画——每次布局重建都会重挂 path，动画会变成持续闪烁。
+   non-scaling-stroke 保证缩小到 12% 时线宽仍按屏幕像素绘制，不会断成虚线。 */
 .mindmap-edge {
-  animation: mindmap-edge-in 200ms var(--ease) both;
-}
-
-@keyframes mindmap-edge-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mindmap-edge {
-    animation: none;
-  }
+  fill: none;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }

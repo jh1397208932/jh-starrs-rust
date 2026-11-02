@@ -39,8 +39,24 @@ function fontLicenseGuard(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig(() => ({
-  plugins: [react(), tailwindcss(), fontLicenseGuard()],
+export default defineConfig(({ mode }) => {
+  // 生产构建：去掉 console/debugger（含第三方库的调试输出），关闭 sourcemap 与体积统计，
+  // 由 esbuild 压缩 + 现有代码分包换取更小产物体积；开发态保留日志与源码映射。
+  const isProduction = mode === "production";
+  return {
+    plugins: [react(), tailwindcss(), fontLicenseGuard()],
+
+    build: isProduction
+      ? {
+          // Vite 8 默认用 Oxc 压缩（Rolldown），比 esbuild 路径更小且无需额外依赖。
+          minify: "oxc",
+          cssMinify: true,
+          sourcemap: false,
+          reportCompressedSize: false,
+          // 大型第三方库（Excalidraw / Tiptap）按需分包后仍会有 >500KB 的单块，属预期。
+          chunkSizeWarningLimit: 1600,
+        }
+      : undefined,
 
   // 预构建 Tauri 包：懒加载的插件包若在运行中被首次发现，Vite 会整页 reload，
   // 冲掉标签页等内存状态（真机 E2E 因此在新建思维导图后丢失标签页）。
@@ -77,4 +93,5 @@ export default defineConfig(() => ({
       ignored: ["**/src-tauri/**", "**/tmp/**", "**/dist/**"],
     },
   },
-}));
+  };
+});

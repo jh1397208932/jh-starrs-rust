@@ -9,12 +9,18 @@
 - 全局库 `~/.starris/rust/db/starris.db`：工作区注册表 + 记忆配置；日志在 `~/.starris/rust/logs/starris.log`。
 - 每个本地工作区独立目录：`db/workspace.sqlite3` + `storage/`。
 - 首次启动引导、工作区/知识库管理、任意层级文件树、6 类节点（文件夹/文档/画板/表格/流程图/附件）、拖拽换层/排序、主题/当前工作区/当前知识库记忆均已接入。
-- 文档正文按顶层块内容寻址：`doc_block_hash` + `doc_block_tree`（工作区库 v5）；编辑后 1s 防抖保存，前端单飞互斥 + Rust 工作区互斥/事务；返回 `add/rm/order/tree` 差量；`doc_block_meta` 异步派生 Markdown/prop。
-- 附件对象存储：`attachment/attachment_blob/attachment_pack`；BLAKE3 内容寻址、big 原子发布、small pack、去重、软删除/回收站与后台 compaction。工作区库 v10 新增 `node_attachment` 引用表与 `scope/expires_at/orphaned_at`；文档/画板保存同步引用，节点删除标记孤儿，看门狗每 6 小时清理 staging/TTL/孤儿/回收站并压缩 pack。
+- 文档正文按顶层块内容寻址：`doc_block_hash` + `doc_block_tree`（单一 schema）；编辑后 1s 防抖保存，前端单飞互斥 + Rust 工作区互斥/事务；返回 `add/rm/order/tree` 差量；`doc_block_meta` 异步派生 Markdown/prop。
+- 附件对象存储：`attachment/attachment_blob/attachment_pack`；BLAKE3 内容寻址、big 原子发布、small pack、去重、软删除/回收站与后台 compaction。`node_attachment` 引用表与 `scope/expires_at/orphaned_at`（单一 schema）；文档/画板保存同步引用，节点删除标记孤儿，看门狗每 6 小时清理 staging/TTL/孤儿/回收站并压缩 pack。
 - 附件节点：type=6，文件树可直接多选上传；附件标签页支持图片预览、元数据与下载；整库导出写到树对应位置并记录 `attachmentNodes`。设置 → 存储页支持关联数、实际占用、回收站恢复与立即清理。
 - 文档图片/附件块：`attachmentImage`（预览、左/中/右对齐、宽度缩放、下载）与 `attachmentBlock`（卡片/长条、文件类型图标、逐项下载/移除）；Slash/右键选文件与访达拖入走路径流式上传，剪贴板粘贴走 raw 字节上传，统一进入附件对象模块，文档 JSON 不写 base64。注意 `dragDropEnabled` 默认为 true，外部文件拖放不经过网页 `drop`，由 `src/api/dragDrop.ts` 订阅 webview 事件。
 - 编辑器接入 Tiptap 3.32 MIT 扩展：气泡菜单、右键浮层、Slash 菜单、颜色/高亮、对齐、表格、图片（≤2MB data URL）、任务列表、折叠块、Emoji、代码高亮、TOC；块手柄与拖拽为自绘实现（不依赖官方 DragHandle）。
 - 画板已接入 Excalidraw 场景/视口持久化、组件库与三格式导出；表格/流程图仍是占位页。编辑器内图片/附件已走全局对象库。
+- 文档内嵌预览（2026-10-29）：`node_preview`（单一 schema）只记「源节点 → 对象 id + 尺寸 + 源更新时间」；PNG 由画板/导图保存静止后导出为内部附件（`__preview`），文档 `boardEmbed`/`mindmapEmbed` 只读最终图片，不实时渲染。
+- 画板 chrome（2026-10-29）：原生汉堡/素材库/帮助入口隐藏；页头为 附件/放映/导出/⋯/已保存，`⋯` 承载帮助、画布背景、打开文件、画布内查找与重置；右侧组件库改为星屿样式停靠面板。
+- PDF 导入（2026-10-29）：导入入口新增 `.pdf`，`pdf-inspector`（MIT、纯 Rust、默认无 OCR）抽 Markdown 后复用 `import_markdown` 生成文档；原始 PDF 作为附件保留，扫描件给出提示而不伪造正文。
+- 启动与混合导入（2026-10-29）：窗口默认隐藏，HTML splash 画出后显示（主题镜像避免闪白，Rust 6s 兜底）；导入弹窗支持「混合导入」，先扫描分类并确认跳过项，再按类型建文档/画板/导图，Markdown 本地引用进对象库、http 链接保留。
+- 交互性能（2026-10-29）：修掉 Sidebar/WindowBar/InfoPanel 的 memo 击穿与 activeNode 线性扫描；`VITE_INTERACTION_PROBE=1` 构建可采集点击 micro/frame 读数，`test/perf/interaction-report.mjs` 汇总。
+- 文案与查找（2026-10-29）：文档查找按命中坐标滚动；导入弹窗只留「选择文件 / 选择文件夹」并去技术解释；关于页改鸣谢 + 直接开源项目清单弹窗；`AGENTS.md` §3.8 约束用户文案。
 - 快捷键：应用/编辑器/画板三作用域，配置存全局 `shortcuts.config`；支持总开关、录制、冲突检测与恢复默认。应用动作走注册表，编辑器走 ProseMirror keymap，画板自有动作走 Excalidraw 公共 API；原生画板键位只读。
 
 ## 快速上手
@@ -28,6 +34,11 @@ npm run check          # Biome 静态检查（src）
 npm run check:licenses # 第三方许可证门禁（node_modules + Cargo + dist 字体）
 npm run typecheck      # tsc --noEmit
 npm run build          # typecheck + vite build + 许可证门禁
+npm run debug          # 调试运行：HMR + devtools + STARRIS_LOG_LEVEL=debug（debug 日志仅在开发构建生效）
+npm run debug:build    # 生产前端 + debug 二进制（内嵌 dist，devtools 可用，用于排查“只在生产出现”的问题）
+npm run build:prod     # 生产编译：Rust release（lto/codegen-units=1/strip/panic=abort）+ 前端 Oxc 压缩，无 devtools/debug 日志
+npm run build:prod:dmg # 生产编译 + 打 dmg
+npm run build:prod:win # Windows NSIS 包（需在 Windows/CI 或已配置 cargo-xwin 的环境执行；安装器内置 WebView2 引导）
 pnpm run test          # 真机黑盒全量功能测试（macOS AX/CGEvent；会启动 Tauri 窗口）
 pnpm run test:backend  # Rust 集成测试
 cd src-tauri && cargo test      # 同上（在 src-tauri 目录直接跑）
@@ -72,6 +83,9 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 | 文档图片/附件块 | `src/features/editor/extensions/{attachmentImage,attachmentBlock}.ts` + `components/nodes/*`；上传与落点 `utils/attachmentUpload.ts`；外部拖放 `src/api/dragDrop.ts` |
 | 文件类型图标 | `src/features/attachments/components/FileTypeIcon.tsx` + `utils/fileKind.ts` |
 | 编辑器上传/插入 | `src/features/editor/utils/attachmentUpload.ts` |
+| 文档内嵌画板/导图预览 | `src-tauri/src/services/node_preview_service.rs`、`commands/preview.rs`、`src/features/editor/extensions/embedBlock.ts`、`utils/nodePreview.ts` |
+| 画板 chrome（菜单/帮助/组件库） | `src/features/board/components/{BoardPageBar,BoardHelpDialog,BoardLibraryPanel}.tsx`、`board.css` |
+| PDF 导入文档 | `src-tauri/src/services/import_pdf.rs`、`services/import_service.rs`；夹具 `test/fixtures/files/pdf-sample.pdf` |
 | 颜色/主题/字号/圆角/动效 | `src/styles/tokens.css`（9 主题 × 深浅） |
 | 主题记忆 | `src/lib/theme.tsx` + `src/api/memory.ts` |
 | 窗口红绿灯/无边框策略 | `src-tauri/tauri.conf.json` + `src-tauri/src/lib.rs` + `components/common/TrafficLightSlot.tsx` |
@@ -84,8 +98,10 @@ STARRIS_HOME=/tmp/starris-test npm run tauri dev
 - [数据库设计与迁移](./数据库设计与迁移.md)：全局库/工作区库表结构、索引、迁移与删除安全。
 - [第三方依赖许可证审查](./第三方依赖许可证审查.md)：Tiptap 等依赖许可结论、字体分发白名单与 `check:licenses` 门禁。
 - [前端代码规范](./前端代码规范.md)：AGENTS.md §3 的展开细则。
+- [极限场景测试矩阵](./极限场景测试矩阵.md)：每个功能的大数据量/高频/极端尺寸覆盖与缺口。
 - [代码结构与规范审查报告](./2026-10-20-代码结构与规范审查报告.md)：历史迁移记录。
-- 当前需求：`docs/需求文档/2026-10-22-需求文档-编辑器交互重构.md`
-- 当前任务：`docs/开发任务清单/2026-10-22-任务-004/`
-- 当前测试：`docs/单元测试/2026-10-22-单元测试-文档规范化与元数据-001.md`、`docs/功能测试/2026-10-22-功能测试-编辑器交互重构-001.md`
-- 历史：`docs/需求文档/2026-10-22-需求文档-编辑器块存储与交互增强.md`、`docs/开发任务清单/2026-10-22-任务-003/`、`docs/需求文档/2026-10-21-需求文档-本地工作区与文件树.md`、`docs/开发任务清单/2026-10-21-任务-005/`
+- 当前需求：`docs/需求文档/2026-10-29-需求文档-界面收口-附件与存储.md`
+- 当前任务：`docs/开发任务清单/2026-10-29-任务-001/`
+- 当前更新记录：`docs/更新日志/2026-10-29-更新内容-001.md`
+- 历史：`docs/需求文档/2026-10-28-需求文档-界面收口与MCP人工确认.md`、`docs/开发任务清单/2026-10-28-任务-003/`、`docs/更新日志/2026-10-28-更新内容-002.md`
+- 历史：`docs/需求文档/2026-10-28-需求文档-界面精简与浮窗互斥.md`、`docs/开发任务清单/2026-10-28-任务-002/`、`docs/需求文档/2026-10-27-需求文档-渲染性能优化与动效.md`、`docs/开发任务清单/2026-10-27-任务-001/`、`docs/需求文档/2026-10-22-需求文档-编辑器交互重构.md`、`docs/开发任务清单/2026-10-22-任务-004/`、`docs/需求文档/2026-10-21-需求文档-本地工作区与文件树.md`

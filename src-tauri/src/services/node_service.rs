@@ -1,7 +1,5 @@
 //! 文件树用例：增删改查、层级/路径维护与拖拽移动事务。
 
-use serde_json::json;
-
 use crate::domain::document::to_markdown;
 use crate::domain::{NodeType, join_node_path, replace_path_prefix, validate_node_title};
 use crate::errors::{AppError, AppResult};
@@ -175,32 +173,8 @@ pub fn create(state: &AppState, input: CreateNodeInput) -> AppResult<NodeDto> {
             update_time: now,
         };
 
-        let table_content = (node_type == NodeType::Table).then(|| {
-            // 表格节点复用文档存储；默认给一张 3×3 空表，用户打开即可输入。
-            let cell = || json!({"type": "tableCell", "content": [{"type": "paragraph"}]});
-            let header = || json!({"type": "tableHeader", "content": [{"type": "paragraph"}]});
-            json!({
-                "type": "doc",
-                "content": [{
-                    "type": "table",
-                    "content": [
-                        {"type": "tableRow", "content": [header(), header(), header()]},
-                        {"type": "tableRow", "content": [cell(), cell(), cell()]},
-                        {"type": "tableRow", "content": [cell(), cell(), cell()]}
-                    ]
-                }]
-            })
-            .to_string()
-        });
-
         let transaction = connection.unchecked_transaction()?;
         repository::insert(&transaction, &row)?;
-        if let Some(content) = &table_content {
-            transaction.execute(
-                "UPDATE node SET content = ?2 WHERE id = ?1",
-                rusqlite::params![row.id, content],
-            )?;
-        }
         search_repository::upsert(
             &transaction,
             &row.id,
@@ -385,7 +359,7 @@ pub fn restore(state: &AppState, id: &str) -> AppResult<RestoreNodeResult> {
             )?;
         }
         for seed in repository::subtree_search_rows(&transaction, id)? {
-            let body = if matches!(seed.node_type, 2 | 4) {
+            let body = if seed.node_type == 2 {
                 serde_json::from_str::<serde_json::Value>(&seed.content)
                     .map(|value| to_markdown(&value))
                     .unwrap_or_default()

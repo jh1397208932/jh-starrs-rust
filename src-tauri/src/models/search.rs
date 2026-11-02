@@ -26,7 +26,7 @@ pub struct SearchHit {
     pub title: String,
     pub kb_id: String,
     pub kb_name: String,
-    /// 节点类型：1 文件夹、2 文档、3 画板、4 表格、5 流程图、6 附件。
+    /// 节点类型：1 文件夹、2 文档、3 画板、6 附件、7 思维导图。
     pub node_type: i64,
     pub snippet: String,
     pub updated_at: i64,

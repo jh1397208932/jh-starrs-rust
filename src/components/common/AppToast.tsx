@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Kbd } from "@/components/ui/empty-state";
 import type { ToastState } from "@/hooks/useToast";
-import { SPRING_TOAST } from "@/lib/motion";
+import { TRANSITION_TOAST } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export interface AppToastProps {
@@ -11,7 +11,7 @@ export interface AppToastProps {
 
 /**
  * 全局 Toast 展示层（底部居中，3s 自动消失由 useToast 控制）：
- * 弹簧出入场；x 保持 -50% 居中；destructive 用 destructive 令牌配色。
+ * 固定时长淡入上移（不回弹）；x 保持 -50% 居中；destructive 用 destructive 令牌配色。
  */
 export function AppToast({ toast }: AppToastProps) {
   return (
@@ -20,11 +20,11 @@ export function AppToast({ toast }: AppToastProps) {
         <motion.div
           key={toast.id}
           role={toast.kind === "destructive" ? "alert" : "status"}
-          initial={{ opacity: 0, y: 16, scale: 0.96, x: "-50%" }}
+          initial={{ opacity: 0, y: 10, scale: 0.98, x: "-50%" }}
           animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
-          exit={{ opacity: 0, y: 8, scale: 0.98, x: "-50%" }}
-          transition={SPRING_TOAST}
-          className="fixed bottom-6 left-1/2 z-[70] flex items-center gap-2.5 rounded-[14px] border border-border/70 bg-popover/94 px-4 py-[11px] shadow-lg backdrop-blur-md"
+          exit={{ opacity: 0, y: 6, scale: 0.98, x: "-50%" }}
+          transition={TRANSITION_TOAST}
+          className="fixed bottom-6 left-1/2 z-[70] flex items-center gap-2.5 rounded-[14px] border border-border/70 bg-popover/90 px-4 py-[11px] shadow-lg backdrop-blur-md backdrop-saturate-150"
         >
           <span
             aria-hidden="true"

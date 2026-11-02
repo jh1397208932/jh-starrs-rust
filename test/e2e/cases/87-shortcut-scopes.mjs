@@ -82,6 +82,8 @@ export default {
       ?.element_count ?? 0;
     await ctx.press("E2E Board");
     await ctx.expectText("导出画板", { timeout: 8000 });
+    // 页头先于 Excalidraw 懒加载出现；等工具条按钮就绪再按快捷键，否则 api 尚未注入。
+    await ctx.expectText("矩形", { role: "AXRadioButton", timeout: 10_000 });
     await ctx.clientClick(500, 420, "聚焦画布");
     await ctx.key("cmd+alt+r");
     await ctx.clientDrag(484, 447, 644, 557, "用自定义键位选择矩形后拖拽");

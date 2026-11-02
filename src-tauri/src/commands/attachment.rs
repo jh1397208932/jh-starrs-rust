@@ -3,7 +3,7 @@
 //! 大文件相关命令通过 `spawn_blocking` 执行，避免哈希/复制阻塞 Tauri 主线程；
 //! 命令只做参数转发，不承载业务规则。
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::errors::{AppError, AppResult};
 use crate::logging;
@@ -11,13 +11,14 @@ use crate::models::attachment::{
     AttachmentDeleteResult, AttachmentDto, AttachmentLifecycleInput, AttachmentListQuery,
     AttachmentMaintenanceResult, AttachmentStatsDto, AttachmentVerifyResult,
     DownloadAttachmentInput, DownloadAttachmentResult, MaintenanceSettingsDto,
-    MaintenanceSettingsInput, SCOPE_NODE, UpdateAttachmentInput, UploadAttachmentInput,
-    UploadAttachmentNodeInput,
+    MaintenanceSettingsInput, UpdateAttachmentInput, UploadAttachmentInput,
+    UploadAttachmentNodeInput, WorkspaceStorageStatsDto,
 };
-use crate::models::{CreateAttachmentNodeInput, NodeDto};
+use crate::models::{FolderImportInput, NodeDto};
 use crate::services::attachment_maintenance_service;
+use crate::services::attachment_preview_service;
 use crate::services::attachment_service::{self, AttachmentContext};
-use crate::services::node_service;
+use crate::services::attachment_tree_import_service;
 use crate::state::AppState;
 
 /// 上传本地文件到当前工作区附件库。
@@ -31,55 +32,53 @@ pub async fn attachment_upload(
 }
 
 /// 从文件树上传附件并创建 type=6 节点；两步失败时回滚逻辑附件。
+///
+/// 与「上传文件夹」共用同一份实现（`upload_file_as_node`），保证回滚规则只有一处。
 #[tauri::command(async)]
 pub async fn attachment_upload_to_tree(
-    state: State<'_, AppState>,
+    app: tauri::AppHandle,
     input: UploadAttachmentNodeInput,
 ) -> AppResult<NodeDto> {
-    let context = AttachmentContext::from_state(state.inner())?;
-    let logical_path = input.logical_path.clone();
-    let attachment = run_blocking(move || {
-        attachment_service::upload(
-            &context,
-            UploadAttachmentInput {
-                source_path: input.source_path,
-                logical_path,
-                name: input.name,
-                mime: input.mime,
-                scope: Some(SCOPE_NODE.to_string()),
-                ttl_seconds: None,
-            },
+    let kb_id = input.knowledge_base_id;
+    let parent_id = input.parent_id;
+    let source = std::path::PathBuf::from(&input.source_path);
+    let logical_path = input.logical_path;
+    let name = input.name;
+    let mime = input.mime;
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        attachment_tree_import_service::upload_file_as_node(
+            state.inner(),
+            &kb_id,
+            parent_id.as_deref(),
+            &source,
+            &logical_path,
+            name.as_deref(),
+            mime,
         )
     })
-    .await?;
+    .await
+}
 
-    let node = node_service::create_attachment_node(
-        state.inner(),
-        CreateAttachmentNodeInput {
-            knowledge_base_id: input.knowledge_base_id,
-            parent_id: input.parent_id,
-            object_id: attachment.id.clone(),
-        },
-    );
-    match node {
-        Ok(node) => Ok(node),
-        Err(error) => {
-            if let Ok(context) = AttachmentContext::from_state(state.inner()) {
-                let object_id = attachment.id;
-                let cleanup = run_blocking(move || {
-                    attachment_service::delete(&context, &object_id).map(|_| ())
-                })
-                .await;
-                if let Err(cleanup_error) = cleanup {
-                    logging::error(
-                        "attachment",
-                        &format!("附件节点创建失败后清理附件失败: {cleanup_error}"),
-                    );
-                }
-            }
-            Err(error)
-        }
-    }
+/// 上传整个文件夹：按目录层级创建文件夹节点并递归上传其中的文件。
+#[tauri::command(async)]
+pub async fn attachment_upload_folder(
+    app: tauri::AppHandle,
+    input: FolderImportInput,
+) -> AppResult<attachment_tree_import_service::FolderImportResult> {
+    let kb_id = input.knowledge_base_id;
+    let parent_id = input.parent_id;
+    let folder = std::path::PathBuf::from(&input.folder_path);
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        attachment_tree_import_service::import_folder(
+            state.inner(),
+            &kb_id,
+            parent_id.as_deref(),
+            &folder,
+        )
+    })
+    .await
 }
 
 /// 列出附件；可包含软删除行。
@@ -107,6 +106,16 @@ pub fn attachment_get_by_node(
 ) -> AppResult<AttachmentDto> {
     let context = AttachmentContext::from_state(state.inner())?;
     attachment_service::get_by_node(&context, &node_id)
+}
+
+/// 读取附件预览：纯文本 / Markdown / Word 返回内容或块 JSON；图片与其它类型返回不支持。
+#[tauri::command(async)]
+pub async fn attachment_preview(
+    state: State<'_, AppState>,
+    node_id: String,
+) -> AppResult<attachment_preview_service::AttachmentPreviewDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    run_blocking(move || attachment_preview_service::preview(&context, &node_id)).await
 }
 
 /// 重命名或移动逻辑附件。
@@ -156,6 +165,15 @@ pub fn attachment_stats(state: State<'_, AppState>) -> AppResult<AttachmentStats
     attachment_service::stats(&context)
 }
 
+/// 当前工作区的分类磁盘占用（数据库/附件/回收站/暂存/隔离区），供 Settings 存储页展示。
+#[tauri::command(async)]
+pub async fn workspace_storage_stats(
+    state: State<'_, AppState>,
+) -> AppResult<WorkspaceStorageStatsDto> {
+    let context = AttachmentContext::from_state(state.inner())?;
+    run_blocking(move || attachment_service::workspace_storage_stats(&context)).await
+}
+
 /// 从回收站恢复附件。
 #[tauri::command(async)]
 pub async fn attachment_restore(
@@ -176,7 +194,9 @@ pub fn attachment_set_lifecycle(
     attachment_service::set_lifecycle(&context, input)
 }
 
-/// 立即执行一轮附件维护。
+/// 立即执行一轮附件维护（设置 → 存储「立即清理」）。
+///
+/// 走 `run_manual`：只回收无用数据，不重写仍在使用对象的 pack 文件。
 #[tauri::command(async)]
 pub async fn attachment_maintenance(
     state: State<'_, AppState>,
@@ -184,7 +204,7 @@ pub async fn attachment_maintenance(
     let context = AttachmentContext::from_state(state.inner())?;
     let policy = attachment_maintenance_service::load_policy(&context)?;
     run_blocking(move || {
-        attachment_maintenance_service::run(&context, crate::utils::now_ms(), policy)
+        attachment_maintenance_service::run_manual(&context, crate::utils::now_ms(), policy)
     })
     .await
 }

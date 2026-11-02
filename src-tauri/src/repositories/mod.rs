@@ -9,6 +9,7 @@ pub mod knowledge_base_repository;
 pub mod library_repository;
 pub mod mindmap_repository;
 pub mod node_attachment_repository;
+pub mod node_preview_repository;
 pub mod node_repository;
 pub mod search_repository;
 pub mod settings_repository;

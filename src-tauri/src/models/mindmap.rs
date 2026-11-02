@@ -35,8 +35,6 @@ pub enum MindmapTheme {
     /// 缤纷（默认）：导图内部使用独立的高饱和分支色，不随应用主题变化。
     #[default]
     Vivid,
-    /// 跟随 Starris 当前主题。
-    Auto,
     /// 暖屿分支色。
     Warm,
     /// 雾海分支色。

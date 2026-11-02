@@ -46,7 +46,7 @@ export default {
     dialogs: 3,
     typingFields: 2,
     assessment:
-      "思维导图复用文件树节点生命周期，新建入口与画板/表格一致；编辑只需两次键位即可扩展主题，拖拽手动定位与重新排列以数据库场景为判据，回收站与恢复沿用统一交互。",
+      "思维导图复用文件树节点生命周期，新建入口与画板/文档一致；编辑只需两次键位即可扩展主题，拖拽手动定位与重新排列以数据库场景为判据，回收站与恢复沿用统一交互。",
   },
   async run(ctx) {
     const title = "E2E Mindmap";
@@ -118,11 +118,24 @@ export default {
       { menu: "PNG 图片", extension: "png" },
       { menu: "SVG 矢量图", extension: "svg" },
     ]) {
-      await ctx.menu("导出思维导图", format.menu);
-      await ctx.nativePath(exportDir, { button: "Save" });
-      ctx.metrics.dialogs += 1;
       const filePath = path.join(exportDir, `${title}.${format.extension}`);
-      await ctx.waitForPath(filePath, { timeout: 20_000 });
+      let exported = false;
+      for (let attempt = 0; attempt < 2 && !exported; attempt += 1) {
+        if (attempt > 0) {
+          // 原生保存面板可能卡在「前往文件夹」浮层（2026-10-29 现场截图）：先关干净再重来一次。
+          await ctx.key("escape");
+          await ctx.key("escape");
+        }
+        await ctx.menu("导出思维导图", format.menu);
+        await ctx.nativePath(exportDir, { button: "Save" });
+        ctx.metrics.dialogs += 1;
+        try {
+          await ctx.waitForPath(filePath, { timeout: 20_000 });
+          exported = true;
+        } catch (error) {
+          if (attempt === 1) throw error;
+        }
+      }
       const bytes = fs.readFileSync(filePath);
       if (format.extension === "png") {
         if (bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {

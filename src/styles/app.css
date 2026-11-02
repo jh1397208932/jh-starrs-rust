@@ -8,13 +8,19 @@ body,
   height: 100%;
 }
 
+/* 窗口透明 + macOS 原生 vibrancy（tauri.conf windowEffects）：html/body 必须透明，
+   由 .app-shell 的半透明底色把桌面透出并保持主题色。 */
+html,
+body {
+  background: transparent;
+}
+
 body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: var(--text-body);
   line-height: var(--text-body-lh);
   color: var(--foreground);
-  background: var(--background);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   /* 深浅切换时底色/文字走 --dur-2 过渡 */
@@ -56,36 +62,8 @@ body {
     transform: translateY(6px) scale(0.97);
   }
 }
-@keyframes starris-pop-out {
-  to {
-    opacity: 0;
-    transform: translateY(2px) scale(0.98);
-  }
-}
-/* 居中模态专用：keyframes 内保留 -50%/-50% 位移，避免动画期间跳位 */
-@keyframes starris-dialog-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 10px)) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-@keyframes starris-dialog-out {
-  to {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 6px)) scale(0.985);
-  }
-}
 @keyframes starris-fade-in {
   from {
-    opacity: 0;
-  }
-}
-@keyframes starris-fade-out {
-  to {
     opacity: 0;
   }
 }
@@ -108,43 +86,8 @@ body {
 .anim-pop-in {
   animation: starris-pop-in var(--dur-2) var(--ease-out);
 }
-.anim-pop-out {
-  animation: starris-pop-out var(--dur-1) var(--ease-out);
-}
-.anim-dialog-in {
-  animation: starris-dialog-in var(--dur-2) var(--ease-out);
-  transform: translate(-50%, -50%);
-}
-.anim-dialog-out {
-  animation: starris-dialog-out var(--dur-1) var(--ease-out);
-  transform: translate(-50%, -50%);
-}
-/* 顶部锚定弹层（搜索 / 快速跳转）：只在水平方向居中，垂直停靠在指定 top。
-   基类 transform 是 -50%,-50%；顶部锚定若不覆盖，12% 的 top 会被再抬半个高度，
-   面板输入行会被顶出窗口上沿（2026-10-26 真机现场）。 */
-@keyframes starris-dialog-top-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 8px) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-}
-.anim-dialog-in.dialog-top {
-  animation: starris-dialog-top-in var(--dur-2) var(--ease-out);
-  transform: translate(-50%, 0);
-}
-.anim-dialog-out.dialog-top {
-  animation: starris-dialog-out var(--dur-1) var(--ease-out);
-  transform: translate(-50%, 0);
-}
 .anim-fade-in {
   animation: starris-fade-in var(--dur-2) var(--ease-out);
-}
-.anim-fade-out {
-  animation: starris-fade-out var(--dur-1) var(--ease-out);
 }
 .anim-slide-up-in {
   animation: starris-slide-up-in var(--dur-2) var(--ease-out);
@@ -179,7 +122,23 @@ body {
    ============================================================ */
 
 .doc-editor {
+  position: relative;
   background: transparent;
+}
+
+/* 文档内查找：浮在编辑区右上角，不进文档流；窄窗口下移避开页头操作图标。 */
+.doc-find-float {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 35;
+  width: min(340px, calc(100% - 32px));
+}
+
+@media (max-width: 1120px) {
+  .doc-find-float {
+    top: 56px;
+  }
 }
 
 .doc-editor-scroll {
@@ -225,6 +184,117 @@ body {
 .doc-editor-body {
   position: relative;
   min-height: 380px;
+}
+
+/* 文档内嵌预览块：只展示已存 PNG，不在这里渲染源场景。 */
+.embed-preview-block {
+  margin: 20px 0;
+  padding: 10px 12px 11px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.embed-preview-block.is-selected {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.embed-preview-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.embed-preview-kind {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.embed-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embed-preview-meta {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.embed-preview-open {
+  display: inline-flex;
+  height: 24px;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  border-radius: 7px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+
+.embed-preview-open:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.embed-preview-canvas {
+  display: grid;
+  width: 100%;
+  min-height: 120px;
+  margin-top: 10px;
+  padding: 0;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  border-radius: 10px;
+  background: var(--secondary);
+  color: inherit;
+  cursor: zoom-in;
+}
+
+.embed-preview-canvas img {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  background: var(--card);
+  object-fit: contain;
+}
+
+.embed-preview-skeleton,
+.embed-preview-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 42px 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+
+.embed-preview-caption {
+  margin-top: 8px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
 }
 
 /* 左侧留出拖拽手柄走廊；负 margin 让正文与标题左对齐。
@@ -1645,7 +1715,10 @@ body.starris-image-resizing {
 .app-shell {
   position: relative;
   isolation: isolate;
-  background:
+  /* color-mix 兜底：不支持时至少保持主题实色，不会露出桌面。
+     用 background-image 而不是 background 简写，否则会把上一行的底色重置成透明。 */
+  background-color: var(--sidebar);
+  background-image:
     radial-gradient(
       1100px 700px at 6% -14%,
       color-mix(in srgb, var(--wash-1) 58%, transparent),
@@ -1661,7 +1734,12 @@ body.starris-image-resizing {
       color-mix(in srgb, var(--wash-3) 42%, transparent),
       transparent 64%
     ),
-    linear-gradient(158deg, var(--sidebar) 0%, var(--sidebar-2) 52%, var(--sidebar) 100%);
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, var(--sidebar) 86%, transparent) 0%,
+      color-mix(in srgb, var(--sidebar-2) 84%, transparent) 52%,
+      color-mix(in srgb, var(--sidebar) 86%, transparent) 100%
+    );
 }
 
 .app-shell::before {
@@ -1693,13 +1771,18 @@ body.starris-image-resizing {
   position: relative;
   border: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
   border-radius: var(--radius-lg);
-  background:
+  background-color: var(--card);
+  background-image:
     radial-gradient(
       1000px 320px at 100% 0%,
       color-mix(in srgb, var(--wash-2) 12%, transparent),
       transparent 68%
     ),
-    linear-gradient(180deg, color-mix(in srgb, var(--wash-1) 7%, var(--card)) 0, var(--card) 220px);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--wash-1) 7%, color-mix(in srgb, var(--card) 92%, transparent)) 0,
+      color-mix(in srgb, var(--card) 94%, transparent) 220px
+    );
   box-shadow: var(--shadow-sheet);
   overflow: hidden;
 }
@@ -1827,6 +1910,28 @@ body.starris-image-resizing {
 
 .tree-row:not([data-selected="true"]):hover {
   background: color-mix(in srgb, var(--card) 28%, transparent);
+}
+
+/* 文件树拖拽牌：代替系统拖影（WKWebView 的系统拖影是截图，质感差），跟随光标由 MotionValue 驱动 */
+.tree-drag-chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--popover) 90%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px) saturate(1.15);
+  color: var(--foreground);
+  font-size: 12.5px;
+  pointer-events: none;
+  will-change: transform;
 }
 
 /* 展开文件夹：子树整体 120ms 淡入上移；折叠走即时卸载，避免高度动画逐帧布局 */

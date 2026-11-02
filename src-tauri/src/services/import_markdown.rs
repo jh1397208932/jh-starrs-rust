@@ -66,6 +66,8 @@ struct MdBuilder<'a> {
     source_dir: PathBuf,
     asset_prefix: String,
     context: &'a AttachmentContext,
+    /// 是否把图片/本地链接登记为附件；预览用 false。
+    persist_assets: bool,
 }
 
 /// 解析 Markdown 文件；本地图片/链接会登记为附件，源文件由调用方另行附加。
@@ -74,6 +76,25 @@ pub fn parse_markdown(
     source: &Path,
     source_text: &str,
     asset_prefix: &str,
+) -> AppResult<ParsedMarkdown> {
+    parse_markdown_with(context, source, source_text, asset_prefix, true)
+}
+
+/// 预览用：与导入同一套解析，但不把图片/链接写进附件库。
+pub fn parse_markdown_preview(
+    context: &AttachmentContext,
+    source: &Path,
+    source_text: &str,
+) -> AppResult<Vec<Value>> {
+    Ok(parse_markdown_with(context, source, source_text, "preview", false)?.blocks)
+}
+
+fn parse_markdown_with(
+    context: &AttachmentContext,
+    source: &Path,
+    source_text: &str,
+    asset_prefix: &str,
+    persist_assets: bool,
 ) -> AppResult<ParsedMarkdown> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -111,6 +132,7 @@ pub fn parse_markdown(
         source_dir: source.parent().unwrap_or(Path::new(".")).to_path_buf(),
         asset_prefix: asset_prefix.to_string(),
         context,
+        persist_assets,
     };
 
     for event in Parser::new_ext(source_text, options) {
@@ -558,6 +580,10 @@ impl MdBuilder<'_> {
 
     fn finish_image(&mut self, image: ImageCapture) {
         let dest = image.dest.trim();
+        if !self.persist_assets {
+            self.push_block(json!({"type": "paragraph", "content": [text("[图片]")]}));
+            return;
+        }
         if dest.starts_with("data:")
             && let Some((ext, bytes)) = crate::services::export_render::decode_data_url(dest)
             && let Ok(attachment) = attachment_service::upload_bytes(
@@ -626,6 +652,9 @@ impl MdBuilder<'_> {
     }
 
     fn register_linked_file(&mut self, dest: &str) {
+        if !self.persist_assets {
+            return;
+        }
         let Some(path) = self.resolve_local(dest) else {
             return;
         };

@@ -1,4 +1,4 @@
-import { Handle, type NodeProps, Position } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
@@ -201,42 +201,6 @@ export function MindmapTopicNode({
           {hiddenCount}
         </button>
       ) : null}
-      {renderHandles(side)}
     </div>
-  );
-}
-
-function renderHandles(side: MindmapNodeData["side"]) {
-  if (side === "root") {
-    return (
-      <>
-        <Handle id="right" type="source" position={Position.Right} isConnectable={false} />
-        <Handle id="left" type="source" position={Position.Left} isConnectable={false} />
-        <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
-        <Handle id="up" type="source" position={Position.Top} isConnectable={false} />
-      </>
-    );
-  }
-  if (side === "left") {
-    return (
-      <>
-        <Handle id="right" type="target" position={Position.Right} isConnectable={false} />
-        <Handle id="left" type="source" position={Position.Left} isConnectable={false} />
-      </>
-    );
-  }
-  if (side === "right") {
-    return (
-      <>
-        <Handle id="left" type="target" position={Position.Left} isConnectable={false} />
-        <Handle id="right" type="source" position={Position.Right} isConnectable={false} />
-      </>
-    );
-  }
-  return (
-    <>
-      <Handle id="up" type="target" position={Position.Top} isConnectable={false} />
-      <Handle id="down" type="source" position={Position.Bottom} isConnectable={false} />
-    </>
   );
 }

@@ -101,7 +101,12 @@ export function validateBinding(binding: string, scope: ShortcutScope): Shortcut
   return { ok: true };
 }
 
-/** 在同一作用域查找冲突动作；跨作用域由设置页单独提示。 */
+/**
+ * 只在同一作用域查找冲突动作。
+ *
+ * 跨作用域撞同一个组合键不算冲突：同一时刻光标只可能在一个标签页里，
+ * 谁收到按键由活动标签页决定，运行时也按「tab 内键位优先」派发。
+ */
 export function findSameScopeConflict(
   actions: ShortcutAction[],
   bindings: Record<string, string>,
@@ -113,22 +118,6 @@ export function findSameScopeConflict(
   return (
     actions.find(
       (action) => action.id !== actionId && action.scope === scope && (bindings[action.id] ?? "") === binding,
-    ) ?? null
-  );
-}
-
-/** 查找其他作用域使用同一组合的动作。 */
-export function findCrossScopeConflict(
-  actions: ShortcutAction[],
-  bindings: Record<string, string>,
-  actionId: string,
-  scope: ShortcutScope,
-  binding: string,
-): ShortcutAction | null {
-  if (!binding) return null;
-  return (
-    actions.find(
-      (action) => action.id !== actionId && action.scope !== scope && (bindings[action.id] ?? "") === binding,
     ) ?? null
   );
 }

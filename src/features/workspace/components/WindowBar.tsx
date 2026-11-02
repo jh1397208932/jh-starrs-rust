@@ -1,10 +1,11 @@
 import { Minus, Search, Square, X } from "lucide-react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { memo } from "react";
 import { NodeKindIcon } from "@/components/common/NodeKindIcon";
 import { TrafficLightSlot } from "@/components/common/TrafficLightSlot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
-import { SPRING_PANEL } from "@/lib/motion";
+import { EASE_STANDARD, SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { runWindowAction, windowActions } from "@/lib/window";
 import { NODE_KIND_LABELS, type TabItem } from "@/types/notebook";
@@ -31,7 +32,7 @@ const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("
  * 红绿灯在通高侧栏顶部（macOS）；侧栏折叠时经 trafficInset 在本栏回补注入区。
  * 窗口操作统一经 lib/window（AGENTS.md §3.3：组件禁止直接调用 @tauri-apps/api）。
  */
-export function WindowBar({
+export const WindowBar = memo(function WindowBar({
   tabs,
   activeTabId,
   onSelect,
@@ -61,65 +62,72 @@ export function WindowBar({
 
       {/* 标签页组：无边框药丸，激活态以 bg-background 顺接内容区 */}
       <div role="tablist" aria-label={t("标签页")} className="flex min-w-0 items-center gap-0.5 pl-2">
-        {tabs.map((tab) => {
-          const active = tab.id === activeTabId;
-          const kindLabel = tab.kind === "starred" ? t("收藏") : t(NODE_KIND_LABELS[tab.kind]);
-          return (
-            <div
-              key={tab.id}
-              role="tab"
-              aria-selected={active}
-              aria-label={`${kindLabel} · ${tab.title}`}
-              tabIndex={-1}
-              className={cn(
-                "group relative flex h-[30px] min-w-0 items-center gap-1 rounded-[9px] px-2 transition-colors duration-150 ease-[var(--ease)]",
-                !active && "hover:bg-card/40",
-              )}
-            >
-              {/* 激活底片：layoutId 让药丸在标签之间滑动（弹簧），比底色瞬切更有连续性 */}
-              {active && (
-                <motion.span
-                  layoutId="window-tab-pill"
-                  aria-hidden="true"
-                  transition={SPRING_PANEL}
-                  className="absolute inset-0 rounded-[9px] bg-card/95 shadow-sm ring-1 ring-border/60 ring-inset"
-                />
-              )}
-              <button
-                type="button"
-                title={tab.title}
-                onClick={() => onSelect(tab.id)}
-                className="relative flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px]"
-              >
-                <NodeKindIcon
-                  kind={tab.kind}
-                  className={cn("size-3.5 shrink-0", active ? "text-primary" : "text-muted-foreground/60")}
-                />
-                <span
-                  className={cn(
-                    "min-w-0 max-w-[160px] truncate text-[13px]",
-                    active ? "font-medium text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {tab.title}
-                </span>
-              </button>
-              <button
-                type="button"
-                aria-label={t("关闭标签页 {title}", { title: tab.title })}
-                onClick={() => onClose(tab.id)}
+        <AnimatePresence initial={false}>
+          {tabs.map((tab) => {
+            const active = tab.id === activeTabId;
+            const kindLabel = tab.kind === "starred" ? t("收藏") : t(NODE_KIND_LABELS[tab.kind]);
+            return (
+              <motion.div
+                key={tab.id}
+                layout
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96, pointerEvents: "none" }}
+                transition={{ duration: 0.14, ease: EASE_STANDARD }}
+                role="tab"
+                aria-selected={active}
+                aria-label={`${kindLabel} · ${tab.title}`}
+                tabIndex={-1}
                 className={cn(
-                  "relative grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-[opacity,background-color,scale] duration-150 ease-[var(--ease)] hover:scale-110 hover:bg-foreground/10 active:scale-95",
-                  active
-                    ? "opacity-50 hover:opacity-100"
-                    : "opacity-0 group-hover:opacity-60 group-hover:hover:opacity-100 focus-visible:opacity-100",
+                  "group relative flex h-[30px] min-w-0 items-center gap-1 rounded-[9px] px-2 transition-colors duration-150 ease-[var(--ease)]",
+                  !active && "hover:bg-card/40",
                 )}
               >
-                <X className="size-3" />
-              </button>
-            </div>
-          );
-        })}
+                {/* 激活底片：layoutId 让药丸在标签之间滑动（弹簧），比底色瞬切更有连续性 */}
+                {active && (
+                  <motion.span
+                    layoutId="window-tab-pill"
+                    aria-hidden="true"
+                    transition={SPRING_PANEL}
+                    className="absolute inset-0 rounded-[9px] bg-card/95 shadow-sm ring-1 ring-border/60 ring-inset"
+                  />
+                )}
+                <button
+                  type="button"
+                  title={tab.title}
+                  onClick={() => onSelect(tab.id)}
+                  className="relative flex min-w-0 cursor-default items-center gap-1.5 rounded-[8px]"
+                >
+                  <NodeKindIcon
+                    kind={tab.kind}
+                    className={cn("size-3.5 shrink-0", active ? "text-primary" : "text-muted-foreground/60")}
+                  />
+                  <span
+                    className={cn(
+                      "min-w-0 max-w-[160px] truncate text-[13px]",
+                      active ? "font-medium text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {tab.title}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("关闭标签页 {title}", { title: tab.title })}
+                  onClick={() => onClose(tab.id)}
+                  className={cn(
+                    "relative grid size-[18px] shrink-0 cursor-default place-items-center rounded-[8px] transition-[opacity,background-color,scale] duration-150 ease-[var(--ease)] hover:scale-110 hover:bg-foreground/10 active:scale-95",
+                    active
+                      ? "opacity-50 hover:opacity-100"
+                      : "opacity-0 group-hover:opacity-60 group-hover:hover:opacity-100 focus-visible:opacity-100",
+                  )}
+                >
+                  <X className="size-3" />
+                </button>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {/* 弹性拖拽区 */}
@@ -200,4 +208,4 @@ export function WindowBar({
       )}
     </header>
   );
-}
+});

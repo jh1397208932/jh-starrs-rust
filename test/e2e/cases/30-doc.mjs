@@ -98,15 +98,34 @@ export default {
       { radio: "Word", extension: "docx", signature: "zip" },
       { radio: "PDF", extension: "pdf", signature: "pdf" },
     ];
+    // 导出弹窗有时在切换格式时还在退场；等到目标单选项真的可读再操作。
+    const openExportDialog = async (radio) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await ctx.press("导出文档", { settle: 320 });
+        try {
+          const found = await ctx.find(radio, { role: "AXRadioButton" });
+          if (found.matches.length > 0) return;
+        } catch {
+          // 下一轮重试
+        }
+        await ctx.key("escape");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      throw new Error(`导出格式弹窗未打开：${radio}`);
+    };
+
     for (const format of formats) {
-      await ctx.press("导出文档");
-      await ctx.expectText("导出格式", { timeout: 8000 });
-      await ctx.press(format.radio, { role: "AXRadioButton", settle: 180 });
+      await openExportDialog(format.radio);
+      await ctx.press(format.radio, { role: "AXRadioButton", settle: 250 });
       await ctx.press("导出", { role: "AXButton" });
       await ctx.nativePath(exportDir, { button: "Save" });
       ctx.metrics.dialogs += 1;
       const filePath = path.join(exportDir, `${docTitle}.${format.extension}`);
       await ctx.waitForPath(filePath, { timeout: 20_000 });
+      if (!(await ctx.waitForNoSheet({ timeout: 3000 }))) {
+        await ctx.key("escape");
+        await ctx.waitForNoSheet({ timeout: 1500 });
+      }
       const bytes = fs.readFileSync(filePath);
       if (format.signature === "pdf" && bytes.subarray(0, 4).toString("latin1") !== "%PDF") {
         throw new Error("PDF 文件头不正确");

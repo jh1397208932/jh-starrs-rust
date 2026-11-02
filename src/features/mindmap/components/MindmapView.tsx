@@ -1,3 +1,5 @@
+import { memo, useEffect } from "react";
+import { scheduleNodePreview } from "@/features/editor/utils/nodePreview";
 import { useI18n } from "@/lib/i18n";
 import { useMindmapCommands } from "../hooks/useMindmapCommands";
 import { useMindmapExport } from "../hooks/useMindmapExport";
@@ -21,7 +23,7 @@ interface MindmapViewProps {
 }
 
 /** 思维导图节点页：页头、加载状态与工作区装配。 */
-export function MindmapView({
+function MindmapViewImpl({
   nodeId,
   title,
   kbName,
@@ -77,6 +79,12 @@ export function MindmapView({
     setSearchOpen,
   });
   useMindmapKeymap(persistence.status !== "loading", handlers);
+
+  // 保存静止后导出文档内嵌预览；文档端只读已存 PNG，不触发渲染。
+  useEffect(() => {
+    if (persistence.status !== "saved") return;
+    scheduleNodePreview("mindmap", nodeId, title);
+  }, [persistence.status, nodeId, title]);
 
   const { addBoundaryForSelection, addSummaryForSelection, addRelationForSelection, addFreeTopicAtCanvas } =
     useMindmapGroupActions({
@@ -156,3 +164,9 @@ export function MindmapView({
     </div>
   );
 }
+
+/**
+ * 视图入口：props 全部是稳定引用（nodeId/标题/稳定回调和已收敛的 nodes），
+ * 外层 store 的无关更新（别的节点保存、侧栏开关）不再连带重渲染画布/编辑器。
+ */
+export const MindmapView = memo(MindmapViewImpl);

@@ -6,10 +6,11 @@
  */
 
 /** 数据库与 IPC 使用的节点类型数字（需求约定 1~7） */
-export type NodeType = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+/** 数据库与 IPC 使用的节点类型数字（4=表格、5=流程图已在 v16 迁移中清除，不再支持） */
+export type NodeType = 1 | 2 | 3 | 6 | 7;
 
 /** 前端展示与交互使用的节点类型 */
-export type NodeKind = "folder" | "doc" | "board" | "table" | "flow" | "attachment" | "mindmap";
+export type NodeKind = "folder" | "doc" | "board" | "attachment" | "mindmap";
 
 /** 可打开为标签页的节点类型（文件夹不打开标签） */
 export type OpenableKind = Exclude<NodeKind, "folder">;
@@ -19,8 +20,6 @@ export const NODE_KIND_BY_TYPE: Record<NodeType, NodeKind> = {
   1: "folder",
   2: "doc",
   3: "board",
-  4: "table",
-  5: "flow",
   6: "attachment",
   7: "mindmap",
 };
@@ -30,8 +29,6 @@ export const NODE_TYPE_BY_KIND: Record<NodeKind, NodeType> = {
   folder: 1,
   doc: 2,
   board: 3,
-  table: 4,
-  flow: 5,
   attachment: 6,
   mindmap: 7,
 };
@@ -41,14 +38,12 @@ export const NODE_KIND_LABELS: Record<NodeKind, string> = {
   folder: "文件夹",
   doc: "文档",
   board: "画板",
-  table: "表格",
-  flow: "流程图",
   attachment: "附件",
   mindmap: "思维导图",
 };
 
-/** 新建菜单展示顺序：文件夹在前 */
-export const NODE_KIND_ORDER: NodeKind[] = ["folder", "doc", "board", "table", "flow", "mindmap"];
+/** 新建菜单展示顺序：文件夹在前；附件不作为新建入口。 */
+export const NODE_KIND_ORDER: NodeKind[] = ["folder", "doc", "board", "mindmap"];
 
 /** 工作区（全局注册表中的一行） */
 export interface Workspace {
@@ -73,6 +68,9 @@ export interface KnowledgeBase {
   createdAt: number;
   updatedAt: number;
 }
+
+/** 上传附件的选择方式：逐个文件，或整个文件夹按层级导入。 */
+export type UploadMode = "files" | "folder";
 
 /** 文件树节点（平表字段，树由前端按 parentId 组装） */
 export interface NodeItem {

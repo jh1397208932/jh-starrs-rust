@@ -2,7 +2,7 @@
  * 画板自动保存：去抖 + 最大等待 + 单飞 + 失败退避 + 视口独立保存。
  *
  * onChange 只更新最新快照并标脏；序列化与 IPC 都推迟到保存时刻。
- * 图片/附件已在粘贴时进入全局对象库，本 hook 不传输文件字节。
+ * 图片已在粘贴时进入全局对象库，本 hook 不传输文件字节。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

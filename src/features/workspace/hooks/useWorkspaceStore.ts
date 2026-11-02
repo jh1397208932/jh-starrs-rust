@@ -19,6 +19,8 @@ export interface WorkspaceStore {
   loading: boolean;
   /** 启动或刷新失败的可展示消息 */
   error: string | null;
+  /** 只重拉当前知识库的节点平表（导入/批量上传后使用，不重读工作区与知识库） */
+  reloadNodes: () => Promise<void>;
   workspaces: Workspace[];
   currentWorkspace: Workspace | null;
   defaultWorkspaceParent: string;
@@ -357,6 +359,7 @@ export function useWorkspaceStore(): WorkspaceStore {
     tree,
     starredNodes,
     refresh,
+    reloadNodes,
     createWorkspace,
     openWorkspace,
     switchWorkspace,

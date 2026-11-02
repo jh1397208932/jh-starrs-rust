@@ -41,9 +41,24 @@ export function activateOutline(owner: symbol, editor: Editor) {
   emit();
 }
 
+/** 两份标题列表是否逐项一致（id/层级/文本/位置）。 */
+function sameOutline(left: OutlineItem[], right: OutlineItem[]): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index];
+    const b = right[index];
+    if (a.id !== b.id || a.level !== b.level || a.text !== b.text || a.pos !== b.pos) return false;
+  }
+  return true;
+}
+
 /** 发布 TOC 扩展计算出的标题列表。 */
 export function publishOutline(owner: symbol, items: OutlineItem[]) {
   if (owner !== activeOwner) return;
+  // TOC 扩展每次文档事务都会回调；正文打字不改变标题时不要换引用，
+  // 否则目录订阅方（页头大纲浮层）会跟着每个字符重渲染一次。
+  if (sameOutline(snapshot.items, items)) return;
   snapshot = { items, editor: snapshot.editor };
   emit();
 }

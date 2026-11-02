@@ -2,15 +2,19 @@ import onboarding from "./00-onboarding.mjs";
 import shell from "./10-shell.mjs";
 import language from "./12-language.mjs";
 import tree from "./20-tree.mjs";
-import tableFlow from "./22-table-flow.mjs";
+import treeLarge from "./20b-tree-large.mjs";
+import importMindmap from "./21-import-mindmap.mjs";
 import network from "./23-network.mjs";
 import nodeTrash from "./24-node-trash.mjs";
 import attachmentTree from "./25-attachment-tree.mjs";
 import mindmap from "./26-mindmap.mjs";
 import mindmapVisual from "./26b-mindmap-visual.mjs";
+import mindmapExtreme from "./26c-mindmap-extreme.mjs";
 import aiCollab from "./27-ai-collab.mjs";
 import mcpHost from "./28-mcp-host.mjs";
+import mcpReview from "./29-mcp-review.mjs";
 import doc from "./30-doc.mjs";
+import docExtreme from "./30b-doc-extreme.mjs";
 import board from "./40-board.mjs";
 import settings from "./50-settings.mjs";
 import library from "./60-library.mjs";
@@ -26,6 +30,7 @@ import docHistory from "./94-doc-history.mjs";
 import interactions from "./95-interactions.mjs";
 import misc from "./96-misc.mjs";
 import search from "./97-search.mjs";
+import docEmbed from "./97b-doc-embed.mjs";
 import docConflict from "./98-doc-conflict.mjs";
 import closeFlush from "./99-close-flush.mjs";
 
@@ -35,15 +40,19 @@ export default [
   shell,
   language,
   tree,
-  tableFlow,
+  treeLarge,
+  importMindmap,
   network,
   nodeTrash,
   attachmentTree,
   mindmap,
   mindmapVisual,
+  mindmapExtreme,
   aiCollab,
   mcpHost,
+  mcpReview,
   doc,
+  docExtreme,
   board,
   settings,
   library,
@@ -59,6 +68,7 @@ export default [
   interactions,
   misc,
   search,
+  docEmbed,
   docConflict,
   closeFlush,
 ];

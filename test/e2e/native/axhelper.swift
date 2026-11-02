@@ -47,6 +47,22 @@ func decodeBase64(_ raw: String) -> String? {
     return String(data: data, encoding: .utf8)
 }
 
+/// 合成指针点击前先把元素滚到可视区，并回读刷新后的中心点。
+///
+/// 弹窗里靠下的控件（如设置 → 存储的「保留时间」编辑器）AX 查得到，但 frame 落在
+/// 弹窗可视区之外；直接按旧 frame 中心点击会打在遮罩上，Radix 判为「外部按下」
+/// 直接把整个对话框关掉，后面所有文本查询就全是命中 0（2026-10-28 全量 e2e 现场）。
+/// 回读失败（尺寸变 0）时退回匹配时记下的中心，避免点到 (0,0)。
+func centerAfterScrolling(_ target: Match) -> CGPoint {
+    AXUIElementPerformAction(target.element, "AXScrollToVisible" as CFString)
+    usleep(120_000)
+    let (point, size) = frame(target.element)
+    guard size.width > 0, size.height > 0 else {
+        return CGPoint(x: target.point.x + target.size.width / 2, y: target.point.y + target.size.height / 2)
+    }
+    return CGPoint(x: point.x + size.width / 2, y: point.y + size.height / 2)
+}
+
 func json(_ object: Any, code: Int32 = 0) -> Never {
     let data = try? JSONSerialization.data(withJSONObject: object, options: [])
     FileHandle.standardOutput.write(data ?? Data("{}".utf8))
@@ -339,8 +355,7 @@ case "press", "fill":
     guard let target = preferred.first else { failure("找不到可操作元素: \(query)") }
     if args[1] == "fill" {
         guard args.count >= 4, let value = decodeBase64(args[3]) else { failure("文本参数不是 base64") }
-        let center = CGPoint(x: target.point.x + target.size.width / 2, y: target.point.y + target.size.height / 2)
-        click(at: center)
+        click(at: centerAfterScrolling(target))
         usleep(100_000)
         keyEvent("cmd+a")
         pasteText(value)
@@ -353,8 +368,7 @@ case "press", "fill":
             json(["ok": true, "action": "press", "role": target.role, "title": target.title])
         }
     }
-    let center = CGPoint(x: target.point.x + target.size.width / 2, y: target.point.y + target.size.height / 2)
-    click(at: center)
+    click(at: centerAfterScrolling(target))
     json(["ok": true, "action": "click-trigger", "role": target.role, "title": target.title])
 case "click":
     guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else { failure("click 需要 x y") }

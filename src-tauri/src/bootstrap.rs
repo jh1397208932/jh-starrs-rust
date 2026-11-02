@@ -1,7 +1,7 @@
 //! 启动装配：同步只做日志与全局库；工作区初始化按登记表在后台异步执行。
 //!
-//! 规则：库表结构/迁移/自愈只允许登记在 `db::init_registry`，启动时按优先级统一执行；
-//! 业务操作不写 DDL，最多在发现库未就绪时调用同一登记表（见 `WorkspaceSession::open`）。
+//! 规则：库表结构只在 `db::global` / `db::workspace` 的 `SCHEMA` 里定义；启动装配执行
+//! `db::init_registry` 登记的全局任务，工作区库在打开会话时按当前 schema 初始化。
 
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -25,11 +25,9 @@ pub fn initialize() -> AppResult<AppState> {
     }
     logging::info("app", "初始化全局工作区目录");
 
-    // 全局库只有两张小表：属于启动装配的一部分；仅在结构缺失/版本落后时执行登记任务。
+    // 全局库只有两张小表：属于启动装配的一部分；版本不一致会在登记任务里直接报错。
     let mut global = db::global::open_connection(&global_paths.global_db)?;
-    if db::global::needs_initialization(&global)? {
-        db::init_registry::run_tasks(&mut global, db::init_registry::GLOBAL_TASKS)?;
-    }
+    db::init_registry::run_tasks(&mut global, db::init_registry::GLOBAL_TASKS)?;
     Ok(AppState::new(global, None))
 }
 

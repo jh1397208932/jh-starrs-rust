@@ -112,14 +112,6 @@ export function NodeTrashDialog({ open, onOpenChange, knowledgeBaseId, onChanged
             <DialogTitle>{t("回收站")}</DialogTitle>
             <p className={cn(CAPTION_CLS, "mt-1 text-muted-foreground")}>{t("恢复后回到原来的位置")}</p>
           </div>
-          <Button
-            variant={confirmEmpty ? "destructive" : "ghost"}
-            size="sm"
-            disabled={loading || busy !== null || items.length === 0}
-            onClick={empty}
-          >
-            {confirmEmpty ? t("确认清空？") : t("清空回收站")}
-          </Button>
         </div>
 
         {error && (
@@ -185,6 +177,18 @@ export function NodeTrashDialog({ open, onOpenChange, knowledgeBaseId, onChanged
               ))}
             </ul>
           )}
+        </div>
+
+        {/* 页头右上是对话框自带的关闭按钮，清空动作放页脚避免叠在一起 */}
+        <div className="mt-4 flex justify-end">
+          <Button
+            variant={confirmEmpty ? "destructive" : "outline"}
+            size="sm"
+            disabled={loading || busy !== null || items.length === 0}
+            onClick={empty}
+          >
+            {confirmEmpty ? t("确认清空？") : t("清空回收站")}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -30,7 +30,7 @@ export function MindmapLoadShell({
         title={title}
         status={mode === "error" ? "error" : "loading"}
         structure="balanced"
-        theme="auto"
+        theme="vivid"
         coloring="theme"
         edgeStyle="curve"
         background="dots"

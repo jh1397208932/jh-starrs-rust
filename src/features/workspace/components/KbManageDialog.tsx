@@ -2,7 +2,6 @@ import { Ellipsis, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import type { UpdateKnowledgeBaseParams } from "@/api/knowledgeBase";
-import { NumberTicker } from "@/components/common/motion/NumberTicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -29,7 +28,7 @@ export interface KbManageDialogProps {
   onDeleteKb: (id: string) => Promise<void>;
 }
 
-const GRID = "grid grid-cols-[1fr_1.2fr_64px_44px] items-center gap-3";
+const GRID = "grid grid-cols-[1fr_1.2fr_44px] items-center gap-3";
 
 /** 弹窗 F · 知识库管理：560×400 模态；支持切换、改名/描述、删除（级联节点） */
 export function KbManageDialog({
@@ -84,7 +83,6 @@ export function KbManageDialog({
           >
             <span>{t("名称")}</span>
             <span>{t("描述")}</span>
-            <span className="text-right">{t("条目数")}</span>
             <span />
           </div>
           {kbs.length === 0 && (
@@ -115,9 +113,6 @@ export function KbManageDialog({
                   )}
                 </button>
                 <span className="truncate text-[12.5px] text-muted-foreground">{kb.description || "—"}</span>
-                <span className="text-right font-mono text-[12px] text-muted-foreground">
-                  <NumberTicker value={kb.docCount} />
-                </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button

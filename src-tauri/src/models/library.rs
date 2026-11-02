@@ -55,6 +55,9 @@ pub struct LibraryItemDto {
     pub status: String,
     pub elements: Value,
     pub created: i64,
+    pub library_id: String,
+    pub library_name: String,
+    pub library_source_type: LibrarySourceType,
 }
 
 /// 导入库入参；路径来自文件选择器。

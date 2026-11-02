@@ -71,6 +71,20 @@ pub fn find_active(connection: &Connection, id: &str) -> rusqlite::Result<Option
         .optional()
 }
 
+/// 指定逻辑目录下是否已有同名的启用附件；走 `idx_attachment_active_path` 索引。
+pub fn name_exists(
+    connection: &Connection,
+    logical_path: &str,
+    name: &str,
+) -> rusqlite::Result<bool> {
+    connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM attachment
+                       WHERE logical_path = ?1 AND name = ?2 AND status = 'active')",
+        rusqlite::params![logical_path, name],
+        |row| row.get(0),
+    )
+}
+
 /// 插入逻辑附件。
 pub fn insert_attachment(connection: &Connection, row: &AttachmentRow) -> rusqlite::Result<()> {
     connection.execute(
@@ -186,6 +200,7 @@ pub fn list(
          WHERE (?1 IS NULL OR logical_path = ?1)
            AND (?2 = 1 OR status = 'active')
            AND (?3 IS NULL OR name LIKE ?3 ESCAPE '\\' OR logical_path LIKE ?3 ESCAPE '\\')
+           AND (?1 = ?6 OR logical_path <> ?6)
          ORDER BY updated_at DESC, created_at DESC, id DESC
          LIMIT ?4 OFFSET ?5"
     ))?;
@@ -195,7 +210,8 @@ pub fn list(
             i64::from(query.include_deleted),
             query.search.as_deref(),
             query.limit.unwrap_or(50),
-            query.offset.unwrap_or(0)
+            query.offset.unwrap_or(0),
+            crate::models::attachment::PREVIEW_LOGICAL_PATH,
         ],
         map_attachment,
     )?;
@@ -334,6 +350,42 @@ pub fn delete_blob(connection: &Connection, hash: &str) -> rusqlite::Result<()> 
 }
 
 /// 查询活跃 pack。
+/// 读取附件预览缓存：(kind, payload_json, source_updated_at)。
+pub fn get_preview(
+    connection: &Connection,
+    attachment_id: &str,
+) -> rusqlite::Result<Option<(String, String, i64)>> {
+    connection
+        .query_row(
+            "SELECT kind, payload_json, source_updated_at
+             FROM attachment_preview WHERE attachment_id = ?1",
+            [attachment_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+}
+
+/// 写入/覆盖附件预览缓存；旧版本不覆盖新版本。
+pub fn upsert_preview(
+    connection: &Connection,
+    attachment_id: &str,
+    kind: &str,
+    payload_json: &str,
+    source_updated_at: i64,
+) -> rusqlite::Result<()> {
+    connection.execute(
+        "INSERT INTO attachment_preview (attachment_id, kind, payload_json, source_updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(attachment_id) DO UPDATE SET
+             kind = excluded.kind,
+             payload_json = excluded.payload_json,
+             source_updated_at = excluded.source_updated_at
+         WHERE excluded.source_updated_at >= attachment_preview.source_updated_at",
+        params![attachment_id, kind, payload_json, source_updated_at],
+    )?;
+    Ok(())
+}
+
 pub fn find_active_pack(connection: &Connection) -> rusqlite::Result<Option<AttachmentPackRow>> {
     connection
         .query_row(

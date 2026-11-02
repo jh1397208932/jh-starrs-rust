@@ -56,25 +56,53 @@ export function DocFindBar({ editor, onClose }: DocFindBarProps) {
     onClose();
   };
 
+  /** 命中可能在当前视口外；查找框持有焦点时编辑器不会自己滚动，这里显式滚容器。 */
+  const scrollToMatch = (from: number) => {
+    if (!editor) return;
+    const view = editor.view;
+    const scroller = view.dom.closest<HTMLElement>(".doc-editor-scroll");
+    if (!scroller) return;
+    try {
+      const coords = view.coordsAtPos(from);
+      const rect = scroller.getBoundingClientRect();
+      const offset = coords.top - rect.top;
+      const margin = 72;
+      if (offset >= margin && offset <= scroller.clientHeight - margin) return;
+      const target = scroller.scrollTop + offset - scroller.clientHeight * 0.32;
+      scroller.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    } catch {
+      // 位置暂时不可测（节点正在销毁/布局中）：下一次跳转再试。
+    }
+  };
+
+  const jumpTo = (from: number, to: number) => {
+    if (!editor) return;
+    editor.chain().setTextSelection({ from, to }).scrollIntoView().run();
+    requestAnimationFrame(() => scrollToMatch(from));
+  };
+
   const jump = (direction: "next" | "prev") => {
     if (!editor) return;
     if (direction === "next") editor.commands.findNext();
     else editor.commands.findPrev();
     const current = findPluginKey.getState(editor.state);
     const match = current?.matches[current.active];
-    if (match) {
-      editor.chain().setTextSelection({ from: match.from, to: match.to }).scrollIntoView().run();
-    }
+    if (match) jumpTo(match.from, match.to);
   };
 
   const updateQuery = (value: string) => {
     setQuery(value);
-    editor?.commands.setFindQuery(value);
+    if (!editor) return;
+    editor.commands.setFindQuery(value);
+    // 输入后直接落到第一处：只算高亮不滚动，用户会以为查找没生效。
+    const current = findPluginKey.getState(editor.state);
+    const match = current?.matches[0];
+    if (match) jumpTo(match.from, match.to);
   };
 
   return (
     <search
-      className="mb-3 flex items-center gap-2 rounded-[10px] border border-border/70 bg-card/90 px-2.5 py-1.5 shadow-sm"
+      className="flex items-center gap-2 rounded-[10px] border border-border/70 bg-card/95 px-2.5 py-1.5 shadow-md backdrop-blur-md"
       aria-label={t("文档内查找")}
     >
       <Search className="size-3.5 shrink-0 text-muted-foreground" />

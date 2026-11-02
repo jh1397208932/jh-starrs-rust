@@ -5,7 +5,7 @@
  */
 
 import { invokeCommand } from "@/api/client";
-import type { ExportResult, ImportResult } from "@/types/exchange";
+import type { ExportResult } from "@/types/exchange";
 import type {
   MindmapContent,
   MindmapLoadResult,
@@ -72,34 +72,14 @@ export async function exportMindmap(params: {
   });
 }
 
-/**
- * 批量导入思维导图。
- * @param params 目标知识库、文件夹和绝对路径
- * @returns 每个文件/画布的成功与警告
- * @example await importMindmaps({ knowledgeBaseId, parentId: null, paths });
- */
-export async function importMindmaps(params: {
-  knowledgeBaseId: string;
-  parentId: string | null;
-  paths: string[];
-}): Promise<ImportResult> {
-  return invokeCommand<ImportResult>("import_mindmaps", {
-    input: {
-      knowledgeBaseId: params.knowledgeBaseId,
-      parentId: params.parentId,
-      paths: params.paths,
-    },
-  });
-}
-
 /** 创建尚未落库时的默认内容。 */
 export function createDefaultMindmapContent(): MindmapContent {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sheet: {
       id: `sheet-${crypto.randomUUID()}`,
       structure: "balanced",
-      theme: "auto",
+      theme: "vivid",
       root: {
         id: `topic-${crypto.randomUUID()}`,
         text: "中心主题",

@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { NODE_KIND_LABELS, NODE_KIND_ORDER, type NodeItem, type NodeKind } from "@/types/notebook";
 
-/** 可创建的节点类型；表格/流程图分别复用文档/画板编辑器。 */
+/** 可创建的节点类型：文件夹 / 文档 / 画板 / 思维导图。 */
 const CREATABLE_KINDS: NodeKind[] = NODE_KIND_ORDER;
 
 export interface NodeCreateDialogProps {
@@ -25,8 +25,7 @@ export interface NodeCreateDialogProps {
 }
 
 /**
- * 新建节点弹窗：文件夹/文档/画板/表格/流程图。
- * 表格复用文档编辑器，流程图复用画板编辑器。
+ * 新建节点弹窗：文件夹 / 文档 / 画板 / 思维导图。
  * 只有文件夹会作为入口出现；父级在打开前已由调用方校验。
  */
 export function NodeCreateDialog({
@@ -81,7 +80,11 @@ export function NodeCreateDialog({
       <DialogContent className="w-[440px] p-5" aria-describedby={undefined}>
         <DialogHeader title={parent ? t("在「{title}」中新建", { title: parent.title }) : t("新建")} />
 
-        <fieldset aria-label={t("类型")} className="mt-4 grid grid-cols-6 gap-1.5">
+        <fieldset
+          aria-label={t("类型")}
+          className="mt-4 grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${CREATABLE_KINDS.length}, minmax(0, 1fr))` }}
+        >
           {CREATABLE_KINDS.map((item) => (
             <button
               key={item}
@@ -129,7 +132,7 @@ export function NodeCreateDialog({
 
         {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={pending} onClick={() => onOpenChange(false)}>
             {t("取消")}
           </Button>

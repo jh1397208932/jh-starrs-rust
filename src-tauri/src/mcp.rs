@@ -37,8 +37,13 @@ pub fn dispatch(state: &AppState, method: &str, params: &Value) -> Result<Value,
                 .unwrap_or_else(|| json!({}));
             let execution =
                 ai_service::execute(state, name, &args).map_err(|error| error.to_string())?;
+            // 序列化失败必须作为错误上报（由 HTTP 层转成 JSON-RPC error 信封），
+            // 绝不能返回空字符串还标记成功，否则客户端会误以为拿到了空结果。
+            // 错误消息只描述失败本身，不嵌入原始工具输出。
+            let serialized = serde_json::to_string_pretty(&execution)
+                .map_err(|_| "工具结果序列化失败，请重试或缩小查询范围".to_string())?;
             Ok(json!({
-                "content": [{ "type": "text", "text": serde_json::to_string_pretty(&execution).unwrap_or_default() }],
+                "content": [{ "type": "text", "text": serialized }],
                 "isError": execution.status == "denied"
             }))
         }

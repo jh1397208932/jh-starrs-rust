@@ -97,3 +97,22 @@ export interface ImportResult {
   files: ImportFileResult[];
   createdFolderIds: string[];
 }
+
+/** 混合导入将跳过的文件 */
+export interface ImportScanSkippedFile {
+  path: string;
+  extension: string;
+}
+
+/** 混合导入预扫描：只读分类，不创建节点或对象 */
+export interface ImportScanResult {
+  root: string;
+  totalFiles: number;
+  documents: number;
+  boards: number;
+  mindmaps: number;
+  attachments: number;
+  /** 真实跳过数（可能大于 unsupported 数组长度） */
+  unsupportedCount: number;
+  unsupported: ImportScanSkippedFile[];
+}

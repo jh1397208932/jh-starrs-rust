@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/check-licenses.mjs",
+    "debug": "STARRIS_LOG_LEVEL=debug tauri dev",
+    "debug:build": "tauri build --debug --no-bundle",
+    "build": "tsc --noEmit && vite build && node scripts/check-licenses.mjs && node scripts/check-no-legacy.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",
@@ -16,10 +18,15 @@
     "test:backend": "cargo test --manifest-path src-tauri/Cargo.toml",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
+    "build:prod": "tauri build",
+    "build:prod:dmg": "tauri build --bundles dmg",
     "package": "tauri build",
     "package:dmg": "tauri build --bundles dmg",
     "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
-    "test:mcp": "node test/mcp/smoke.mjs"
+    "test:mcp": "node test/mcp/smoke.mjs",
+    "build:prod:win": "tauri build --target x86_64-pc-windows-msvc --bundles nsis",
+    "check:mindmap-colors": "node scripts/check-mindmap-palette.mjs",
+    "check:no-legacy": "node scripts/check-no-legacy.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

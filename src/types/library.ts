@@ -24,6 +24,10 @@ export interface LibraryItem {
   status: "published" | "unpublished";
   elements: unknown[];
   created: number;
+  /** 所属组件库，用于「我的组件」分组。 */
+  libraryId: string;
+  libraryName: string;
+  librarySourceType: LibrarySourceType;
 }
 
 export interface ImportLibraryParams {

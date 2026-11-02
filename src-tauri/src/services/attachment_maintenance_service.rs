@@ -37,8 +37,8 @@ pub const WATCHDOG_INTERVAL_SECS: u64 = 6 * 60 * 60;
 const ORPHAN_FILE_MIN_AGE_MS: i64 = 24 * 60 * 60 * 1000;
 /// quarantine 保留期：7 天。
 const QUARANTINE_RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1000;
-/// quarantine 目录名。
-const QUARANTINE_DIR: &str = "quarantine";
+/// quarantine 目录名；存储统计（workspace_storage_stats）复用同一定义。
+pub(crate) const QUARANTINE_DIR: &str = "quarantine";
 const META_LAST_RUN: &str = "attachment.last_maintenance_at";
 const META_ORPHAN_GRACE_DAYS: &str = "attachment.orphan_grace_days";
 const META_TRASH_RETENTION_DAYS: &str = "attachment.trash_retention_days";
@@ -146,11 +146,34 @@ pub fn load_policy(context: &AttachmentContext) -> AppResult<MaintenancePolicy> 
     })
 }
 
-/// 执行一轮维护；返回真实清理计数。
+/// 执行一轮完整维护（看门狗与工作区补跑使用）；含 pack 重写。
 pub fn run(
     context: &AttachmentContext,
     now: i64,
     policy: MaintenancePolicy,
+) -> AppResult<AttachmentMaintenanceResult> {
+    run_impl(context, now, policy, true)
+}
+
+/// 设置 → 存储「立即清理」使用的一轮维护：只回收无用数据。
+///
+/// 与 [`run`] 的差别是不做 pack 重写。重写会把仍在使用对象的数据搬到新文件并改
+/// `attachment_blob` 偏移，虽然内容不变，但界面上承诺了「正在使用的附件不会被改动」，
+/// 所以手动入口不做；空间回收交给后台看门狗。
+pub fn run_manual(
+    context: &AttachmentContext,
+    now: i64,
+    policy: MaintenancePolicy,
+) -> AppResult<AttachmentMaintenanceResult> {
+    run_impl(context, now, policy, false)
+}
+
+/// `compact_live_packs` 为 false 时跳过 pack 重写，其余判据完全一致。
+fn run_impl(
+    context: &AttachmentContext,
+    now: i64,
+    policy: MaintenancePolicy,
+    compact_live_packs: bool,
 ) -> AppResult<AttachmentMaintenanceResult> {
     let lock = context.lock()?;
     let mut connection = context.connection()?;
@@ -160,7 +183,8 @@ pub fn run(
     };
 
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    // 兜底认领历史上未标记的孤儿（例如旧版本删除节点留下的引用空洞）。
+    // 崩溃可能在两步之间退出，留下"有附件行、无引用行"的对象；统一认领为孤儿，
+    // 超过宽限期后回收，避免这类对象永久占用磁盘。
     result.orphaned +=
         crate::repositories::node_attachment_repository::mark_all_unreferenced(&transaction, now)?
             as i64;
@@ -242,13 +266,19 @@ pub fn run(
     drop(lock);
 
     // pack 重写会自行获取存储锁，必须在锁外执行。
-    for pack_id in packs_to_compact {
-        match attachment_service::compact_pack_if_needed(context, &pack_id, policy.storage_policy) {
-            Ok(()) => result.compacted_packs += 1,
-            Err(error) => logging::error(
-                "attachment",
-                &format!("维护压缩 pack 失败 pack={pack_id}: {error}"),
-            ),
+    if compact_live_packs {
+        for pack_id in packs_to_compact {
+            match attachment_service::compact_pack_if_needed(
+                context,
+                &pack_id,
+                policy.storage_policy,
+            ) {
+                Ok(()) => result.compacted_packs += 1,
+                Err(error) => logging::error(
+                    "attachment",
+                    &format!("维护压缩 pack 失败 pack={pack_id}: {error}"),
+                ),
+            }
         }
     }
 
@@ -270,22 +300,85 @@ pub fn run(
     Ok(result)
 }
 
-/// 启动一次维护线程；用于工作区新建/切换后补跑。
+/// 维护请求调度：记住“最新一次请求的工作区”，单消费者按最新请求补跑。
+///
+/// 以前用两个全局 bool 表示 pending/running：切换工作区时新上下文会被丢掉，
+/// 消费者只会在旧工作区上白跑一轮，新工作区要等下次切换或 6 小时看门狗才维护。
+#[cfg(not(test))]
+struct MaintenanceSchedule {
+    running: bool,
+    pending: Option<AttachmentContext>,
+}
+
+#[cfg(not(test))]
+impl MaintenanceSchedule {
+    /// 登记一次请求；返回 true 表示调用方需要启动消费者线程。
+    fn request(&mut self, context: AttachmentContext) -> bool {
+        self.pending = Some(context);
+        if self.running {
+            return false;
+        }
+        self.running = true;
+        true
+    }
+
+    /// 取下一轮请求；没有请求时把 running 置回 false 并返回 None。
+    fn take(&mut self) -> Option<AttachmentContext> {
+        if let Some(context) = self.pending.take() {
+            return Some(context);
+        }
+        self.running = false;
+        None
+    }
+}
+
+#[cfg(not(test))]
+static MAINTENANCE_SCHEDULE: std::sync::Mutex<MaintenanceSchedule> =
+    std::sync::Mutex::new(MaintenanceSchedule {
+        running: false,
+        pending: None,
+    });
+
+#[cfg(not(test))]
+fn maintenance_schedule() -> std::sync::MutexGuard<'static, MaintenanceSchedule> {
+    MAINTENANCE_SCHEDULE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// 请求一轮维护（工作区新建/切换后补跑）。
+///
+/// 固定一条消费者线程；运行期间的新请求只覆盖“待跑工作区”，结束后补跑最新那一个。
 #[cfg(not(test))]
 pub fn spawn_workspace_run(context: AttachmentContext) {
-    std::thread::Builder::new()
-        .name("attachment-maintenance-once".to_string())
-        .spawn(move || match load_policy(&context) {
-            Ok(policy) => {
-                if let Err(error) = run(&context, now_ms(), policy) {
-                    logging::error("attachment", &format!("工作区维护失败: {error}"));
+    let should_spawn = maintenance_schedule().request(context);
+    if !should_spawn {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("attachment-maintenance".to_string())
+        .spawn(move || {
+            loop {
+                let next = maintenance_schedule().take();
+                let Some(context) = next else {
+                    break;
+                };
+                match load_policy(&context) {
+                    Ok(policy) => {
+                        if let Err(error) = run(&context, now_ms(), policy) {
+                            logging::error("attachment", &format!("工作区维护失败: {error}"));
+                        }
+                    }
+                    Err(error) => {
+                        logging::error("attachment", &format!("读取维护策略失败: {error}"));
+                    }
                 }
             }
-            Err(error) => {
-                logging::error("attachment", &format!("读取维护策略失败: {error}"));
-            }
-        })
-        .ok();
+        });
+    if let Err(error) = spawned {
+        logging::error("attachment", &format!("启动维护线程失败: {error}"));
+        maintenance_schedule().running = false;
+    }
 }
 
 /// 应用级看门狗：启动立即跑一轮，此后每 6 小时一次。

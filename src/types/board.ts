@@ -1,8 +1,7 @@
 /**
  * 领域类型 · 画板场景与视口。
  *
- * 画板不建文件映射表：图片图元的 fileId 就是全局 object_id；
- * 非图片附件以文件卡片图元表示，customData.objectId 指向同一对象库。
+ * 画板不建文件映射表：图片图元的 fileId 就是全局 object_id。
  */
 
 /** 只持久化 Excalidraw 导出白名单中的画布设置。 */
@@ -65,3 +64,21 @@ export type BoardSaveStatus = "loading" | "saved" | "saving" | "error" | "confli
 
 /** 画板单文件导出格式。 */
 export type BoardExportFormat = "png" | "svg" | "excalidraw";
+
+/** 画板只需要的最小 Excalidraw API 子集，避免静态 import 整个包。 */
+export interface BoardCanvasApi {
+  getAppState(): {
+    scrollX: number;
+    scrollY: number;
+    zoom: { value: number };
+    width: number;
+    height: number;
+    viewBackgroundColor?: string;
+  };
+  getSceneElements(): readonly unknown[];
+  getFiles(): Record<string, { id: string; mimeType: string; dataURL: string; created: number }>;
+  updateScene(scene: { elements?: readonly unknown[]; appState?: Record<string, unknown> }): void;
+  updateLibrary?(opts: { libraryItems: readonly unknown[]; merge?: boolean }): Promise<unknown>;
+  /** 切换当前绘图工具；Excalidraw 公共 API。 */
+  setActiveTool?(tool: { type: string }): void;
+}

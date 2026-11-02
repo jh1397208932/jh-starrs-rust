@@ -62,8 +62,6 @@ pub struct DocLoadResult {
     pub word_count: i64,
     pub updated_at: i64,
     pub tree: Vec<BlockNodeDto>,
-    /// 加载时是否修复了历史脏数据（前端需要自动补一次保存）。
-    pub normalized: bool,
     /// 当前文档版本；保存时作为 baseVersion 回传。
     pub version: i64,
 }

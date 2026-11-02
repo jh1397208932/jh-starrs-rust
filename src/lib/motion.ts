@@ -20,8 +20,8 @@ export const SPRING_PANEL: Transition = { type: "spring", stiffness: 260, dampin
 /** 按压弹簧：按钮/快捷入口的 whileTap 回弹，比 CSS 的线性缩放更有“手感” */
 export const SPRING_PRESS: Transition = { type: "spring", stiffness: 520, damping: 30 };
 
-/** Toast 弹簧：比面板更硬更快，出得干脆 */
-export const SPRING_TOAST: Transition = { type: "spring", stiffness: 400, damping: 30 };
+/** Toast：固定时长淡入上移（原生通知般的克制，不做回弹） */
+export const TRANSITION_TOAST: Transition = { duration: 0.22, ease: EASE_STANDARD };
 
 /** 数字滚动弹簧（NumberTicker 用）：阻尼高、无过冲抖动 */
 export const SPRING_TICKER: Transition = { damping: 60, stiffness: 100 };

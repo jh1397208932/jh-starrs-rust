@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { printMainWindow } from "@/api/app";
-import { uploadAttachmentToTree } from "@/api/attachment";
+import { uploadAttachmentToTree, uploadFolderToTree } from "@/api/attachment";
 import { loadBoard } from "@/api/board";
 import { toErrorMessage } from "@/api/client";
+import { pickDirectory } from "@/api/directory";
 import { exportDocument, exportKnowledgeBase, importDocuments, writeExportFile } from "@/api/exchange";
-import {
-  pickAttachmentFiles,
-  pickExportDirectory,
-  pickExportPath,
-  pickMindmapImportFiles,
-} from "@/api/fileDialog";
-import { importMindmaps, loadMindmap } from "@/api/mindmap";
+import { pickAttachmentFiles, pickExportDirectory, pickExportPath } from "@/api/fileDialog";
+import { loadMindmap } from "@/api/mindmap";
 import {
   boardFilesToBinary,
   renderBoardPng,
@@ -25,7 +21,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import type { useToast } from "@/hooks/useToast";
 import { t } from "@/lib/i18n";
 import type { ExportFormat, ExportResult, ImportDocumentsParams, ImportResult } from "@/types/exchange";
-import type { NodeItem, NodeKind } from "@/types/notebook";
+import type { NodeItem, NodeKind, UploadMode } from "@/types/notebook";
 import type { AppDialogState, NodeCreateRequest, WorkspaceDialogKind } from "../types";
 import { findNode, getDescendantIds } from "../utils/tree";
 import { useTabSession } from "./useTabSession";
@@ -34,6 +30,9 @@ import { useWorkspaceShortcuts } from "./useWorkspaceShortcuts";
 import type { WorkspaceStore } from "./useWorkspaceStore";
 
 type ShowToast = ReturnType<typeof useToast>["showToast"];
+
+/** 右侧浮窗：信息 / 大纲互斥，none = 收起 */
+export type SidePanel = "none" | "info" | "outline";
 
 /** 全部导出后补渲染画板 PNG/SVG；单板失败只写警告，不阻断其他画板。 */
 async function renderBoardExports(result: ExportResult, token: string): Promise<void> {
@@ -189,15 +188,14 @@ export function useWorkspaceMainController({
   const tabSession = useTabSession();
   const { activeTab, openNode } = tabSession;
   const { config: shortcutConfig } = useShortcutConfig();
-  // 稳定引用：refresh 之后从 ref 读最新节点，不必把 store.nodes 塞进依赖。
-  const nodesRef = store.nodesRef;
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [infoOpen, setInfoOpen] = useState(false);
-  // 每次打开/切换文档都从收起状态开始，避免上一页的信息浮窗跟到新文档。
+  // 右侧浮窗状态机：信息 / 大纲互斥（打开其一自动关闭另一个）；none = 收起。
+  const [sidePanel, setSidePanel] = useState<SidePanel>("none");
+  // 每次打开/切换文档都从收起状态开始，避免上一页的浮窗跟到新文档。
   const activeDocumentId = activeTab?.nodeId ?? null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeDocumentId 仅作为“切换文档”触发器
   useEffect(() => {
-    setInfoOpen(false);
+    setSidePanel("none");
   }, [activeDocumentId]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -206,10 +204,22 @@ export function useWorkspaceMainController({
   const [nodeRename, setNodeRename] = useState<NodeItem | null>(null);
   const [nodeDelete, setNodeDelete] = useState<NodeItem | null>(null);
 
-  const activeNode = activeTab?.nodeId ? findNode(store.nodes, activeTab.nodeId) : null;
+  // 主界面每次状态变化（打开菜单/弹窗）都会走到这里；用索引把 activeNode 从 O(n) 降到 O(1)。
+  const nodeIndex = useMemo(() => new Map(store.nodes.map((node) => [node.id, node])), [store.nodes]);
+  const activeNode = activeTab?.nodeId ? (nodeIndex.get(activeTab.nodeId) ?? null) : null;
   const activeKbName = activeTab?.kind === "starred" ? null : (store.currentKb?.name ?? null);
-  const infoVisible = infoOpen && activeTab?.kind === "doc";
-  const nodeDeleteCount = nodeDelete ? getDescendantIds(store.nodes, nodeDelete.id).size : 0;
+  const isDocTab = activeTab?.kind === "doc";
+  const infoVisible = isDocTab && sidePanel === "info";
+  const outlineVisible = isDocTab && sidePanel === "outline";
+  const toggleInfo = useCallback(() => setSidePanel((current) => (current === "info" ? "none" : "info")), []);
+  const toggleOutline = useCallback(
+    () => setSidePanel((current) => (current === "outline" ? "none" : "outline")),
+    [],
+  );
+  const nodeDeleteCount = useMemo(
+    () => (nodeDelete ? getDescendantIds(store.nodes, nodeDelete.id).size : 0),
+    [nodeDelete, store.nodes],
+  );
   const workspaceDialogKind = toWorkspaceDialogKind(dialog);
   const workspaceId = store.currentWorkspace?.id;
   const kbId = store.currentKb?.id;
@@ -259,44 +269,83 @@ export function useWorkspaceMainController({
   const createDoc = useCallback(() => requestNodeCreate(null), [requestNodeCreate]);
   const createNote = useCallback(() => requestNodeCreate(null, "doc", t("小记")), [requestNodeCreate]);
 
-  /** 从文件树直接上传附件：逐个创建 type=6 节点，部分失败不影响其余文件。 */
+  /**
+   * 从文件树上传附件：同一个按钮既能选文件也能选文件夹。
+   *
+   * 文件夹按目录层级建节点并递归上传其中的文件；同名文件夹复用、同名文件自动改名。
+   * 部分失败不影响其余目标，结束后给出汇总。
+   */
   const uploadAttachmentsToTree = useCallback(
-    async (parent: NodeItem | null) => {
+    async (parent: NodeItem | null, mode: UploadMode = "files") => {
       const kb = store.currentKb;
       if (!kb) {
         showToast(t("请先新建知识库"), "destructive");
         return;
       }
-      let paths: string[];
+      let targets: { path: string; isDir: boolean }[];
       try {
-        paths = await pickAttachmentFiles();
+        if (mode === "folder") {
+          const folder = await pickDirectory({ title: t("选择要上传的文件夹") });
+          if (!folder) return;
+          targets = [{ path: folder, isDir: true }];
+        } else {
+          const paths = await pickAttachmentFiles();
+          targets = paths.map((path) => ({ path, isDir: false }));
+        }
       } catch (error) {
         showToast(toErrorMessage(error), "destructive");
         return;
       }
-      if (paths.length === 0) return;
+      if (targets.length === 0) return;
+
+      if (targets.some((target) => target.isDir)) {
+        showToast(t("正在上传文件夹，请稍候…"), "primary");
+      }
+      let files = 0;
+      let folders = 0;
       const created: NodeItem[] = [];
       const failures: string[] = [];
-      for (const sourcePath of paths) {
+      for (const target of targets) {
+        if (target.isDir) {
+          try {
+            const result = await uploadFolderToTree({
+              knowledgeBaseId: kb.id,
+              parentId: parent?.id ?? null,
+              folderPath: target.path,
+            });
+            files += result.files;
+            folders += result.folders;
+            for (const failure of result.failures) failures.push(failure.message);
+          } catch (error) {
+            failures.push(toErrorMessage(error));
+          }
+          continue;
+        }
         try {
           created.push(
             await uploadAttachmentToTree({
-              sourcePath,
+              sourcePath: target.path,
               knowledgeBaseId: kb.id,
               parentId: parent?.id ?? null,
             }),
           );
+          files += 1;
         } catch (error) {
           failures.push(toErrorMessage(error));
         }
       }
-      if (created.length > 0) {
-        await store.refresh();
-        tabSession.openNode(created[0]);
+      if (files > 0 || folders > 0) {
+        // 只新增了节点：重拉平表即可，不必整包刷新工作区/知识库。
+        await store.reloadNodes();
+        if (created[0]) tabSession.openNode(created[0]);
         showToast(
           failures.length > 0
-            ? t("已上传 {count} 个附件，{failed} 个失败", { count: created.length, failed: failures.length })
-            : t("已上传 {count} 个附件", { count: created.length }),
+            ? t("已上传 {files} 个文件、{folders} 个文件夹，{failed} 个失败", {
+                files,
+                folders,
+                failed: failures.length,
+              })
+            : t("已上传 {files} 个文件、{folders} 个文件夹", { files, folders }),
           failures.length > 0 ? "destructive" : "primary",
         );
       } else if (failures.length > 0) {
@@ -305,7 +354,7 @@ export function useWorkspaceMainController({
     },
     // 依赖收窄到稳定字段：裸 store / tabSession 对象每次渲染都是新引用，
     // 会让 onUploadAttachment 失稳并击穿 Sidebar 的 memo（2026-10-27 性能任务 B2）。
-    [showToast, store.currentKb, store.refresh, tabSession.openNode],
+    [showToast, store.currentKb, store.reloadNodes, tabSession.openNode],
   );
 
   const handleSwitchWorkspace = useCallback(
@@ -357,7 +406,7 @@ export function useWorkspaceMainController({
   /** 导出当前文档；返回 false 表示用户取消保存路径。 */
   const exportActiveDocument = useCallback(
     async (format: ExportFormat): Promise<boolean> => {
-      const nodeId = activeTab?.kind === "doc" || activeTab?.kind === "table" ? activeTab.nodeId : null;
+      const nodeId = activeTab?.kind === "doc" ? activeTab.nodeId : null;
       if (!activeTab || !nodeId) {
         throw new Error(t("请先打开文档"));
       }
@@ -427,7 +476,7 @@ export function useWorkspaceMainController({
           throw new Error(t("文档未保存，请重试"));
         }
         const result = await importDocuments(params);
-        await store.refresh();
+        await store.reloadNodes();
         showToast(
           result.failed > 0
             ? t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })
@@ -439,7 +488,7 @@ export function useWorkspaceMainController({
         throw new Error(toErrorMessage(error));
       }
     },
-    [showToast, store.refresh],
+    [showToast, store.reloadNodes],
   );
 
   const closeActiveTab = useCallback(() => {
@@ -517,37 +566,6 @@ export function useWorkspaceMainController({
     setActiveTabId: setActiveTabIdGuarded,
   };
 
-  /** 选择并导入思维导图，成功后刷新树并打开第一个节点。 */
-  const importMindmapFiles = useCallback(async () => {
-    const kb = store.currentKb;
-    if (!kb) {
-      showError(t("请先新建知识库"));
-      return;
-    }
-    if (!(await flushActivePersistence())) {
-      showError(t("文档未保存，请重试"));
-      return;
-    }
-    const paths = await pickMindmapImportFiles();
-    if (paths.length === 0) return;
-    try {
-      const result = await importMindmaps({ knowledgeBaseId: kb.id, parentId: null, paths });
-      await store.refresh();
-      const first = result.files.find((file) => file.ok && file.nodeId)?.nodeId;
-      // refresh 后必须读 ref 里的新节点；闭包里的 store.nodes 还是刷新前的快照。
-      const node = first ? findNode(nodesRef.current, first) : null;
-      if (node) openNodeGuarded(node);
-      showToast(
-        result.failed > 0
-          ? t("已导入 {count} 项，失败 {failed} 项", { count: result.imported, failed: result.failed })
-          : t("已导入 {count} 项", { count: result.imported }),
-        result.failed > 0 ? "destructive" : "primary",
-      );
-    } catch (error) {
-      showError(toErrorMessage(error));
-    }
-  }, [openNodeGuarded, nodesRef, showError, showToast, store.currentKb, store.refresh]);
-
   /** 新建节点弹窗提交：成功后非文件夹自动打开标签 */
   const submitNodeCreate = useCallback(
     async (kind: NodeKind, title: string) => {
@@ -619,8 +637,9 @@ export function useWorkspaceMainController({
     activeNode,
     activeKbName,
     infoVisible,
-    infoOpen,
-    setInfoOpen,
+    outlineVisible,
+    toggleInfo,
+    toggleOutline,
     sidebarOpen,
     setSidebarOpen,
     moreMenuOpen,
@@ -656,7 +675,6 @@ export function useWorkspaceMainController({
     printActiveDocument,
     exportCurrentKnowledgeBase,
     importIntoKnowledgeBase,
-    importMindmapFiles,
     submitNodeCreate,
     submitNodeRename,
     submitNodeDelete,

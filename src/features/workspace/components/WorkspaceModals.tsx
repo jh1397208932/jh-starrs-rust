@@ -1,3 +1,4 @@
+import { AiReviewLayer } from "@/features/ai/components/AiReviewLayer";
 import { ShareExportDialog } from "@/features/editor/components/ShareExportDialog";
 import { SettingsDialog } from "@/features/settings/components/SettingsDialog";
 import { useI18n } from "@/lib/i18n";
@@ -54,6 +55,8 @@ export function WorkspaceModals({ controller }: WorkspaceModalsProps) {
         onOpenChange={(open) => onDialogChange(open ? { type: "settings" } : null)}
         workspacePath={currentWorkspace.path}
       />
+      {/* MCP 写入的人工确认：待审项一到就在主界面弹对比窗 */}
+      <AiReviewLayer showToast={showToast} workspaceId={currentWorkspace.id} />
       <ShareExportDialog
         open={dialog?.type === "share"}
         onOpenChange={(open) => onDialogChange(open ? { type: "share" } : null)}

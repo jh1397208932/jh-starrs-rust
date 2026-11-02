@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { MindmapTopic } from "@/types/mindmap";
+import { OUTLINE_MAX_INDENT_DEPTH, outlineIndent } from "../utils/outlineIndent";
 
 export interface MindmapOutlineProps {
   root: MindmapTopic;
@@ -90,7 +91,7 @@ export function MindmapOutline({
               }
               style={
                 {
-                  paddingLeft: 6 + depth * 14,
+                  paddingLeft: outlineIndent(depth),
                   "--outline-branch": `var(--mindmap-branch-${branchIndex % 6})`,
                 } as CSSProperties
               }
@@ -133,6 +134,14 @@ export function MindmapOutline({
               ) : (
                 <span className="mindmap-outline__branch is-root" aria-hidden="true" />
               )}
+              {depth > OUTLINE_MAX_INDENT_DEPTH ? (
+                <span
+                  className="mindmap-outline__depth-more"
+                  title={t("第 {level} 层", { level: depth + 1 })}
+                >
+                  +{depth - OUTLINE_MAX_INDENT_DEPTH}
+                </span>
+              ) : null}
               {editingId === topic.id ? (
                 <input
                   ref={inputRef}
@@ -167,7 +176,7 @@ export function MindmapOutline({
                 <button
                   type="button"
                   className="mindmap-toolbar-button"
-                  aria-label={t("新建子主题")}
+                  aria-label={t("在该主题下新建子主题")}
                   onClick={(event) => {
                     event.stopPropagation();
                     // 折叠状态下新建的子主题默认不可见；先展开父行再新增。
@@ -186,7 +195,7 @@ export function MindmapOutline({
                   <button
                     type="button"
                     className="mindmap-toolbar-button"
-                    aria-label={t("删除主题")}
+                    aria-label={t("删除该主题")}
                     onClick={(event) => {
                       event.stopPropagation();
                       onDelete(topic.id);

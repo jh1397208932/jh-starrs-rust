@@ -66,8 +66,8 @@ export function useMindmapViewState({ nodeId, onSaved, onError }: MindmapViewSta
     // 只依赖稳定的 reset 回调与 initial 状态：history 对象每次渲染都是新的，
     // 把它放进依赖曾导致 reset → setState → 重渲染 → 再 reset 的无限循环白屏。
     const loaded = persistence.initial.content;
-    const theme = loaded.sheet.theme === "auto" ? "vivid" : loaded.sheet.theme;
-    resetContent({ ...loaded, schemaVersion: 2, sheet: { ...loaded.sheet, theme } });
+    // 不做历史数据适配：库里是什么就按什么渲染；旧格式（含已移除的 auto 主题）直接判为无效内容。
+    resetContent(loaded);
     setSelectedId(loaded.sheet.root.id);
     setSelectionSet([]);
     // 打开导图只选中根主题（键盘可直接操作），详情浮层等用户点选后再出现。

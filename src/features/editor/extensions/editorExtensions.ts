@@ -30,12 +30,13 @@ import { AttachmentBlock } from "./attachmentBlock";
 import { AttachmentImage } from "./attachmentImage";
 import { BlockDragHighlight } from "./blockDragHighlight";
 import { ClearMarksOnEnter } from "./clearMarksOnEnter";
+import { BoardEmbed, MindmapEmbed } from "./embedBlock";
 import { FindHighlight } from "./findHighlight";
 import { UserKeymap } from "./userKeymap";
 
 const lowlight = createLowlight(common);
 
-/** 空 name 的历史表情节点不得渲染成 `:null:`；渲染层做最后一道守卫。 */
+/** 空 name 的 emoji 节点渲染为空，避免出现 `:null:`；保存时规范化会删除这类节点。 */
 const SafeEmoji = Emoji.extend({
   renderText({ node }) {
     const name = node.attrs.name;
@@ -113,6 +114,8 @@ export function createEditorExtensions({
     }),
     AttachmentImage.configure({ onError: onImageError }),
     AttachmentBlock.configure({ onError: onImageError }),
+    BoardEmbed,
+    MindmapEmbed,
     CodeBlockLowlight.configure({ lowlight }),
     SafeEmoji.configure({ emojis: EDITOR_EMOJIS }),
     Details.configure({ persist: true }),

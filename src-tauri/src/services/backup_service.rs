@@ -1,7 +1,9 @@
 //! 工作区备份与恢复：数据库 + storage/objects 的完整副本。
 //!
-//! 备份是显式低频动作：持有存储锁与工作区会话锁，阻塞上传/保存直到复制完成，
-//! 换取一个可恢复的一致性快照。恢复只允许写入空目录，完成后通过工作区统一切换入口打开。
+//! 备份是显式低频动作：数据库快照阶段持有存储锁与工作区会话锁，快照落盘后立即释放
+//! 会话锁，只保留存储锁完成整目录拷贝——保存不会被分钟级的附件复制阻塞。
+//! 一致性由存储锁保证：附件对象的增删都要先拿它，拷贝期间 objects/ 不会变化。
+//! 恢复只允许写入空目录，完成后通过工作区统一切换入口打开。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,11 +49,14 @@ pub fn backup(state: &AppState, input: BackupWorkspaceInput) -> AppResult<Backup
     fs::create_dir_all(&backup_db_dir)?;
     fs::create_dir_all(&backup_storage_dir)?;
 
-    // WAL checkpoint 后复制主库；期间持有会话锁，文档保存无法插入。
+    // WAL checkpoint 后复制主库；数据库快照在这一刻确定。
     let db_connection = context.connection()?;
     db_connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
     let db_path = db::paths::workspace_db_path(&workspace_root);
     fs::copy(&db_path, backup_db_dir.join("workspace.sqlite3"))?;
+    // 快照已落盘：立刻放掉工作区会话锁，否则整目录拷贝期间所有文档保存都在排队。
+    // 存储锁仍在手上，附件对象不会在拷贝期间被增删，快照与对象的对应关系不会被破坏。
+    drop(guard);
 
     let mut files = 1_i64;
     let mut bytes = fs::metadata(backup_db_dir.join("workspace.sqlite3"))?.len() as i64;

@@ -1,7 +1,7 @@
 //! 思维导图内容校验与派生数据。
 //!
 //! 这里是持久化前的最终权威边界：前端可即时反馈，但数据库只接受通过本模块校验的内容。
-//! v2 同时接受 schemaVersion 1（旧内容）与 2（含样式/关系线/外框/概要）。
+//! 只接受当前格式 schemaVersion 2（含样式/关系线/外框/概要）；旧格式直接判为无效内容。
 
 use std::collections::BTreeSet;
 
@@ -72,7 +72,7 @@ pub const ALLOWED_MARKERS: &[&str] = &[
     "progress-4",
     "progress-5",
     "progress-6",
-    // 旗标与星标（裸 flag 兼容 v1 数据）
+    // 旗标与星标
     "flag",
     "flag-red",
     "flag-orange",
@@ -121,7 +121,7 @@ pub const ALLOWED_MARKERS: &[&str] = &[
 /// @param content 前端提交的完整场景
 /// @returns 主题总数；结构、ID、文本、链接或规模非法时返回校验错误
 pub fn validate_content(content: &MindmapContent) -> AppResult<usize> {
-    if content.schema_version != 1 && content.schema_version != 2 {
+    if content.schema_version != 2 {
         return Err(AppError::validation("思维导图格式版本不受支持"));
     }
     if !content.sheet.id.starts_with("sheet-") || content.sheet.id.len() < 10 {
@@ -451,11 +451,11 @@ mod tests {
 
     fn content(root: MindmapTopic) -> MindmapContent {
         MindmapContent {
-            schema_version: 1,
+            schema_version: 2,
             sheet: MindmapSheet {
                 id: "sheet-test".to_string(),
                 structure: MindmapStructure::Balanced,
-                theme: MindmapTheme::Auto,
+                theme: MindmapTheme::Vivid,
                 branch_coloring: Default::default(),
                 edge_style: Default::default(),
                 background: Default::default(),
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn v1_content_without_new_fields_still_valid() {
+    fn legacy_v1_content_is_rejected() {
         let raw = r#"{
             "schemaVersion": 1,
             "sheet": {
@@ -622,8 +622,11 @@ mod tests {
                 "root": { "id": "topic-legacy001", "text": "旧内容", "children": [] }
             }
         }"#;
-        let parsed: MindmapContent = serde_json::from_str(raw).expect("v1 JSON 可解析");
-        validate_content(&parsed).expect("v1 内容可校验");
-        assert_eq!(parsed.sheet.branch_coloring, Default::default());
+        // 旧格式不再接受：旧主题枚举解析失败，或版本校验拒绝。
+        let rejected = match serde_json::from_str::<MindmapContent>(raw) {
+            Ok(content) => validate_content(&content).is_err(),
+            Err(_) => true,
+        };
+        assert!(rejected, "v1 内容必须被拒绝（不保留历史数据）");
     }
 }

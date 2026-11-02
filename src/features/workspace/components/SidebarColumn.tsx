@@ -8,10 +8,15 @@ export interface SidebarColumnProps {
   children: ReactNode;
 }
 
-/** 左列容器：232px 通高侧栏的折叠动画外壳（布局宽度瞬时切换 + 内容位滑出） */
+/** 左列容器：232px 通高侧栏的折叠外壳（宽度 220ms 过渡 + 内容位滑出，避免主区瞬跳） */
 export function SidebarColumn({ open, children }: SidebarColumnProps) {
   return (
-    <div className={cn("sidebar-column relative h-full shrink-0", open ? "w-[var(--sidebar-w)]" : "w-0")}>
+    <div
+      className={cn(
+        "sidebar-column relative h-full shrink-0 overflow-hidden transition-[width] duration-[var(--dur-2)] ease-[var(--ease)]",
+        open ? "w-[var(--sidebar-w)]" : "w-0",
+      )}
+    >
       <div
         className="absolute inset-y-0 left-0 w-[var(--sidebar-w)] transition-transform ease-[var(--ease)]"
         style={{

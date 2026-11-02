@@ -200,7 +200,7 @@ fn parse_modern(
             sheet: crate::models::mindmap::MindmapSheet {
                 id: stable_sheet_id(json_string(object, "id").as_deref()),
                 structure,
-                theme: MindmapTheme::Auto,
+                theme: MindmapTheme::Vivid,
                 branch_coloring: Default::default(),
                 edge_style: Default::default(),
                 background: Default::default(),
@@ -474,7 +474,7 @@ fn parse_legacy(
                 sheet: crate::models::mindmap::MindmapSheet {
                     id: stable_sheet_id(None),
                     structure: MindmapStructure::Balanced,
-                    theme: MindmapTheme::Auto,
+                    theme: MindmapTheme::Vivid,
                     branch_coloring: Default::default(),
                     edge_style: Default::default(),
                     background: Default::default(),

@@ -82,6 +82,35 @@ export default {
     );
     await ctx.screenshot("node-trash-purged");
     await ctx.key("escape");
-    ctx.log("删除进入回收站、恢复回原位置、永久删除后数据库行移除。");
+
+    // 清空回收站：按钮在页脚（曾与右上角关闭按钮重叠），需二次确认后整库清除。
+    const bulk = ["E2E Trash Bulk A", "E2E Trash Bulk B"];
+    for (const title of bulk) {
+      await ctx.press("新建内容");
+      await ctx.expectText("创建");
+      await ctx.fill("名称", title);
+      await ctx.press("创建");
+      await ctx.expectText(title, { timeout: 10_000 });
+      await ctx.menu(`${title} 操作`, "删除");
+      await ctx.expectText(`删除「${title}」？`);
+      await ctx.press("删除");
+      ctx.metrics.dialogs += 2;
+    }
+    await ctx.menu("更多 ⌘J", "回收站");
+    await ctx.expectText(bulk[0], { timeout: 8000 });
+    await ctx.screenshot("node-trash-footer");
+    await ctx.press("清空回收站");
+    await ctx.expectText("确认清空？", { timeout: 5000 });
+    await ctx.press("确认清空？");
+    await ctx.expectText("回收站为空", { timeout: 10_000 });
+    await ctx.waitForDb(
+      "SELECT COUNT(*) AS count FROM node WHERE title IN (?, ?)",
+      bulk,
+      (rows) => rows[0].count === 0,
+      { timeout: 10_000 },
+    );
+    ctx.metrics.dialogs += 1;
+    await ctx.key("escape");
+    ctx.log("删除进入回收站、恢复回原位置、永久删除与清空回收站均落库。");
   },
 };

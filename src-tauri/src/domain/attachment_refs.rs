@@ -1,8 +1,7 @@
 //! 从文档/画板内容中提取附件对象引用。
 //!
 //! 引用关系只认最终保存的 JSON：文档看 attachment 节点的 `attrs.attachmentId`，
-//! 画板看 image.fileId 与文件卡片 `customData.objectId`。保存、迁移回填和导出都复用
-//! 这里的判据，避免三处各写一套。
+//! 画板看 image.fileId。保存、迁移回填和导出都复用这里的判据，避免三处各写一套。
 
 use std::collections::BTreeSet;
 
@@ -62,16 +61,6 @@ pub fn collect_board_attachment_ids(elements: &Value) -> BTreeSet<String> {
         {
             ids.insert(file_id.to_string());
         }
-        if let Some(custom) = element.get("customData").and_then(Value::as_object)
-            && custom
-                .get("boardFileCard")
-                .and_then(Value::as_bool)
-                .is_some_and(|value| value)
-            && let Some(object_id) = custom.get("objectId").and_then(Value::as_str)
-            && !object_id.is_empty()
-        {
-            ids.insert(object_id.to_string());
-        }
     }
     ids
 }
@@ -105,17 +94,15 @@ mod tests {
     }
 
     #[test]
-    fn collects_board_image_and_file_card_ids() {
+    fn collects_board_image_ids_only() {
         let elements = json!([
             {"type": "image", "fileId": "img-1"},
             {"type": "image", "fileId": ""},
-            {"type": "rectangle", "customData": {"boardFileCard": true, "objectId": "file-1"}},
-            {"type": "rectangle", "customData": {"boardFileCard": false, "objectId": "ignored"}},
-            {"type": "rectangle", "customData": {"objectId": "ignored-2"}}
+            {"type": "rectangle", "customData": {"objectId": "ignored"}},
+            {"type": "text", "customData": {"objectId": "ignored-2"}}
         ]);
         let ids = collect_board_attachment_ids(&elements);
-        assert_eq!(ids.len(), 2);
+        assert_eq!(ids.len(), 1);
         assert!(ids.contains("img-1"));
-        assert!(ids.contains("file-1"));
     }
 }

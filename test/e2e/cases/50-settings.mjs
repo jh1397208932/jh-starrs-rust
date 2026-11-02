@@ -1,55 +1,70 @@
-import assert from "node:assert/strict";
-
-/** 设置：主题切换、存储附件上传、把附件插入画板。 */
+/**
+ * 设置：通用语言默认值、外观主题、存储只统计与清理、快捷键不再报跨作用域重复、关于鸣谢与开源清单弹窗。
+ * 附件上传已移出设置（改由左侧树「新建」承担），这里顺带验证那条新路径。
+ */
 export default {
   id: "50-settings",
-  title: "设置 · 明暗主题 · 附件上传 · 附件插入画板",
-  area: "设置 / 附件",
+  title: "设置 · 语言默认 · 明暗主题 · 存储统计与清理 · 关于鸣谢与开源清单",
+  area: "设置 / 存储 / 关于",
   steps: [
     {
-      action: "更多 → 设置 → 外观",
-      ui: "侧栏底部更多菜单 → 设置弹窗左侧「外观」",
+      action: "更多 → 设置 → 通用：界面语言显示当前值",
+      ui: "设置弹窗「通用」→ 界面语言下拉",
       clicks: 3,
       dialogs: 1,
-      note: "设置弹窗默认通用页，外观为第二项。",
+      note: "回归用例：动效改造后 Radix Content 不再常驻，触发器曾显示为空白。",
     },
     {
-      action: "切换深色 → 浅色",
+      action: "外观：切换深色 → 浅色",
       ui: "外观页明暗模式卡片",
       clicks: 2,
       dialogs: 0,
       note: "验证 global settings 写入并恢复浅色。",
     },
     {
-      action: "设置 → 存储 → 上传 pixel.png",
-      ui: "设置弹窗「存储」页附件管理区",
+      action: "存储：只看分类统计，无上传与附件列表",
+      ui: "设置「存储」→ 占用统计 + 立即清理 + 保留时间",
       clicks: 3,
-      dialogs: 1,
-      note: "系统文件面板选择测试 fixture。",
-    },
-    {
-      action: "查看快捷键/关于页并关闭设置",
-      ui: "设置弹窗左侧标签栏；右上关闭",
-      clicks: 4,
       dialogs: 0,
+      note: "上传/搜索/附件列表已下线；清理需二次确认且只碰无效数据。",
     },
     {
-      action: "画板页头「插入附件」选择 pixel.png",
-      ui: "E2E Board 页头 → 插入附件选择器",
-      clicks: 3,
+      action: "快捷键：不再提示跨作用域重复",
+      ui: "设置「快捷键」应用分组",
+      clicks: 1,
+      dialogs: 0,
+      note: "同一时刻光标只在一个标签页，tab 内键位不算冲突。",
+    },
+    {
+      action: "关于：查看开源项目清单",
+      ui: "设置「关于」→ 鸣谢 → 查看开源项目清单 → 弹窗",
+      clicks: 2,
       dialogs: 1,
-      note: "验证附件 object_id 插入画板并触发保存。",
+      note: "弹窗只列直接引用的项目，条目可跳转，末尾注明上游项目。",
+    },
+    {
+      action: "树「新建」弹窗内上传附件",
+      ui: "文件树 → 新建内容 → 上传附件 → 系统文件面板",
+      clicks: 2,
+      dialogs: 1,
+      note: "附件是树里的一等节点，管理入口跟着树走。",
     },
   ],
   complexity: {
-    clickTotal: 15,
-    dialogs: 3,
+    clickTotal: 13,
+    dialogs: 2,
     typingFields: 0,
     assessment:
-      "主题切换在设置→外观两步内完成，反馈即时。附件上传与插入被拆到“设置→存储”和“画板页头”两个入口；前者是管理动作、后者是使用动作，职责清楚，但上传后回画板插入需要先关闭设置、再开选择器。若高频插图，画板页头的插入选择器内提供“上传”会更顺手。",
+      "设置里的存储只剩统计与一次带确认的清理，附件的上传/预览/删除回到文件树同一处；关于页用一句鸣谢 + 开源清单弹窗，默认不打扰。",
   },
   async run(ctx) {
     await ctx.menu("更多 ⌘J", "设置");
+
+    await ctx.press("通用", { role: "AXRadioButton" });
+    await ctx.expectText("界面语言", { timeout: 8000 });
+    await ctx.expectText("简体中文", { timeout: 8000 });
+    await ctx.screenshot("settings-general-language");
+
     await ctx.press("外观", { role: "AXRadioButton" });
     await ctx.expectText("主题", { timeout: 5000 });
     await ctx.press("深色", { role: "AXCheckBox" });
@@ -67,49 +82,59 @@ export default {
     );
 
     await ctx.press("存储", { role: "AXRadioButton" });
-    await ctx.expectText("上传", { timeout: 8000 });
-    await ctx.screenshot("settings-storage");
-    await ctx.press("上传");
+    await ctx.expectText("占用统计", { timeout: 10_000 });
+    await ctx.expectText("工作区总大小", { timeout: 8000 });
+    await ctx.expectText("附件总大小", { timeout: 8000 });
+    await ctx.expectText("保留时间", { timeout: 8000 });
+    await ctx.expectNoText("搜索附件");
+    await ctx.expectNoText("附件列表");
+    await ctx.screenshot("settings-storage-stats");
+
+    await ctx.press("开始清理");
+    await ctx.expectText("确认清理？", { timeout: 5000 });
+    await ctx.press("确认清理？");
+    // 结果提示只留 3 秒，且「清理」二字在页面标题「立即清理」上常驻，
+    // 所以按两条真实文案并行轮询，谁先出现算谁；两条都没出现才是失败。
+    const notice = await ctx.waitForAnyText(["已清理", "没有需要清理的数据"], {
+      timeout: 20_000,
+    });
+    ctx.log(`清理结果提示命中：${notice}`);
+    await ctx.screenshot("settings-storage-cleaned");
+
+    await ctx.press("快捷键", { role: "AXRadioButton" });
+    await ctx.expectText("更多菜单", { timeout: 5000 });
+    await ctx.expectNoText("当前作用域优先");
+
+    await ctx.press("关于", { role: "AXRadioButton" });
+    await ctx.expectText("本地工作区版", { timeout: 5000 });
+    await ctx.expectText("感谢每一位作者与贡献者", { timeout: 5000 });
+    await ctx.press("查看开源项目清单");
+    await ctx.expectText("星屿直接使用的开源项目", { timeout: 5000 });
+    await ctx.expectText("rusqlite", { timeout: 5000 });
+    await ctx.expectText("Plus Jakarta Sans", { timeout: 5000 });
+    await ctx.expectText("以及这些项目的上游项目", { timeout: 5000 });
+    await ctx.screenshot("settings-about-credits");
+    await ctx.key("escape");
+    await ctx.expectText("查看开源项目清单", { timeout: 5000 });
+    await ctx.press("完成");
+    ctx.metrics.dialogs += 1;
+    await ctx.expectText("更多 ⌘J", { timeout: 8000 });
+
+    await ctx.press("新建内容");
+    await ctx.expectText("创建", { timeout: 8000 });
+    await ctx.screenshot("node-create-with-upload");
+    await ctx.press("取消");
+    ctx.metrics.dialogs += 1;
+    // 上传入口在文件树工具栏：点开先选「附件 / 文件夹」，这里走选附件。
+    await ctx.menu("上传附件", "选择附件");
     await ctx.nativePath(ctx.fixture("pixel.png"), { button: "Open" });
     ctx.metrics.dialogs += 1;
     await ctx.waitForDb(
-      "SELECT name, mime, status FROM attachment WHERE name = 'pixel.png' AND status = 'active'",
+      "SELECT name, status FROM attachment WHERE name = 'pixel.png' AND status = 'active'",
       [],
       (rows) => rows.length >= 1,
       { timeout: 20_000 },
     );
-
-    await ctx.press("快捷键", { role: "AXRadioButton" });
-    await ctx.expectText("更多菜单", { timeout: 5000 });
-    await ctx.press("关于", { role: "AXRadioButton" });
-    await ctx.expectText("本地工作区版", { timeout: 5000 });
-    await ctx.press("关闭");
-    ctx.metrics.dialogs += 1;
-
-    const boardTitle = ctx.shared.boardTitle;
-    if (!boardTitle) {
-      // 独立运行（未先跑 40-board）时没有画板可插，跳过插入段以验证设置页本身。
-      ctx.log("跳过附件插入画板：本运行未创建画板");
-      return;
-    }
-    await ctx.press(boardTitle);
-    await ctx.expectText("插入附件", { timeout: 8000 });
-    await ctx.press("插入附件");
-    await ctx.expectText("pixel.png", { timeout: 8000 });
-    await ctx.press("pixel.png");
-    ctx.metrics.dialogs += 1;
-
-    const node = ctx.db("SELECT id FROM node WHERE title = ?", [boardTitle])[0];
-    const previous = ctx.shared.boardElementCount ?? 0;
-    const scenes = await ctx.waitForDb(
-      "SELECT element_count FROM board_scene WHERE node_id = ?",
-      [node.id],
-      (rows) => rows.length === 1 && rows[0].element_count > previous,
-      { timeout: 20_000 },
-    );
-    assert.ok(scenes[0].element_count > previous, "附件插入后画板元素未增加");
     ctx.shared.attachmentName = "pixel.png";
-    await ctx.screenshot("settings-attachment-inserted");
-    ctx.log(`画板元素 ${previous} → ${scenes[0].element_count}`);
   },
 };

@@ -55,7 +55,15 @@ export function measureTopic(topic: MindmapTopic, isRoot: boolean): { width: num
     height += META_CONTENT_GAP + rows * META_CHIP_HEIGHT + (rows - 1) * META_GAP + META_GAP;
   }
   const value = { width, height };
-  if (cache.size >= 50_000) cache.clear();
+  if (cache.size >= 50_000) {
+    // 按插入顺序淘汰最旧的四分之一：整表 clear() 会把下一帧变成全量重测（Θ(T²) 强制重排风暴）。
+    let removed = 0;
+    for (const staleKey of cache.keys()) {
+      cache.delete(staleKey);
+      removed += 1;
+      if (removed >= 12_500) break;
+    }
+  }
   cache.set(key, value);
   return { width: value.width, height: value.height };
 }

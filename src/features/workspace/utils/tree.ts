@@ -4,8 +4,9 @@ import type { NodeItem, TreeDropTarget, TreeNode } from "@/types/notebook";
  * 由平表节点组装递归树：按 `parentId` 归组，按 `sortOrder` 排序。
  * 父节点缺失的孤儿节点会提升为根，避免数据异常时整棵树消失。
  * @param nodes 同一知识库的全部节点
- * @param previous 上一次构建的树；节点对象身份未变的条目复用旧 TreeNode 与 children 数组，
- *                 配合 memo 化的树行组件，让自动保存等局部更新不再整树重渲染（2026-10-27 性能任务 B2）。
+ * @param previous 上一次构建的树；子树完全没变（节点对象同一实例、子项实例与顺序一致）时
+ *                 整棵退回旧 TreeNode，配合 memo 化的树行组件，让自动保存等局部更新
+ *                 不再整树重渲染（2026-10-27 性能任务 B2）。
  * @returns 已排序的递归树
  * @example const tree = buildTree(await listNodes(kb.id));
  */
@@ -20,33 +21,46 @@ export function buildTree(nodes: NodeItem[], previous?: TreeNode[]): TreeNode[] 
     };
     walk(previous);
   }
-  const map = new Map<string, TreeNode>();
+  // 每个条目都从空 children 起步：复用旧 TreeNode 只能发生在子项装配完成之后，
+  // 否则旧数组里残留的子项会被再灌一遍，行数随重建次数累积。
+  const byId = new Map<string, TreeNode>();
   for (const node of nodes) {
-    const prev = prevById.get(node.id);
-    map.set(node.id, prev && prev.node === node ? prev : { node, children: [] });
+    byId.set(node.id, { node, children: [] });
   }
-  const roots: TreeNode[] = [];
+  const assembled: TreeNode[] = [];
   for (const node of nodes) {
-    const treeNode = map.get(node.id);
+    const treeNode = byId.get(node.id);
     if (!treeNode) continue;
-    const parent = node.parentId ? map.get(node.parentId) : undefined;
+    const parent = node.parentId ? byId.get(node.parentId) : undefined;
     if (parent) parent.children.push(treeNode);
-    else roots.push(treeNode);
+    else assembled.push(treeNode);
   }
-  // 子数组复用：被复用的节点若子项全部同一实例，则沿用旧数组，保住下游 memo。
-  for (const node of nodes) {
-    const treeNode = map.get(node.id);
-    const prev = prevById.get(node.id);
-    if (!treeNode || !prev || prev.node !== node) continue;
-    if (
-      prev.children.length === treeNode.children.length &&
-      prev.children.every((child, index) => child === treeNode.children[index])
-    ) {
-      treeNode.children = prev.children;
-    }
-  }
-  sortTree(roots);
-  return roots;
+  // 先排序再比对：旧树的子项同样是这个顺序，才能用实例逐位比较判定「这棵子树没变」。
+  sortTree(assembled);
+  return reconcileWithPrevious(assembled, prevById);
+}
+
+/**
+ * 自底向上复用上一轮的 TreeNode 实例。
+ *
+ * 判定「没变」的口径是节点对象同一实例 + 子项列表逐位同实例；因为子项先于父节点处理，
+ * 未变子树的父节点拿到的就是旧实例，判定才能一路向上传播到根。
+ * @param entries 本轮新装配的同层条目
+ * @param prevById 上一轮树的 id 索引
+ * @returns 该层应保留的条目（未变子树退回旧实例）
+ */
+function reconcileWithPrevious(entries: TreeNode[], prevById: Map<string, TreeNode>): TreeNode[] {
+  return entries.map((entry) => {
+    entry.children = reconcileWithPrevious(entry.children, prevById);
+    const prev = prevById.get(entry.node.id);
+    if (prev && prev.node === entry.node && isSameChildList(prev.children, entry.children)) return prev;
+    return entry;
+  });
+}
+
+/** 两个子项列表是否逐位指向同一个 TreeNode 实例（长度与顺序都一致）。 */
+function isSameChildList(left: TreeNode[], right: TreeNode[]): boolean {
+  return left.length === right.length && left.every((child, index) => child === right[index]);
 }
 
 /** 递归按 sortOrder、createdAt 排序；就地修改传入数组。 */

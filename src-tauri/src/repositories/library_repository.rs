@@ -18,22 +18,35 @@ pub struct LibraryRow {
     pub updated_at: i64,
 }
 
+/// 严格解析库来源：未知值视为读取错误（不猜测成导入库）。
+fn parse_source_type(value: &str) -> rusqlite::Result<LibrarySourceType> {
+    LibrarySourceType::from_db(value).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("未知的组件库来源类型：{value}"),
+            )),
+        )
+    })
+}
+
 impl LibraryRow {
-    /// 转前端 DTO；未知来源类型按导入库展示。
-    pub fn to_dto(&self) -> LibraryDto {
-        LibraryDto {
+    /// 转前端 DTO；来源类型非法时返回读取错误，不做兜底猜测。
+    pub fn to_dto(&self) -> crate::errors::AppResult<LibraryDto> {
+        Ok(LibraryDto {
             id: self.id.clone(),
             name: self.name.clone(),
             author: self.author.clone(),
             license: self.license.clone(),
             source_url: self.source_url.clone(),
-            source_type: LibrarySourceType::from_db(&self.source_type)
-                .unwrap_or(LibrarySourceType::Import),
+            source_type: parse_source_type(&self.source_type)?,
             enabled: self.enabled,
             item_count: self.item_count,
             created_at: self.created_at,
             updated_at: self.updated_at,
-        }
+        })
     }
 }
 
@@ -175,7 +188,8 @@ pub fn delete(connection: &Connection, id: &str) -> rusqlite::Result<usize> {
 /// 读取启用库的全部组件，按库、排序号升序。
 pub fn enabled_items(connection: &Connection) -> rusqlite::Result<Vec<LibraryItemDto>> {
     let mut statement = connection.prepare(
-        "SELECT item.id, item.name, item.elements_json, item.created_at
+        "SELECT item.id, item.name, item.elements_json, item.created_at,
+                library.id, library.name, library.source_type
          FROM board_library_item item
          JOIN board_library library ON library.id = item.library_id
          WHERE library.enabled = 1
@@ -184,12 +198,16 @@ pub fn enabled_items(connection: &Connection) -> rusqlite::Result<Vec<LibraryIte
     let rows = statement.query_map([], |row| {
         let elements_json: String = row.get(2)?;
         let elements = serde_json::from_str(&elements_json).unwrap_or(serde_json::Value::Null);
+        let source_type: String = row.get(6)?;
         Ok(LibraryItemDto {
             id: row.get(0)?,
             name: row.get(1)?,
             status: "unpublished".to_string(),
             elements,
             created: row.get(3)?,
+            library_id: row.get(4)?,
+            library_name: row.get(5)?,
+            library_source_type: parse_source_type(&source_type)?,
         })
     })?;
     rows.collect()

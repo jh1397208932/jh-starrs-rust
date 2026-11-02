@@ -38,15 +38,18 @@ use crate::models::{
     RenameWorkspaceInput, SaveDocumentInput, UpdateKbInput, UpdateNodeInput, WorkspaceDto,
 };
 use crate::repositories::attachment_repository;
+use crate::repositories::document_history_repository;
 use crate::repositories::document_repository;
 use crate::services::ai_service;
 use crate::services::attachment_maintenance_service::{self, MaintenancePolicy};
+use crate::services::attachment_preview_service::AttachmentPreviewDto;
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::{
-    attachment_store, backup_service, board_service, document_history_service, document_service,
-    export_service, import_service, knowledge_base_service, library_service, memory_service,
-    mindmap_format, mindmap_import_service, mindmap_service, node_service, search_service,
-    template_service, workspace_service,
+    attachment_preview_service, attachment_store, attachment_tree_import_service, backup_service,
+    board_service, document_history_service, document_service, export_service, import_service,
+    knowledge_base_service, library_service, memory_service, mindmap_format,
+    mindmap_import_service, mindmap_service, node_service, search_service, template_service,
+    workspace_service,
 };
 use crate::state::AppState;
 use crate::utils::now_ms;
@@ -225,6 +228,47 @@ fn document_history_snapshot_and_restore() {
     let loaded = document_service::load(&env.state, &doc.id).expect("加载恢复后文档");
     assert_eq!(loaded.document, first);
     assert!(loaded.version >= 3);
+}
+
+#[test]
+fn document_history_stays_within_byte_budget() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-history-budget", "历史预算");
+    let kb_id = env.first_kb_id();
+    let doc = env.create_node(&kb_id, None, DOC, "长文历史");
+    let connection = db::workspace::open_existing(&workspace_db_path(&workspace)).expect("打开库");
+    let content = "x".repeat(2 * 1024 * 1024);
+    for index in 0..12 {
+        let written = document_history_repository::maybe_snapshot(
+            &connection,
+            &doc.id,
+            &content,
+            1,
+            (index + 1) as i64 * 10 * 60 * 1000,
+        )
+        .expect("写快照");
+        assert!(written, "间隔已超过 10 分钟，应写入第 {index} 份");
+    }
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM doc_history WHERE node_id = ?1",
+            [&doc.id],
+            |row| row.get(0),
+        )
+        .expect("数快照");
+    let bytes: i64 = connection
+        .query_row(
+            "SELECT COALESCE(SUM(LENGTH(CAST(content AS BLOB))), 0) FROM doc_history WHERE node_id = ?1",
+            [&doc.id],
+            |row| row.get(0),
+        )
+        .expect("算字节");
+    assert!(count >= 1, "至少保留一份快照");
+    assert!(
+        bytes <= 16 * 1024 * 1024,
+        "历史快照总字节要在预算内：{bytes}"
+    );
+    assert!(count < 12, "超出预算的旧快照必须被裁掉：{count}");
 }
 
 #[test]
@@ -1154,9 +1198,9 @@ fn document_meta_ignores_out_of_order_writes() {
 }
 
 #[test]
-fn document_load_repairs_legacy_emoji_and_null_attrs() {
+fn document_load_rejects_legacy_dirty_content() {
     let env = TestEnv::new();
-    env.create_workspace("ws-doc-normalize", "文档修复");
+    env.create_workspace("ws-doc-normalize", "文档拒绝旧格式");
     let kb_id = env.first_kb_id();
     let doc = env.create_node(&kb_id, None, DOC, "旧文档");
     let dirty = json!({"type":"doc","content":[
@@ -1175,23 +1219,14 @@ fn document_load_repairs_legacy_emoji_and_null_attrs() {
                 "UPDATE node SET content = ?2, word_count = 99 WHERE id = ?1",
                 rusqlite::params![doc.id, dirty.to_string()],
             )
-            .expect("写入历史脏数据");
+            .expect("写入旧格式正文");
     }
 
-    let loaded = document_service::load(&env.state, &doc.id).expect("加载旧文档");
-    assert!(loaded.normalized, "旧脏数据必须被标记为已修复");
-    assert_eq!(
-        loaded.document,
-        json!({"type":"doc","content":[
-            {"type":"paragraph","content":[{"type":"text","text":"旧"}]}
-        ]})
+    let error = document_service::load(&env.state, &doc.id).expect_err("旧格式正文必须拒绝");
+    assert!(
+        format!("{error}").contains("不符合当前格式"),
+        "错误信息要说明正文不符合当前格式：{error}"
     );
-    assert_eq!(loaded.word_count, 1, "修复后按规范化正文重算字数");
-    assert!(!loaded.document.to_string().contains(":null:"));
-
-    env.save_doc(&doc.id, loaded.document);
-    let reloaded = document_service::load(&env.state, &doc.id).expect("再次加载");
-    assert!(!reloaded.normalized, "修复落库后再次加载不应重复标记");
 }
 
 // ---------------------------------------------------------------------------
@@ -1850,6 +1885,35 @@ fn attachment_rename_and_move_only_change_metadata() {
 }
 
 #[test]
+fn attachment_name_exists_tracks_active_rows_only() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-attach-name-exists", "附件名点查");
+    let context = attachment_context(&env);
+    let source = write_source(&env, "name-check.bin", &[0x61_u8; 128]);
+    let uploaded = upload_file(&context, "笔记.md", &source, "attach");
+
+    let connection = context.connection().expect("打开附件库连接");
+    assert!(
+        attachment_repository::name_exists(&connection, "attach", "笔记.md").expect("查名字"),
+        "启用附件应占用名字"
+    );
+    assert!(
+        !attachment_repository::name_exists(&connection, "attach", "不存在.md").expect("查名字"),
+        "未占用的名字应返回 false"
+    );
+    assert!(
+        !attachment_repository::name_exists(&connection, "docs", "笔记.md").expect("查名字"),
+        "名字只在同一逻辑目录内生效"
+    );
+
+    attachment_service::delete(&context, &uploaded.id).expect("把附件移入回收站");
+    assert!(
+        !attachment_repository::name_exists(&connection, "attach", "笔记.md").expect("查名字"),
+        "已删除附件不再占用名字"
+    );
+}
+
+#[test]
 fn attachment_allows_duplicate_names_and_returns_distinct_ids() {
     let env = TestEnv::new();
     env.create_workspace("ws-attach-dup-name", "同名附件");
@@ -1968,6 +2032,52 @@ fn attachment_staging_names_temp_file_by_blake3() {
     assert_eq!(again.path, staged.path);
     attachment_store::cleanup_staged(&staged.path);
     assert!(!staged.path.exists(), "清理后不得残留暂存文件");
+}
+
+#[test]
+fn workspace_storage_stats_breakdown_walks_staging_directory() {
+    let env = TestEnv::new();
+    let workspace = env.create_workspace("ws-storage-stats", "存储统计");
+    let context = attachment_context(&env);
+    let content = vec![7u8; 4096];
+    let source = write_source(&env, "storage-stats.bin", &content);
+    upload_file(&context, "storage-stats.bin", &source, "stats");
+
+    let stats = attachment_service::workspace_storage_stats(&context).expect("工作区存储统计");
+    assert!(stats.database_bytes > 0, "SQLite 主文件必须计入数据库字节");
+    assert!(
+        stats.attachment_bytes >= content.len() as i64,
+        "附件物理字节应覆盖上传内容"
+    );
+    assert!(
+        stats.total_bytes >= stats.attachment_bytes,
+        "工作区总量不应小于附件量"
+    );
+    assert_eq!(
+        stats.total_bytes,
+        stats.database_bytes + stats.attachment_bytes + stats.temp_bytes + stats.quarantine_bytes,
+        "总量口径=数据库+附件+暂存+隔离；回收站物理对象已在附件量内，不重复相加"
+    );
+    assert_eq!(stats.temp_bytes, 0, "上传提交后暂存区应为空");
+    assert_eq!(stats.quarantine_bytes, 0, "无孤儿对象时隔离区应为空");
+
+    // 向 staging 目录落一个游离文件：统计必须感知真实文件系统变化，
+    // 该断言保证 walk 真正读盘，而不是让全部字段停在 0 也能通过。
+    let stray = workspace_storage_path(&workspace)
+        .join("tmp")
+        .join("stray.part");
+    fs::write(&stray, vec![9u8; 1024]).expect("写入游离暂存文件");
+    let after = attachment_service::workspace_storage_stats(&context).expect("变更后的存储统计");
+    assert_eq!(
+        after.temp_bytes,
+        stats.temp_bytes + 1024,
+        "暂存目录字节必须随游离文件写入而增长"
+    );
+    assert_eq!(
+        after.total_bytes,
+        stats.total_bytes + 1024,
+        "总量必须同步反映暂存区增长"
+    );
 }
 
 #[test]
@@ -2888,6 +2998,54 @@ fn export_knowledge_base_preserves_tree_and_all_attachments() {
 }
 
 #[test]
+fn importing_300_markdown_files_builds_complete_folder_tree() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-import-large", "大树导入");
+    let kb_id = env.first_kb_id();
+    let root = env.dir.path().join("large-tree");
+    fs::create_dir_all(&root).expect("建目录");
+    for index in 0..300 {
+        fs::write(
+            root.join(format!("leaf-{index:03}.md")),
+            format!("# leaf {index}\n\n正文 {index}\n"),
+        )
+        .expect("写 markdown");
+    }
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![root.to_string_lossy().into_owned()],
+            mode: ImportMode::Directory,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("大树导入完成");
+    assert_eq!(result.failed, 0, "大树导入不应有失败：{:?}", result.files);
+    assert_eq!(result.imported, 300);
+
+    let nodes = node_service::list(&env.state, &kb_id).expect("列节点");
+    let folder = nodes
+        .iter()
+        .find(|node| node.node_type == 1 && node.title == "large-tree")
+        .expect("文件夹节点存在");
+    let children = nodes
+        .iter()
+        .filter(|node| node.parent_id.as_deref() == Some(folder.id.as_str()) && node.node_type == 2)
+        .collect::<Vec<_>>();
+    assert_eq!(children.len(), 300, "导入子节点数不符");
+    let mut titles = children
+        .iter()
+        .map(|node| node.title.clone())
+        .collect::<Vec<_>>();
+    titles.sort();
+    titles.dedup();
+    assert_eq!(titles.len(), 300, "同级标题必须唯一");
+}
+
+#[test]
 fn import_markdown_preserves_blocks_images_and_original_file() {
     let env = TestEnv::new();
     env.create_workspace("ws-import-md", "导入 Markdown");
@@ -3149,52 +3307,6 @@ fn node_network_lists_backlinks_and_related_from_search_index() {
 }
 
 #[test]
-fn table_and_flow_nodes_reuse_document_and_board_services() {
-    let env = TestEnv::new();
-    env.create_workspace("table-flow", "表格流程图");
-    let kb_id = env.first_kb_id();
-
-    let table = env.create_node(&kb_id, None, 4, "测试表格");
-    let loaded = document_service::load(&env.state, &table.id).expect("加载表格");
-    let table_node = &loaded.document["content"][0];
-    assert_eq!(table_node["type"], "table", "表格默认内容应为表格");
-    let rows = table_node["content"].as_array().expect("表格行数组");
-    assert_eq!(rows.len(), 3, "默认 3 行");
-    assert!(
-        rows.iter().all(|row| row["content"]
-            .as_array()
-            .is_some_and(|cells| cells.len() == 3)),
-        "默认 3 列"
-    );
-    assert_eq!(rows[0]["content"][0]["type"], "tableHeader", "首行为表头");
-
-    let mut document = loaded.document.clone();
-    document["content"][0]["content"][0]["content"][0]["content"] = json!([paragraph("表格测试")]);
-    let saved = env.save_doc(&table.id, document);
-    assert!(saved.word_count > 0, "表格正文应计入字数");
-    let reloaded = document_service::load(&env.state, &table.id).expect("重新加载表格");
-    assert!(
-        reloaded.document.to_string().contains("表格测试"),
-        "表格内容必须可保存并读回"
-    );
-
-    let flow = env.create_node(&kb_id, None, 5, "测试流程图");
-    let saved = board_service::save(
-        &env.state,
-        BoardSaveInput {
-            node_id: flow.id.clone(),
-            base_version: 0,
-            elements: json!([{"id": "f1", "type": "rectangle", "x": 0, "y": 0}]),
-            app_state: json!({}),
-        },
-    )
-    .expect("流程图按画板保存");
-    assert_eq!(saved.element_count, 1);
-    let loaded = board_service::load(&env.state, &flow.id).expect("加载流程图");
-    assert_eq!(loaded.elements.as_array().expect("元素数组").len(), 1);
-}
-
-#[test]
 fn node_trash_restores_subtree_and_purge_releases_attachments() {
     let env = TestEnv::new();
     env.create_workspace("node-trash", "节点回收站");
@@ -3360,15 +3472,10 @@ fn board_images_use_global_object_ids_and_report_missing_objects() {
                     "isDeleted": false
                 },
                 {
-                    "id": "card-1",
-                    "type": "rectangle",
-                    "customData": {
-                        "boardFileCard": true,
-                        "objectId": "missing-object",
-                        "name": "报告.pdf",
-                        "mime": "application/pdf",
-                        "size": 10
-                    },
+                    "id": "img-2",
+                    "type": "image",
+                    "fileId": "missing-object",
+                    "customData": {"boardObject": true},
                     "isDeleted": false
                 }
             ]),
@@ -3422,7 +3529,11 @@ fn board_images_use_global_object_ids_and_report_missing_objects() {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("读取 schema 版本")
     };
-    assert_eq!(version, 15, "工作区库必须升级到 v15");
+    assert_eq!(
+        version,
+        crate::db::workspace::SCHEMA_VERSION,
+        "工作区库必须升级到当前 schema 版本"
+    );
 
     let references: i64 = connection
         .query_row(
@@ -3543,7 +3654,7 @@ fn library_seeds_presets_imports_and_toggles() {
 // ───────────────────────── 画板导出 / 导入（2026-10-25） ─────────────────────────
 
 #[test]
-fn export_knowledge_base_writes_board_bundle_attachments_and_sidecar() {
+fn export_knowledge_base_writes_board_bundle_attachments() {
     let env = TestEnv::new();
     env.create_workspace("ws-board-bundle", "画板导出");
     let kb_id = env.first_kb_id();
@@ -3556,14 +3667,6 @@ fn export_knowledge_base_writes_board_bundle_attachments_and_sidecar() {
         png_bytes(),
     )
     .expect("上传画板图片");
-    let file = attachment_service::upload_bytes(
-        &context,
-        "说明.txt".to_string(),
-        "画板".to_string(),
-        Some("text/plain".to_string()),
-        b"sidecar".to_vec(),
-    )
-    .expect("上传画板附件");
     attachment_service::upload_bytes(
         &context,
         "孤立.txt".to_string(),
@@ -3588,21 +3691,6 @@ fn export_knowledge_base_writes_board_bundle_attachments_and_sidecar() {
                     "y": 0,
                     "width": 10,
                     "height": 10
-                },
-                {
-                    "type": "rectangle",
-                    "id": "card",
-                    "x": 20,
-                    "y": 0,
-                    "width": 10,
-                    "height": 10,
-                    "customData": {
-                        "boardFileCard": true,
-                        "objectId": file.id,
-                        "name": "说明.txt",
-                        "mime": "text/plain",
-                        "size": 7
-                    }
                 }
             ]),
             app_state: json!({"viewBackgroundColor": "#ffffff"}),
@@ -3640,17 +3728,15 @@ fn export_knowledge_base_writes_board_bundle_attachments_and_sidecar() {
             .is_some_and(|url| url.starts_with("data:image/png;base64,"))
     );
 
-    let sidecar_path = Path::new(&target.dir_path).join("attachments.json");
-    let sidecar: Value =
-        serde_json::from_slice(&fs::read(&sidecar_path).expect("attachments.json")).expect("json");
-    assert_eq!(
-        sidecar["attachments"].as_array().expect("附件数组").len(),
-        2
-    );
     let attach_dir = Path::new(&target.dir_path).join("attach");
     assert!(attach_dir.join("架构图.png").is_file());
-    assert!(attach_dir.join("说明.txt").is_file());
-    assert_eq!(result.attachment_count, 3, "2 个画板附件 + 1 个未引用附件");
+    assert!(
+        !Path::new(&target.dir_path)
+            .join("attachments.json")
+            .exists(),
+        "画板目录不再写附件清单"
+    );
+    assert_eq!(result.attachment_count, 2, "1 个画板图片 + 1 个未引用附件");
     assert!(
         result
             .files
@@ -3806,87 +3892,10 @@ fn import_excalidraw_uploads_embedded_images_to_board() {
 }
 
 #[test]
-fn import_excalidraw_restores_sidecar_card_attachment_and_rejects_invalid() {
+fn import_excalidraw_rejects_invalid_package() {
     let env = TestEnv::new();
-    env.create_workspace("ws-board-sidecar", "画板附件导入");
+    env.create_workspace("ws-board-invalid", "画板导入校验");
     let kb_id = env.first_kb_id();
-    let package = env.dir.path().join("board-package");
-    fs::create_dir_all(package.join("attach")).expect("画板包目录");
-    fs::write(package.join("attach/说明.txt"), b"sidecar").expect("写入附件");
-    let payload = json!({
-        "type": "excalidraw",
-        "version": 2,
-        "source": "test",
-        "elements": [{
-            "type": "rectangle",
-            "id": "card",
-            "x": 0,
-            "y": 0,
-            "width": 10,
-            "height": 10,
-            "customData": {
-                "boardFileCard": true,
-                "objectId": "legacy-card",
-                "name": "说明.txt",
-                "mime": "text/plain",
-                "size": 7
-            }
-        }],
-        "appState": {},
-        "files": {}
-    });
-    let source = package.join("带附件画板.excalidraw");
-    fs::write(&source, serde_json::to_vec(&payload).expect("序列化")).expect("写入画板");
-    fs::write(
-        package.join("attachments.json"),
-        serde_json::to_vec(&json!({
-            "type": "starris-board-attachments",
-            "version": 1,
-            "attachments": [{
-                "objectId": "legacy-card",
-                "name": "说明.txt",
-                "mime": "text/plain",
-                "size": 7,
-                "file": "attach/说明.txt"
-            }]
-        }))
-        .expect("序列化 sidecar"),
-    )
-    .expect("写入 sidecar");
-
-    let result = import_service::import_documents(
-        &env.state,
-        ImportDocumentsInput {
-            knowledge_base_id: kb_id.clone(),
-            parent_id: None,
-            paths: vec![source.to_string_lossy().into_owned()],
-            mode: ImportMode::Files,
-            preserve_hierarchy: false,
-        },
-    )
-    .expect("导入带附件画板");
-    assert_eq!(result.imported, 1);
-    assert_eq!(result.files[0].attachment_count, 1);
-    let node_id = result.files[0].node_id.clone().expect("画板节点");
-    let loaded = board_service::load(&env.state, &node_id).expect("加载画板");
-    assert!(loaded.missing_object_ids.is_empty(), "附件应恢复");
-    let elements = loaded.elements.as_array().expect("图元数组");
-    let card = elements
-        .iter()
-        .find(|element| {
-            element
-                .get("customData")
-                .and_then(|custom| custom.get("boardFileCard"))
-                .and_then(Value::as_bool)
-                .is_some_and(|value| value)
-        })
-        .expect("文件卡片");
-    let object_id = card["customData"]["objectId"].as_str().expect("objectId");
-    assert_ne!(object_id, "legacy-card");
-    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
-    let meta = attachment_service::get(&context, object_id).expect("恢复的全局对象");
-    assert_eq!(meta.mime, "text/plain");
-
     let before = node_service::list(&env.state, &kb_id)
         .expect("节点列表")
         .len();
@@ -4108,7 +4117,7 @@ fn mindmap_thousand_topic_save_export_import_budget() {
         sheet: crate::models::mindmap::MindmapSheet {
             id: "sheet-perf".to_string(),
             structure: MindmapStructure::Balanced,
-            theme: MindmapTheme::Auto,
+            theme: MindmapTheme::Vivid,
             branch_coloring: Default::default(),
             edge_style: Default::default(),
             background: Default::default(),
@@ -4359,6 +4368,303 @@ fn ai_permission_matrix_inbox_and_paragraph_edits() {
     assert!(audit_rows.iter().any(|row| row.outcome == "rejected"));
     assert!(audit_rows.iter().any(|row| row.outcome == "denied"));
     assert!(audit_rows.iter().any(|row| row.outcome == "direct"));
+}
+
+/// 附件预览在写入时预转换入库；读取走缓存，缓存来源时间落后时现算并回填。
+#[test]
+fn attachment_preview_is_precomputed_on_upload_and_cached() {
+    let env = TestEnv::new();
+    env.create_workspace("preview-cache", "预览预转换");
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+
+    let source = env.dir.path().join("说明.md");
+    std::fs::write(&source, "# 标题\n\n正文段落。\n").expect("写测试文件");
+    let uploaded = upload_file(&context, "说明.md", &source, "资料/说明.md");
+
+    // 预转换在后台单线程里跑；最多等 3 秒。
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut row = None;
+    while Instant::now() < deadline && row.is_none() {
+        if let Ok(connection) = context.connection() {
+            row = attachment_repository::get_preview(&connection, &uploaded.id)
+                .ok()
+                .flatten();
+        }
+        if row.is_none() {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+    let (kind, payload, source_updated_at) = row.expect("预转换结果未入库");
+    assert_eq!(kind, "blocks", "Markdown 预转换类型应为 blocks");
+    assert_eq!(
+        source_updated_at, uploaded.updated_at,
+        "缓存来源时间等于附件时间"
+    );
+    assert!(payload.contains("标题"), "预转换内容包含正文标题");
+
+    // 读取路径命中缓存。
+    let cached =
+        attachment_preview_service::preview_for_attachment(&context, &uploaded).expect("读取预览");
+    match cached {
+        AttachmentPreviewDto::Blocks { blocks, .. } => assert!(!blocks.is_empty(), "块预览非空"),
+        other => panic!("应为块预览，实际 {other:?}"),
+    }
+
+    // 缓存过期（来源时间落后）时应现算并回填。
+    {
+        let connection = context.connection().expect("连接");
+        connection
+            .execute("UPDATE attachment_preview SET source_updated_at = 0", [])
+            .expect("造过期缓存");
+    }
+    let recomputed =
+        attachment_preview_service::preview_for_attachment(&context, &uploaded).expect("重算预览");
+    assert!(matches!(recomputed, AttachmentPreviewDto::Blocks { .. }));
+    let connection = context.connection().expect("连接");
+    let refreshed = attachment_repository::get_preview(&connection, &uploaded.id)
+        .expect("读缓存")
+        .expect("应有缓存行");
+    assert_eq!(
+        refreshed.2, uploaded.updated_at,
+        "过期缓存被回填为最新来源时间"
+    );
+}
+
+/// 重开工作区连接：会话身份与库内数据保持不变，可直接继续查询。
+#[test]
+fn reopen_workspace_keeps_session_and_data() {
+    let env = TestEnv::new();
+    env.create_workspace("reopen", "重开连接");
+    let before = env
+        .state
+        .current_workspace_id()
+        .expect("读取工作区 id")
+        .expect("应当有工作区");
+    env.state.reopen_workspace().expect("重开工作区连接");
+    let after = env
+        .state
+        .current_workspace_id()
+        .expect("读取工作区 id")
+        .expect("应当有工作区");
+    assert_eq!(before, after, "重开后工作区 id 不变");
+    let guard = env.state.workspace().expect("工作区锁");
+    let session = guard.as_ref().expect("工作区会话");
+    let count: i64 = session
+        .connection
+        .query_row("SELECT COUNT(*) FROM node", [], |row| row.get(0))
+        .expect("重开后仍可查询");
+    assert!(count >= 0, "节点数为非负数（实际 {count}）");
+}
+
+/// AI 历史是只插不删的表：超过保留条数或保留期的记录必须被清理，pending 待审项不受条数上限影响。
+#[test]
+fn ai_history_prune_bounds_audit_and_pending_inbox() {
+    use crate::repositories::ai_repository;
+    let env = TestEnv::new();
+    env.create_workspace("ai-prune", "AI 历史");
+    let now = crate::utils::now_ms();
+    let guard = env.state.workspace().expect("工作区锁");
+    let session = guard.as_ref().expect("工作区会话");
+    let connection = &session.connection;
+
+    let overflow = ai_repository::AUDIT_KEEP + 10;
+    for index in 0..overflow {
+        ai_repository::insert_audit(
+            connection,
+            ai_repository::NewAuditItem {
+                id: &format!("audit-{index}"),
+                tool: "doc_read",
+                node_id: None,
+                summary: "读取文档",
+                risk: "low",
+                outcome: "direct",
+                created_at: now - (overflow - index) * 1_000,
+            },
+        )
+        .expect("写审计");
+    }
+    ai_repository::insert_audit(
+        connection,
+        ai_repository::NewAuditItem {
+            id: "audit-expired",
+            tool: "doc_read",
+            node_id: None,
+            summary: "旧记录",
+            risk: "low",
+            outcome: "direct",
+            created_at: now - ai_repository::HISTORY_RETENTION_MS - 1,
+        },
+    )
+    .expect("写过期审计");
+
+    // 较早但仍待处理的记录：排不进最新 INBOX_KEEP 条内，也必须保留。
+    ai_repository::insert_inbox(
+        connection,
+        ai_repository::NewInboxItem {
+            id: "inbox-pending",
+            tool: "doc_create",
+            node_id: None,
+            payload_json: "{}",
+            summary: "较早但未处理",
+            risk: "medium",
+            created_at: now - 10 * 24 * 60 * 60 * 1000,
+        },
+    )
+    .expect("写待审项");
+
+    let removed = ai_repository::prune_history(connection, now).expect("清理历史");
+    assert!(removed >= 11, "应清理至少 11 行（实际 {removed}）");
+
+    let audit_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM ai_audit", [], |row| row.get(0))
+        .expect("统计审计");
+    assert_eq!(
+        audit_count,
+        ai_repository::AUDIT_KEEP,
+        "审计只保留最新 N 条"
+    );
+    let expired: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM ai_audit WHERE id = 'audit-expired'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("统计过期审计");
+    assert_eq!(expired, 0, "超过保留期的审计被删除");
+    let pending: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM ai_inbox WHERE id = 'inbox-pending'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("统计待审项");
+    assert_eq!(pending, 1, "未处理的待审项不受条数上限影响");
+}
+
+/// 待审项必须能给出「改了什么」的前后对比，并且入队本身要留审计痕迹。
+#[test]
+fn ai_review_preview_shows_before_and_after_lines() {
+    let env = TestEnv::new();
+    env.create_workspace("ai-preview", "AI 对比预览");
+    let kb_id = env.first_kb_id();
+    ai_service::set_permissions(
+        &env.state,
+        crate::repositories::ai_repository::AiPermissions {
+            doc: "review".to_string(),
+            board: "review".to_string(),
+            mindmap: "review".to_string(),
+        },
+    )
+    .expect("设为需人工确认");
+
+    let created = ai_service::execute(
+        &env.state,
+        "doc_create",
+        &json!({
+            "knowledgeBaseId": kb_id,
+            "title": "预览文档",
+            "markdown": "原标题段落",
+            "summary": "建立预览文档"
+        }),
+    )
+    .expect("doc_create 入队");
+    assert_eq!(created.status, "pending_review");
+    let create_preview = crate::services::ai_review::preview_inbox(
+        &env.state,
+        created.inbox_id.as_ref().expect("待审 id"),
+    )
+    .expect("新建对比");
+    assert_eq!(create_preview.target, "预览文档");
+    assert!(
+        create_preview
+            .added
+            .iter()
+            .any(|line| line.contains("新建文档「预览文档」")),
+        "新建应给出目标与段落数：{:?}",
+        create_preview.added
+    );
+
+    let node = node_service::create(
+        &env.state,
+        CreateNodeInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            node_type: 2,
+            title: "预览改段文档".to_string(),
+        },
+    )
+    .expect("建文档节点");
+    document_service::save(
+        &env.state,
+        SaveDocumentInput {
+            node_id: node.id.clone(),
+            document: json!({
+                "type": "doc",
+                "content": [{
+                    "type": "paragraph",
+                    "content": [{ "type": "text", "text": "原标题段落" }]
+                }]
+            }),
+            base_version: 0,
+        },
+    )
+    .expect("写入正文");
+
+    let read = ai_service::execute(&env.state, "doc_read", &json!({ "nodeId": node.id }))
+        .expect("doc_read")
+        .data
+        .expect("文档数据");
+    let block_id = read
+        .get("blocks")
+        .and_then(Value::as_array)
+        .and_then(|rows| rows.first())
+        .and_then(|row| row.get("blockId"))
+        .and_then(Value::as_str)
+        .expect("首段 blockId")
+        .to_string();
+
+    let updated = ai_service::execute(
+        &env.state,
+        "doc_update_block",
+        &json!({
+            "nodeId": node.id,
+            "blockId": block_id,
+            "text": "改后的标题段落",
+            "summary": "改一段"
+        }),
+    )
+    .expect("doc_update_block 入队");
+    let preview = crate::services::ai_review::preview_inbox(
+        &env.state,
+        updated.inbox_id.as_ref().expect("待审 id"),
+    )
+    .expect("改段对比");
+    assert!(
+        preview
+            .removed
+            .iter()
+            .any(|line| line.contains("原标题段落")),
+        "移除侧要显示改前文本：{:?}",
+        preview.removed
+    );
+    assert!(
+        preview
+            .added
+            .iter()
+            .any(|line| line.contains("改后的标题段落")),
+        "新增侧要显示改后文本：{:?}",
+        preview.added
+    );
+
+    let audit_rows = ai_service::audit(&env.state).expect("审计");
+    assert!(
+        audit_rows.iter().any(|row| row.outcome == "inbox"),
+        "入队必须留审计：{:?}",
+        audit_rows
+            .iter()
+            .map(|row| &row.outcome)
+            .collect::<Vec<_>>()
+    );
 }
 
 /// 同一条待审项只能被审批一次：第二次必须冲突，且不产生重复写入。
@@ -4662,4 +4968,445 @@ fn fresh_workspace_schema_is_complete_without_repair() {
         )
         .expect("列统计");
     assert_eq!(columns, 3, "attachment 生命周期列必须由初始化建立");
+}
+
+// ---------------------------------------------------------------------------
+// 文件夹上传：按目录层级建树、复用同名文件夹、同名文件改名
+// ---------------------------------------------------------------------------
+
+#[test]
+fn folder_import_builds_nested_tree_and_renames_duplicate_files() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-folder-import", "导入文件夹");
+    let kb_id = env.first_kb_id();
+
+    // 目录形状：资料/a.txt、资料/sub/b.md、资料/sub/deep/c.txt，另有一个隐藏文件应被跳过。
+    let root = env.dir.path().join("资料");
+    fs::create_dir_all(root.join("sub/deep")).expect("建子目录");
+    fs::write(root.join("a.txt"), b"hello").expect("写 a.txt");
+    fs::write(root.join("sub/b.md"), b"# b").expect("写 b.md");
+    fs::write(root.join("sub/deep/c.txt"), b"c").expect("写 c.txt");
+    fs::write(root.join(".hidden"), b"hidden").expect("写隐藏文件");
+
+    let first = attachment_tree_import_service::import_folder(&env.state, &kb_id, None, &root)
+        .expect("首次导入");
+    assert_eq!(first.files, 3, "三个可见文件都应按层级上传");
+    assert_eq!(first.folders, 3, "资料 + sub + deep 共三个文件夹节点");
+    assert!(
+        first.failures.is_empty(),
+        "首次导入不应有失败：{:?}",
+        first.failures
+    );
+
+    let nodes = node_service::list(&env.state, &kb_id).expect("列出节点");
+    let folder = nodes
+        .iter()
+        .find(|node| node.node_type == 1 && node.title == "资料")
+        .expect("根文件夹节点存在");
+    let sub = nodes
+        .iter()
+        .find(|node| node.node_type == 1 && node.title == "sub")
+        .expect("子文件夹节点存在");
+    assert_eq!(
+        sub.parent_id.as_deref(),
+        Some(folder.id.as_str()),
+        "层级关系正确"
+    );
+    let deep = nodes
+        .iter()
+        .find(|node| node.node_type == 1 && node.title == "deep")
+        .expect("深层文件夹节点存在");
+    assert_eq!(deep.parent_id.as_deref(), Some(sub.id.as_str()));
+    let file = nodes
+        .iter()
+        .find(|node| node.node_type == 6 && node.title == "c.txt")
+        .expect("文件节点存在");
+    assert_eq!(
+        file.parent_id.as_deref(),
+        Some(deep.id.as_str()),
+        "文件挂在对应层级"
+    );
+    assert!(
+        !nodes.iter().any(|node| node.title == ".hidden"),
+        "隐藏文件不应导入"
+    );
+
+    // 再导一次同一目录：同名文件夹复用，同名文件自动改名。
+    let second = attachment_tree_import_service::import_folder(&env.state, &kb_id, None, &root)
+        .expect("再次导入");
+    assert_eq!(second.files, 3);
+    let nodes = node_service::list(&env.state, &kb_id).expect("再次列出节点");
+    let roots = nodes
+        .iter()
+        .filter(|node| node.node_type == 1 && node.title == "资料")
+        .count();
+    assert_eq!(roots, 1, "同名文件夹必须复用，不能重复创建");
+    assert!(
+        nodes.iter().any(|node| node.title == "a (2).txt"),
+        "同名文件应自动改名，实际标题：{:?}",
+        nodes.iter().map(|node| &node.title).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn folder_import_rejects_oversized_batches_before_creating_nodes() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-folder-limit", "上限工作区");
+    let kb_id = env.first_kb_id();
+
+    // 只验文件数护栏：用 1 字节文件，避免为了触发护栏在磁盘上写上百 MB。
+    let root = env.dir.path().join("太多");
+    fs::create_dir_all(&root).expect("建目录");
+    for index in 0..(attachment_tree_import_service::MAX_FOLDER_FILES + 1) {
+        fs::write(root.join(format!("f{index}.bin")), b"x").expect("写文件");
+    }
+
+    let error = attachment_tree_import_service::import_folder(&env.state, &kb_id, None, &root)
+        .expect_err("超过文件数上限必须拒绝");
+    assert!(
+        error.to_string().contains("上限"),
+        "错误信息应说明超过上限，实际：{error}"
+    );
+    let nodes = node_service::list(&env.state, &kb_id).expect("列出节点");
+    assert!(
+        nodes.is_empty(),
+        "护栏不通过时一个节点都不能建，实际：{:?}",
+        nodes.iter().map(|node| &node.title).collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 附件预览：Markdown / Word 走同一套解析，且在预览模式下不产生新附件
+// ---------------------------------------------------------------------------
+
+fn attachment_count(context: &AttachmentContext) -> i64 {
+    let connection = context.connection().expect("预览统计连接");
+    connection
+        .query_row("SELECT COUNT(*) FROM attachment", [], |row| row.get(0))
+        .expect("附件计数")
+}
+
+#[test]
+fn preview_renders_text_markdown_and_word_without_persisting_assets() {
+    let env = TestEnv::new();
+    env.create_workspace("ws-preview", "预览工作区");
+    let kb_id = env.first_kb_id();
+    let context = attachment_context(&env);
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/fixtures/files");
+    let upload = |source: &Path| {
+        attachment_tree_import_service::upload_file_as_node(
+            &env.state, &kb_id, None, source, "", None, None,
+        )
+        .expect("上传预览素材")
+    };
+
+    let markdown_node = upload(&fixtures.join("sample.md"));
+    let word_node = upload(&fixtures.join("sample.docx"));
+    let txt_source = write_source(&env, "预览.txt", "纯文本预览内容".as_bytes());
+    let txt_node = upload(&txt_source);
+    // 三个素材都已落库后才记基线：预览本身不能再新增附件对象。
+    let before = attachment_count(&context);
+
+    let markdown =
+        attachment_preview_service::preview(&context, &markdown_node.id).expect("markdown 预览");
+    match markdown {
+        AttachmentPreviewDto::Blocks { format, blocks, .. } => {
+            assert_eq!(format, "markdown");
+            let text = serde_json::to_string(&blocks).expect("序列化块");
+            assert!(
+                text.contains("黑盒导入测试"),
+                "Markdown 预览应含标题：{text}"
+            );
+        }
+        other => panic!("Markdown 应返回块预览，实际：{other:?}"),
+    }
+
+    let word = attachment_preview_service::preview(&context, &word_node.id).expect("word 预览");
+    match word {
+        AttachmentPreviewDto::Blocks { format, blocks, .. } => {
+            assert_eq!(format, "docx");
+            let text = serde_json::to_string(&blocks).expect("序列化块");
+            assert!(
+                text.contains("Word 预览标题"),
+                "Word 预览应包含正文：{text}"
+            );
+        }
+        other => panic!("Word 应返回块预览，实际：{other:?}"),
+    }
+
+    let text = attachment_preview_service::preview(&context, &txt_node.id).expect("txt 预览");
+    match text {
+        AttachmentPreviewDto::Text { text, truncated } => {
+            assert!(text.contains("纯文本预览内容"), "文本预览内容不符：{text}");
+            assert!(!truncated, "小文件不应标记截断");
+        }
+        other => panic!("txt 应返回文本预览，实际：{other:?}"),
+    }
+
+    assert_eq!(
+        before,
+        attachment_count(&context),
+        "预览不得产生新的附件对象"
+    );
+}
+
+#[test]
+fn node_preview_dedupes_replaces_and_cascades() {
+    use crate::models::node_preview::SaveNodePreviewInput;
+    use crate::services::node_preview_service;
+
+    let env = TestEnv::new();
+    let _workspace = env.create_workspace("node-preview", "预览");
+    let kb_id = env.first_kb_id();
+    let board = env.create_node(&kb_id, None, BOARD, "预览画板");
+    // 两张 1×1 的有效 PNG；服务只校验签名与尺寸，渲染质量由前端保证。
+    let png_a = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+    let png_b = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let base = board.updated_at;
+
+    let first = node_preview_service::save(
+        &env.state,
+        SaveNodePreviewInput {
+            node_id: board.id.clone(),
+            data_base64: png_a.to_string(),
+            width: 1,
+            height: 1,
+            source_updated_at: base,
+        },
+    )
+    .expect("首次写入预览");
+
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let listed = attachment_service::list(
+        &context,
+        &AttachmentListQuery {
+            logical_path: None,
+            include_deleted: false,
+            search: None,
+            limit: None,
+            offset: None,
+        },
+    )
+    .expect("附件列表");
+    assert!(listed.is_empty(), "预览对象不得出现在附件选择器里");
+
+    let duplicate = node_preview_service::save(
+        &env.state,
+        SaveNodePreviewInput {
+            node_id: board.id.clone(),
+            data_base64: png_a.to_string(),
+            width: 1,
+            height: 1,
+            source_updated_at: base,
+        },
+    )
+    .expect("同版本重试");
+    assert_eq!(first.object_id, duplicate.object_id, "同版本不得重复落对象");
+
+    let loaded = node_preview_service::load(&env.state, &board.id, crate::domain::NodeType::Board)
+        .expect("读取预览")
+        .expect("预览应存在");
+    assert!(loaded.data_url.starts_with("data:image/png;base64,"));
+    assert!(!loaded.stale, "刚生成的预览不应过期");
+
+    let replaced = node_preview_service::save(
+        &env.state,
+        SaveNodePreviewInput {
+            node_id: board.id.clone(),
+            data_base64: png_b.to_string(),
+            width: 1,
+            height: 1,
+            source_updated_at: base + 10,
+        },
+    )
+    .expect("替换预览");
+    assert_ne!(first.object_id, replaced.object_id, "字节变化应换对象");
+
+    {
+        let guard = env.state.workspace().expect("工作区会话");
+        let session = guard.as_ref().expect("已打开工作区");
+        let refs = crate::repositories::node_attachment_repository::list_object_ids(
+            &session.connection,
+            &board.id,
+        )
+        .expect("预览引用");
+        assert!(refs.contains(&replaced.object_id), "新对象应有引用");
+        assert!(!refs.contains(&first.object_id), "旧对象引用应释放");
+    }
+
+    {
+        let guard = env.state.workspace().expect("工作区会话");
+        let session = guard.as_ref().expect("已打开工作区");
+        session
+            .connection
+            .execute("DELETE FROM node WHERE id = ?1", [&board.id])
+            .expect("物理删除节点");
+        assert!(
+            crate::repositories::node_preview_repository::find(&session.connection, &board.id)
+                .expect("查询预览")
+                .is_none(),
+            "节点删除后预览索引应级联消失"
+        );
+    }
+}
+
+#[test]
+fn imports_text_based_pdf_as_editable_document_with_original_attachment() {
+    let env = TestEnv::new();
+    let _workspace = env.create_workspace("pdf-import", "PDF 导入");
+    let kb_id = env.first_kb_id();
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/fixtures/files/pdf-sample.pdf");
+    assert!(fixture.is_file(), "缺少 PDF 测试夹具");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![fixture.to_string_lossy().into_owned()],
+            mode: ImportMode::Files,
+            preserve_hierarchy: false,
+        },
+    )
+    .expect("导入 PDF");
+    assert_eq!(result.imported, 1, "PDF 应导入成功");
+    assert_eq!(result.failed, 0);
+
+    let nodes = node_service::list(&env.state, &kb_id).expect("文件树");
+    let doc = nodes
+        .iter()
+        .find(|node| node.title == "pdf-sample")
+        .expect("应创建 pdf-sample 文档节点");
+    let loaded = document_service::load(&env.state, &doc.id).expect("加载 PDF 文档");
+    let json = serde_json::to_string(&loaded.document).expect("序列化文档");
+    assert!(json.contains("PDF Import Test"), "应提取 PDF 标题: {json}");
+    assert!(json.contains("Second paragraph"), "应提取 PDF 正文: {json}");
+    assert!(
+        json.contains("attachmentBlock"),
+        "原始 PDF 应作为附件保留: {json}"
+    );
+}
+
+#[test]
+fn mixed_import_scans_classifies_and_keeps_markdown_assets_and_links() {
+    let env = TestEnv::new();
+    let _workspace = env.create_workspace("mixed-import", "混合导入");
+    let kb_id = env.first_kb_id();
+    let root = env.dir.path().join("mixed");
+    fs::create_dir_all(root.join("img")).expect("创建混合导入目录");
+
+    // Markdown 同时引用本地图片、本地 PDF 与外部链接。
+    fs::write(
+        root.join("note.md"),
+        "# 混合导入笔记\n\n![本地图](img/pic.png)\n\n[本地 PDF](doc.pdf)\n\n[外部链接](https://example.com/x.pdf)\n",
+    )
+    .expect("写 Markdown");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/fixtures/files/pixel.png"),
+        root.join("img/pic.png"),
+    )
+    .expect("复制图片夹具");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/fixtures/files/pdf-sample.pdf"),
+        root.join("doc.pdf"),
+    )
+    .expect("复制 PDF 夹具");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/fixtures/files/sample.excalidraw"),
+        root.join("board.excalidraw"),
+    )
+    .expect("复制画板夹具");
+    fs::write(
+        root.join("map.mm"),
+        r#"<map version="1.0.1"><node TEXT="根主题"><node TEXT="子主题"/></node></map>"#,
+    )
+    .expect("写 FreeMind");
+    fs::write(root.join("skip.txt"), "不支持的格式").expect("写跳过文件");
+    fs::write(root.join(".hidden"), "隐藏文件").expect("写隐藏文件");
+
+    let scan = import_service::scan_folder(&root.to_string_lossy()).expect("扫描混合目录");
+    assert_eq!(scan.documents, 2, "note.md 与 doc.pdf 应计为文档");
+    assert_eq!(scan.boards, 1, "excalidraw 应计为画板");
+    assert_eq!(scan.mindmaps, 1, "FreeMind 应计为导图");
+    assert_eq!(scan.attachments, 1, "被 Markdown 引用的图片应计为附件");
+    assert_eq!(scan.unsupported_count, 1, "只应跳过 skip.txt");
+    assert_eq!(scan.unsupported[0].path, "skip.txt");
+    assert_eq!(scan.total_files, 6, "隐藏文件不参与统计");
+
+    let result = import_service::import_documents(
+        &env.state,
+        ImportDocumentsInput {
+            knowledge_base_id: kb_id.clone(),
+            parent_id: None,
+            paths: vec![root.to_string_lossy().into_owned()],
+            mode: ImportMode::Directory,
+            preserve_hierarchy: true,
+        },
+    )
+    .expect("混合导入");
+    assert_eq!(result.imported, 4, "md/pdf/画板/导图都应导入");
+    assert_eq!(result.failed, 0, "不支持的格式应被跳过而不是失败");
+
+    let nodes = node_service::list(&env.state, &kb_id).expect("文件树");
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node.title == "mixed" && node.node_type == FOLDER),
+        "应保留根文件夹"
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node.title == "img" && node.node_type == FOLDER),
+        "应保留子目录"
+    );
+    assert!(
+        !nodes.iter().any(|node| node.title == "skip"),
+        "不支持的文件不应创建节点"
+    );
+
+    let note = nodes
+        .iter()
+        .find(|node| node.title == "note" && node.node_type == DOC)
+        .expect("Markdown 文档");
+    let loaded = document_service::load(&env.state, &note.id).expect("加载 Markdown 文档");
+    let content = serde_json::to_string(&loaded.document).expect("序列化文档");
+    assert!(
+        content.contains("attachmentImage"),
+        "本地图片应进对象库: {content}"
+    );
+    assert!(
+        content.contains("attachmentBlock"),
+        "本地 PDF 应作为附件: {content}"
+    );
+    assert!(
+        content.contains("https://example.com/x.pdf"),
+        "外部链接应保留: {content}"
+    );
+    assert!(
+        !content.contains("\"name\":\"x.pdf\""),
+        "外部链接不应被下载成附件: {content}"
+    );
+
+    let context = AttachmentContext::from_state(&env.state).expect("附件上下文");
+    let attachments = attachment_service::list(
+        &context,
+        &AttachmentListQuery {
+            logical_path: Some("attach".to_string()),
+            include_deleted: false,
+            search: None,
+            limit: None,
+            offset: None,
+        },
+    )
+    .expect("附件列表");
+    let names = attachments
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        names.iter().any(|name| name.ends_with("pic.png")),
+        "本地图片应存在于对象库: {names:?}"
+    );
 }

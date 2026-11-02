@@ -92,12 +92,3 @@ export async function serializeBoardExcalidraw(
     "local",
   );
 }
-
-/** 判断场景里是否有文件卡片；单文件 `.excalidraw` 无法携带其附件。 */
-export function hasBoardFileCards(elements: readonly unknown[]): boolean {
-  return elements.some((element) => {
-    if (typeof element !== "object" || element === null) return false;
-    const customData = (element as { customData?: Record<string, unknown> }).customData;
-    return customData?.boardFileCard === true;
-  });
-}

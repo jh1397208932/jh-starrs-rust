@@ -41,7 +41,13 @@ pub fn sync_board_refs(
     elements: &Value,
     now: i64,
 ) -> AppResult<RefSyncResult> {
-    let object_ids = attachment_refs::collect_board_attachment_ids(elements);
+    let mut object_ids = attachment_refs::collect_board_attachment_ids(elements);
+    // 内嵌预览对象由本节点持有，不能被正文差量同步挤掉。
+    if let Some(preview) = crate::repositories::node_preview_repository::find(connection, node_id)?
+        .map(|row| row.object_id)
+    {
+        object_ids.insert(preview);
+    }
     sync(connection, node_id, &object_ids, now)
 }
 
@@ -57,7 +63,12 @@ pub fn sync_mindmap_refs(
     content: &crate::models::mindmap::MindmapContent,
     now: i64,
 ) -> AppResult<RefSyncResult> {
-    let object_ids = crate::domain::mindmap::collect_image_object_ids(content);
+    let mut object_ids = crate::domain::mindmap::collect_image_object_ids(content);
+    if let Some(preview) = crate::repositories::node_preview_repository::find(connection, node_id)?
+        .map(|row| row.object_id)
+    {
+        object_ids.insert(preview);
+    }
     sync(connection, node_id, &object_ids, now)
 }
 

@@ -15,6 +15,8 @@ import type { DocSaveResult } from "@/types/document";
 import type { SaveStatus } from "../types";
 
 const DEBOUNCE_MS = 1000;
+/** 连续输入时的最长落盘间隔：一直打字也不会让防抖永远不到期。 */
+const MAX_WAIT_MS = 8000;
 const LOCK_RETRY_MS = 1000;
 const FLUSH_MAX_PASSES = 4;
 
@@ -59,6 +61,7 @@ export function useDocumentPersistence(
   const savingRef = useRef(false);
   const savingPromiseRef = useRef<Promise<void> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const attemptRef = useRef<() => Promise<void>>(async () => undefined);
@@ -69,6 +72,10 @@ export function useDocumentPersistence(
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
+    }
+    if (maxWaitTimerRef.current) {
+      clearTimeout(maxWaitTimerRef.current);
+      maxWaitTimerRef.current = null;
     }
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
@@ -90,6 +97,11 @@ export function useDocumentPersistence(
       debounceTimerRef.current = null;
       void attemptRef.current();
     }, delay);
+    // 从第一次编辑起计时；持续输入时最多等 8s 就落一次盘，避免崩溃丢整段内容。
+    maxWaitTimerRef.current ??= setTimeout(() => {
+      maxWaitTimerRef.current = null;
+      void attemptRef.current();
+    }, MAX_WAIT_MS);
   }, []);
 
   const beginSave = useCallback((): Promise<void> => {

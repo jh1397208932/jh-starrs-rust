@@ -236,6 +236,38 @@ pub fn insert_audit(connection: &Connection, item: NewAuditItem<'_>) -> rusqlite
     Ok(())
 }
 
+/// 审计保留条数：超出后只保留最新的一批。
+pub const AUDIT_KEEP: i64 = 2_000;
+/// 待审区保留条数：只对已处理项生效，pending 项只受保留期约束。
+pub const INBOX_KEEP: i64 = 500;
+/// AI 历史保留期：30 天。
+pub const HISTORY_RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// 清理过量的 AI 历史。
+///
+/// 审计与待审区都是只插不删的表：MCP 每调一次工具就多一行，长跑会持续抬高工作区库体积。
+/// 口径：超过保留期的记录一律删除；超过条数上限时只保留最新的（pending 项不受条数上限影响）。
+/// @param connection 工作区连接
+/// @param now 当前时间（毫秒）
+/// @returns 删除的总行数
+pub fn prune_history(connection: &Connection, now: i64) -> rusqlite::Result<usize> {
+    let cutoff = now - HISTORY_RETENTION_MS;
+    let audit = connection.execute(
+        "DELETE FROM ai_audit
+         WHERE created_at < ?1
+            OR id NOT IN (SELECT id FROM ai_audit ORDER BY created_at DESC, id DESC LIMIT ?2)",
+        rusqlite::params![cutoff, AUDIT_KEEP],
+    )?;
+    let inbox = connection.execute(
+        "DELETE FROM ai_inbox
+         WHERE created_at < ?1
+            OR (status <> 'pending'
+                AND id NOT IN (SELECT id FROM ai_inbox ORDER BY created_at DESC, id DESC LIMIT ?2))",
+        rusqlite::params![cutoff, INBOX_KEEP],
+    )?;
+    Ok(audit + inbox)
+}
+
 /// 列出最近审计记录。
 pub fn list_audit(connection: &Connection, limit: i64) -> rusqlite::Result<Vec<AiAuditRow>> {
     let limit = limit.clamp(1, 200);

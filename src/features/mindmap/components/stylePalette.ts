@@ -1,7 +1,7 @@
 /**
  * 思维导图样式常量：32 色板（与 Rust domain STYLE_PALETTE 一致）与标记分组。
  *
- * 色板独立于全局主题；保留旧 12 色的四个值以兼容历史数据，并补足 8×4 网格。
+ * 色板独立于全局主题，8×4 网格；与 Rust `domain` 的 STYLE_PALETTE 保持一致。
  */
 
 export const STYLE_PALETTE = [

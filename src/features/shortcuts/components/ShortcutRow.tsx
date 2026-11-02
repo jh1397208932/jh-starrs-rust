@@ -12,7 +12,6 @@ export interface ShortcutRowProps {
   binding: string;
   recording: boolean;
   error: string | null;
-  warning: string | null;
   onStartRecord: () => void;
   onCancelRecord: () => void;
   onCommit: (binding: string) => boolean;
@@ -25,7 +24,6 @@ export function ShortcutRow({
   binding,
   recording,
   error,
-  warning,
   onStartRecord,
   onCancelRecord,
   onCommit,
@@ -73,11 +71,7 @@ export function ShortcutRow({
           <RotateCcw className="size-3.5" />
         </Button>
       </div>
-      {(error || warning) && (
-        <p className={cn("mt-1 text-right text-[11px]", error ? "text-destructive" : "text-[var(--logo-c)]")}>
-          {error ?? warning}
-        </p>
-      )}
+      {error && <p className="mt-1 text-right text-[11px] text-destructive">{error}</p>}
     </li>
   );
 }

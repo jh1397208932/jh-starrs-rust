@@ -18,6 +18,8 @@ use crate::utils::{new_id, now_ms};
 
 /// 单个导入库文件上限，防止异常文件撑爆工作区库。
 const MAX_LIBRARY_BYTES: u64 = 32 * 1024 * 1024;
+/// 单个组件库的组件数量上限：侧栏列表与缩略图生成都是 O(组件数)，超大库要求拆分导入。
+const MAX_LIBRARY_ITEMS: usize = 2_000;
 
 struct PresetLibrary {
     key: &'static str,
@@ -105,10 +107,10 @@ struct ParsedItem {
 pub fn list(state: &AppState) -> AppResult<Vec<LibraryDto>> {
     with_session(state, |session| {
         ensure_presets(&session.connection)?;
-        Ok(repository::list(&session.connection)?
+        repository::list(&session.connection)?
             .into_iter()
             .map(|row| row.to_dto())
-            .collect())
+            .collect()
     })
 }
 
@@ -189,7 +191,7 @@ pub fn import(state: &AppState, input: ImportLibraryInput) -> AppResult<LibraryD
         repository::find(&session.connection, &library_id)?
             .ok_or_else(|| AppError::not_found("组件库不存在"))
     })?;
-    Ok(row.to_dto())
+    row.to_dto()
 }
 
 /// 启用/禁用组件库。
@@ -202,7 +204,7 @@ pub fn set_enabled(state: &AppState, input: SetLibraryEnabledInput) -> AppResult
         }
         let row = repository::find(&session.connection, &input.id)?
             .ok_or_else(|| AppError::not_found("组件库不存在"))?;
-        Ok(row.to_dto())
+        row.to_dto()
     })
 }
 
@@ -312,6 +314,11 @@ fn parse_library(bytes: &[u8]) -> AppResult<Vec<ParsedItem>> {
         if elements.is_empty() {
             continue;
         }
+        if items.len() == MAX_LIBRARY_ITEMS {
+            return Err(AppError::validation(format!(
+                "组件库组件过多（最多 {MAX_LIBRARY_ITEMS} 个），请拆分后再导入"
+            )));
+        }
         let elements_json = serde_json::to_string(elements).map_err(|error| {
             logging::error("library", &format!("组件元素序列化失败: {error}"));
             AppError::Internal
@@ -331,4 +338,36 @@ fn with_session<T>(
     let mut guard = state.workspace()?;
     let session = guard.as_mut().ok_or(AppError::NoActiveWorkspace)?;
     action(session)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn library_import_rejects_too_many_items() {
+        let items: Vec<Value> = (0..=MAX_LIBRARY_ITEMS)
+            .map(|index| {
+                json!({
+                    "name": format!("item-{index}"),
+                    "elements": [{"id": format!("element-{index}"), "type": "rectangle"}]
+                })
+            })
+            .collect();
+        let bytes = serde_json::to_vec(&json!({
+            "type": "excalidrawlib",
+            "version": 2,
+            "libraryItems": items
+        }))
+        .expect("序列化测试库");
+        let error = match parse_library(&bytes) {
+            Ok(_) => panic!("超量组件库必须拒绝"),
+            Err(error) => error,
+        };
+        assert!(
+            format!("{error}").contains("组件过多"),
+            "错误信息要说明组件过多：{error}"
+        );
+    }
 }

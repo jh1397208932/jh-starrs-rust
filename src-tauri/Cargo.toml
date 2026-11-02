@@ -44,13 +44,19 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = { version = "0.42", default-features = false }
 # 客户端内置 MCP HTTP 服务：成熟 HTTP 栈 + 与 Tauri 相同的 tokio 运行时。
 axum = "0.8"
-tokio = { version = "1", features = ["net", "sync"] }
+tokio = { version = "1", features = ["net", "sync", "time"] }
+pdf-inspector = "1.25.2"
 
 [dev-dependencies]
 tempfile = "3"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.dev]
+# 只保留行号表：默认的全量 debug info 会把 target/debug 撑到几十 GB，
+# 长跑（反复 build + test）时曾写满整块磁盘。
+debug = "line-tables-only"
+
 [profile.release]
 codegen-units = 1
 lto = true

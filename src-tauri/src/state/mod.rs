@@ -26,8 +26,8 @@ pub struct WorkspaceSession {
 impl WorkspaceSession {
     /// 打开工作区并保证结构就绪；目录缺少数据库时返回无效工作区错误。
     ///
-    /// 连接本身是轻量的；只有检测到版本落后或核心表缺失时，才按统一登记表执行
-    /// 初始化任务（启动时已初始化过的库在这里只是一次目录查询）。
+    /// 初始化只在版本为 0 的空库上建表：版本一致直接放行，其余版本一律拒绝，
+    /// 不做迁移或结构自愈（AGENTS.md §9 无历史数据原则）。
     pub fn open(record: &WorkspaceRecord) -> AppResult<Self> {
         let root = PathBuf::from(&record.path);
         if !db::paths::is_valid_workspace(&root) {
@@ -35,7 +35,7 @@ impl WorkspaceSession {
         }
         let db_path = db::paths::workspace_db_path(&root);
         let mut connection = db::workspace::open_connection(&db_path)?;
-        db::workspace::ensure_initialized(&mut connection, &db_path)?;
+        db::workspace::ensure_initialized(&mut connection)?;
         Ok(Self {
             workspace_id: record.id.clone(),
             root_path: root,
@@ -108,6 +108,29 @@ impl AppState {
     pub fn current_workspace_id(&self) -> AppResult<Option<String>> {
         let guard = self.workspace()?;
         Ok(guard.as_ref().map(|session| session.workspace_id.clone()))
+    }
+
+    /// 重新打开当前工作区的数据库连接。
+    ///
+    /// 磁盘瞬时错误后，SQLite 连接可能长期停在"只报 I/O 错误"的状态（例如 WAL/SHM 被外部
+    /// 进程删除或截断）。此时换一条新连接即可恢复；工作区 id、根目录与库路径保持不变。
+    /// @returns 无工作区时不做任何事；重开失败时返回数据库错误
+    pub fn reopen_workspace(&self) -> AppResult<()> {
+        let mut guard = self.workspace()?;
+        let Some(session) = guard.as_ref() else {
+            return Ok(());
+        };
+        let workspace_id = session.workspace_id.clone();
+        let root_path = session.root_path.clone();
+        let db_path = session.db_path.clone();
+        let connection = db::workspace::open_connection(&db_path)?;
+        *guard = Some(WorkspaceSession {
+            workspace_id,
+            root_path,
+            db_path,
+            connection,
+        });
+        Ok(())
     }
 }
 

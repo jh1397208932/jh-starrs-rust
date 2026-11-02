@@ -17,7 +17,7 @@ export type MindmapStructure =
   | "fishbone";
 
 /** 画布主题（分支配色方案）。 */
-export type MindmapTheme = "vivid" | "auto" | "warm" | "sea" | "mono" | "rose" | "forest" | "sky" | "plum";
+export type MindmapTheme = "vivid" | "warm" | "sea" | "mono" | "rose" | "forest" | "sky" | "plum";
 
 /** 分支配色模式。 */
 export type MindmapBranchColoring = "theme" | "rainbow";
@@ -134,7 +134,7 @@ export interface MindmapSheet {
 
 /** 持久化场景。 */
 export interface MindmapContent {
-  schemaVersion: 1 | 2;
+  schemaVersion: 2;
   sheet: MindmapSheet;
   relationships?: MindmapRelationship[];
   boundaries?: MindmapBoundary[];
@@ -217,13 +217,16 @@ export interface LayoutTopic {
   topic: MindmapTopic;
 }
 
+/** 连线的出/入方向；与布局产出的 handle id 一一对应。 */
+export type ConnectorSide = "left" | "right" | "up" | "down";
+
 /** 布局后的树形连线。 */
 export interface LayoutEdge {
   id: string;
   source: string;
   target: string;
-  sourceHandle: string;
-  targetHandle: string;
+  sourceHandle: ConnectorSide;
+  targetHandle: ConnectorSide;
   branchIndex: number;
   depth: number;
 }

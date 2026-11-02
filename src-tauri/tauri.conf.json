@@ -18,12 +18,19 @@
         "height": 800,
         "minWidth": 960,
         "minHeight": 600,
+        "visible": false,
         "titleBarStyle": "Overlay",
         "trafficLightPosition": {
           "x": 12,
           "y": 16
         },
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["underWindowBackground"],
+          "state": "followsWindowActiveState",
+          "radius": 12
+        }
       }
     ],
     "security": {
@@ -37,6 +44,11 @@
       "app",
       "dmg"
     ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

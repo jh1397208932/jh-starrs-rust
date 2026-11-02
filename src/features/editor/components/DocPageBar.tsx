@@ -1,15 +1,7 @@
 import { ChevronRight, Download, History, List, PanelRight, Printer, Star } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { jumpToOutline, useEditorOutline } from "../editorOutline";
 
 export interface DocPageBarProps {
   /** 当前文档标题（面包屑末级） */
@@ -20,10 +12,14 @@ export interface DocPageBarProps {
   starred: boolean;
   /** 信息浮窗是否展开 */
   infoOpen: boolean;
+  /** 大纲浮窗是否展开（与信息互斥） */
+  outlineOpen: boolean;
   /** 切换收藏状态 */
   onToggleStar: () => void;
   /** 打开 / 收起信息浮窗 */
   onToggleInfo: () => void;
+  /** 打开 / 收起大纲浮窗（与信息互斥） */
+  onToggleOutline: () => void;
   /** 打开分享与导出弹窗 */
   onShare: () => void;
   /** 触发打印 */
@@ -46,15 +42,16 @@ export function DocPageBar({
   kbName,
   starred,
   infoOpen,
+  outlineOpen,
   onToggleStar,
   onToggleInfo,
+  onToggleOutline,
   onShare,
   onPrint,
   onHistory,
   onOpenKb,
 }: DocPageBarProps) {
   const { t } = useI18n();
-  const { items: outline } = useEditorOutline();
 
   return (
     <div className="doc-page-bar mb-4 flex min-h-7 items-center justify-between gap-4">
@@ -95,35 +92,20 @@ export function DocPageBar({
           <TooltipContent>{t("收藏 (⌘D)")}</TooltipContent>
         </Tooltip>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" aria-label={t("文档目录")} className={cn(ICON_BTN)}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={outlineOpen ? t("关闭大纲面板") : t("打开大纲面板")}
+              aria-pressed={outlineOpen}
+              onClick={onToggleOutline}
+              className={cn(ICON_BTN, outlineOpen && "bg-accent text-accent-foreground")}
+            >
               <List className="size-4" />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[240px]">
-            <DropdownMenuLabel>{t("大纲")}</DropdownMenuLabel>
-            {outline.length === 0 && (
-              <DropdownMenuItem disabled className="text-muted-foreground">
-                {t("暂无标题")}
-              </DropdownMenuItem>
-            )}
-            {outline.map((heading) => (
-              <DropdownMenuItem
-                key={`${heading.id}-${heading.pos}`}
-                onSelect={() => jumpToOutline(heading.pos)}
-                className={cn(
-                  "truncate",
-                  heading.level === 1 && "font-medium",
-                  heading.level === 2 && "pl-6",
-                  heading.level >= 3 && "pl-9 text-muted-foreground",
-                )}
-              >
-                {heading.text || t("无标题")}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </TooltipTrigger>
+          <TooltipContent>{t("大纲")}</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>

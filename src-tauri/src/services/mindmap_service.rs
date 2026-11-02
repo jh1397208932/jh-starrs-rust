@@ -40,14 +40,31 @@ pub fn load(state: &AppState, node_id: &str) -> AppResult<MindmapLoadResult> {
     let mut missing = BTreeSet::new();
     if !loaded.content.is_default {
         let context = AttachmentContext::from_state(state)?;
+        // 整份导图共用一个只读连接：图片多时避免逐张重开库。
+        let connection = context.connection()?;
         for object_id in &loaded.object_ids {
-            match attachment_service::read_image_object(&context, object_id, MAX_IMAGE_BYTES) {
-                Ok((attachment, bytes)) => images.push(MindmapImageDto {
-                    id: object_id.clone(),
-                    mime_type: attachment.mime.clone(),
-                    data_url: format!("data:{};base64,{}", attachment.mime, BASE64.encode(bytes)),
-                    created: attachment.created_at,
-                }),
+            match attachment_service::read_image_object_with(
+                &connection,
+                &context.storage_root,
+                object_id,
+                MAX_IMAGE_BYTES,
+            ) {
+                Ok((attachment, bytes)) => {
+                    // 直接编码进带前缀的字符串，避免 base64 结果再复制一次。
+                    let mut data_url = String::with_capacity(
+                        attachment.mime.len() + bytes.len().div_ceil(3) * 4 + 16,
+                    );
+                    data_url.push_str("data:");
+                    data_url.push_str(&attachment.mime);
+                    data_url.push_str(";base64,");
+                    BASE64.encode_string(&bytes, &mut data_url);
+                    images.push(MindmapImageDto {
+                        id: object_id.clone(),
+                        mime_type: attachment.mime.clone(),
+                        data_url,
+                        created: attachment.created_at,
+                    });
+                }
                 Err(error) => {
                     logging::debug(
                         "mindmap",
@@ -225,9 +242,15 @@ pub fn export(
         fs::create_dir_all(parent)?;
     }
     let context = AttachmentContext::from_state(state)?;
+    // 导出时同一份导图的图片也复用一条连接。
+    let connection = context.connection()?;
     let image_loader = |object_id: &str| -> AppResult<(Vec<u8>, String)> {
-        let (attachment, bytes) =
-            attachment_service::read_image_object(&context, object_id, MAX_IMAGE_BYTES)?;
+        let (attachment, bytes) = attachment_service::read_image_object_with(
+            &connection,
+            &context.storage_root,
+            object_id,
+            MAX_IMAGE_BYTES,
+        )?;
         let extension = attachment
             .name
             .rsplit('.')

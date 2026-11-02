@@ -38,7 +38,7 @@ export default {
   },
   async run(ctx) {
     const uploadDir = ctx.exportDir("attachment-tree");
-    await ctx.press("上传附件");
+    await ctx.menu("上传附件", "选择附件");
     await ctx.nativePath(ctx.fixture("pixel.png"), { button: "Open" });
     ctx.metrics.dialogs += 1;
 

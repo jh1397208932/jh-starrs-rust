@@ -5,29 +5,44 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde_json::{Map, Value, json};
 
 use crate::errors::{AppError, AppResult};
 use crate::logging;
-use crate::models::attachment::{
-    AttachmentDto, AttachmentListQuery, SCOPE_NODE, UploadAttachmentInput,
-};
+use crate::models::attachment::{AttachmentDto, SCOPE_NODE, UploadAttachmentInput};
 use crate::models::board::BoardSaveInput;
 use crate::models::document::SaveDocumentInput;
-use crate::models::exchange::{ImportDocumentsInput, ImportFileResult, ImportMode, ImportResult};
+use crate::models::exchange::{
+    ImportDocumentsInput, ImportFileResult, ImportMode, ImportResult, ImportScanResult,
+    ImportScanSkippedFile,
+};
 use crate::models::{CreateAttachmentNodeInput, CreateNodeInput, NodeDto};
 use crate::services::attachment_service::{self, AttachmentContext};
 use crate::services::import_markdown::parse_markdown;
+use crate::services::import_pdf::parse_pdf;
 use crate::services::import_word::parse_word;
 use crate::services::{board_service, document_service, knowledge_base_service, node_service};
 use crate::state::AppState;
 
 const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdown", "mkd"];
 const WORD_EXTENSIONS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc"];
+const PDF_EXTENSIONS: &[&str] = &["pdf"];
+/// 混合导入扫描上限：防止损坏或超深目录拖垮预扫描。
+const MAX_SCAN_FILES: usize = 50_000;
+const MAX_SCAN_DEPTH: usize = 32;
+/// Markdown/文本导入上限：整份读入内存再转块 JSON，超过后内存与耗时都不可控。
+const MAX_TEXT_IMPORT_BYTES: u64 = 32 * 1024 * 1024;
+/// Word 导入上限；与 PDF（128 MiB）对齐。
+const MAX_WORD_IMPORT_BYTES: u64 = 128 * 1024 * 1024;
+/// 一次最多回传的跳过项；计数仍以真实总数为准。
+const MAX_SCAN_REPORTED: usize = 500;
+/// 整库导出的清单文件：导入器自己读，不算用户内容。
+const IMPORT_METADATA_FILES: &[&str] = &["manifest.json"];
 const EXCALIDRAW_EXTENSIONS: &[&str] = &["excalidraw"];
 /// Starris 整库导出的清单文件名；存在时可恢复附件节点。
 const MANIFEST_FILE: &str = "manifest.json";
@@ -203,6 +218,10 @@ fn walk_directory(
     for entry in entries {
         let path = entry.path();
         let name = entry.file_name();
+        // 隐藏文件/目录（.git、.DS_Store 等）不是用户内容，扫描与导入保持一致跳过。
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
         let child_relative = relative.join(&name);
         let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
@@ -406,7 +425,7 @@ fn import_attachment_manifest(
     }
 }
 
-/// 导入 `.excalidraw`：创建画板节点，上传内嵌图片并恢复 Starris 附件映射。
+/// 导入 `.excalidraw`：创建画板节点并上传内嵌图片。
 fn import_excalidraw_file(
     state: &AppState,
     attachment: &AttachmentContext,
@@ -479,15 +498,6 @@ fn import_excalidraw_file(
         &mut warnings,
         &mut attachment_count,
     );
-    let sidecar = load_board_sidecar(path, &mut warnings);
-    restore_file_card_attachments(
-        attachment,
-        &mut elements,
-        &sidecar,
-        &mut warnings,
-        &mut attachment_count,
-    );
-
     let saved = board_service::save(
         state,
         BoardSaveInput {
@@ -630,159 +640,6 @@ fn image_extension(mime: &str) -> String {
     }
 }
 
-struct BoardSidecarEntry {
-    name: String,
-    mime: String,
-    path: PathBuf,
-}
-
-/// 读取画板目录中的 `attachments.json`；不可读时只记录警告。
-fn load_board_sidecar(
-    source: &Path,
-    warnings: &mut Vec<String>,
-) -> HashMap<String, BoardSidecarEntry> {
-    let Some(parent) = source.parent() else {
-        return HashMap::new();
-    };
-    let sidecar_path = parent.join("attachments.json");
-    if !sidecar_path.is_file() {
-        return HashMap::new();
-    }
-    let raw = match fs::read_to_string(&sidecar_path) {
-        Ok(raw) => raw,
-        Err(error) => {
-            warnings.push(format!("attachments.json 读取失败：{error}"));
-            return HashMap::new();
-        }
-    };
-    let value: Value = match serde_json::from_str(&raw) {
-        Ok(value) => value,
-        Err(error) => {
-            warnings.push(format!("attachments.json 解析失败：{error}"));
-            return HashMap::new();
-        }
-    };
-    let Some(entries) = value.get("attachments").and_then(Value::as_array) else {
-        return HashMap::new();
-    };
-    let mut result = HashMap::new();
-    for entry in entries {
-        let Some(object_id) = entry.get("objectId").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(relative) = entry.get("file").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(path) = resolve_sidecar_file(parent, relative) else {
-            warnings.push(format!("attachments.json 中的路径不安全：「{relative}」"));
-            continue;
-        };
-        if !path.is_file() {
-            warnings.push(format!("画板附件「{relative}」不存在，已跳过"));
-            continue;
-        }
-        let name = entry
-            .get("name")
-            .and_then(Value::as_str)
-            .filter(|name| !name.trim().is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("画板附件")
-                    .to_string()
-            });
-        let mime = entry
-            .get("mime")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        result.insert(
-            object_id.to_string(),
-            BoardSidecarEntry { name, mime, path },
-        );
-    }
-    result
-}
-
-fn resolve_sidecar_file(parent: &Path, raw: &str) -> Option<PathBuf> {
-    let relative = Path::new(raw);
-    if relative.is_absolute() {
-        return None;
-    }
-    if relative
-        .components()
-        .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return None;
-    }
-    Some(parent.join(relative))
-}
-
-/// 把文件卡片里的 objectId 映射到 sidecar 文件，重新上传并改写。
-fn restore_file_card_attachments(
-    context: &AttachmentContext,
-    elements: &mut [Value],
-    sidecar: &HashMap<String, BoardSidecarEntry>,
-    warnings: &mut Vec<String>,
-    attachment_count: &mut usize,
-) {
-    if sidecar.is_empty() {
-        return;
-    }
-    for element in elements.iter_mut() {
-        let object_id = element
-            .get("customData")
-            .and_then(Value::as_object)
-            .and_then(|custom| custom.get("objectId"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let Some(object_id) = object_id else {
-            continue;
-        };
-        let is_card = element
-            .get("customData")
-            .and_then(Value::as_object)
-            .and_then(|custom| custom.get("boardFileCard"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if !is_card {
-            continue;
-        }
-        let Some(entry) = sidecar.get(&object_id) else {
-            warnings.push(format!("文件卡片附件 {object_id} 缺少 sidecar 映射"));
-            continue;
-        };
-        let bytes = match fs::read(&entry.path) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                warnings.push(format!("画板附件「{}」读取失败：{error}", entry.name));
-                continue;
-            }
-        };
-        let mime = if entry.mime.trim().is_empty() {
-            None
-        } else {
-            Some(entry.mime.clone())
-        };
-        match attachment_service::upload_bytes(
-            context,
-            entry.name.clone(),
-            "画板".to_string(),
-            mime,
-            bytes,
-        ) {
-            Ok(uploaded) => {
-                if let Some(custom) = element.get_mut("customData").and_then(Value::as_object_mut) {
-                    custom.insert("objectId".to_string(), Value::String(uploaded.id));
-                }
-                *attachment_count += 1;
-            }
-            Err(error) => warnings.push(format!("画板附件「{}」上传失败：{error}", entry.name)),
-        }
-    }
-}
-
 fn import_file(
     state: &AppState,
     attachment: &AttachmentContext,
@@ -797,9 +654,7 @@ fn import_file(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or_default();
-    if matches!(extension(path).as_str(), "xmind" | "mm" | "opml")
-        || file_name.ends_with(".starris-mindmap.json")
-    {
+    if is_mindmap_file(path, file_name) {
         let result = crate::services::mindmap_import_service::import(
             state,
             kb_id,
@@ -813,10 +668,7 @@ fn import_file(
             .unwrap_or_else(|| failure(path, "思维导图导入未创建节点".to_string())));
     }
     if !is_supported(path) {
-        return Ok(failure(
-            path,
-            "不支持的文件格式（仅支持 Markdown、Word 与 Excalidraw 画板）".to_string(),
-        ));
+        return Ok(failure(path, "这个文件暂时无法导入。".to_string()));
     }
     let title = path
         .file_stem()
@@ -861,7 +713,7 @@ fn import_file(
             ParsedContent {
                 blocks: vec![json!({
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": "正文自动转换失败，原始文件已作为附件保留。"}],
+                    "content": [{"type": "text", "text": "内容暂时无法转换，原始文件已作为附件保留。"}],
                 })],
                 warnings: vec![format!("正文解析失败：{error}")],
                 attachment_count: 0,
@@ -924,6 +776,23 @@ fn import_file(
     })
 }
 
+/// 导入前按文件元数据校验体积；超限直接拒绝，避免整份读入内存。
+fn ensure_import_size(path: &Path, max_bytes: u64, kind: &str) -> AppResult<()> {
+    let size = fs::metadata(path)
+        .map_err(|error| {
+            logging::error("import", &format!("读取文件信息失败: {error}"));
+            AppError::validation("文件不存在或不可读取")
+        })?
+        .len();
+    if size > max_bytes {
+        return Err(AppError::validation(format!(
+            "{kind}文件过大（最大 {} MB）",
+            max_bytes / 1024 / 1024
+        )));
+    }
+    Ok(())
+}
+
 fn parse_content(
     attachment: &AttachmentContext,
     path: &Path,
@@ -931,6 +800,7 @@ fn parse_content(
 ) -> AppResult<ParsedContent> {
     let extension = extension(path);
     if MARKDOWN_EXTENSIONS.contains(&extension.as_str()) {
+        ensure_import_size(path, MAX_TEXT_IMPORT_BYTES, "Markdown ")?;
         let text = fs::read_to_string(path).map_err(|error| {
             logging::error("import", &format!("读取 Markdown 失败: {error}"));
             AppError::validation("Markdown 文件无法读取")
@@ -943,7 +813,16 @@ fn parse_content(
         });
     }
     if WORD_EXTENSIONS.contains(&extension.as_str()) {
+        ensure_import_size(path, MAX_WORD_IMPORT_BYTES, "Word ")?;
         let parsed = parse_word(attachment, path, asset_prefix)?;
+        return Ok(ParsedContent {
+            blocks: parsed.blocks,
+            warnings: parsed.warnings,
+            attachment_count: parsed.attachment_count,
+        });
+    }
+    if PDF_EXTENSIONS.contains(&extension.as_str()) {
+        let parsed = parse_pdf(attachment, path, asset_prefix)?;
         return Ok(ParsedContent {
             blocks: parsed.blocks,
             warnings: parsed.warnings,
@@ -972,21 +851,15 @@ fn upload_original(attachment: &AttachmentContext, path: &Path) -> AppResult<Att
 }
 
 fn unique_attachment_name(context: &AttachmentContext, desired: &str) -> String {
-    let Ok(existing) = attachment_service::list(
-        context,
-        &AttachmentListQuery {
-            logical_path: Some("attach".to_string()),
-            include_deleted: false,
-            ..Default::default()
-        },
-    ) else {
+    // 按名做索引点查：以前每导入一个文件都拉 200 行附件再建集合，批量导入是 O(文件数 × 200)。
+    let Ok(connection) = context.connection() else {
         return desired.to_string();
     };
-    let used = existing
-        .iter()
-        .map(|item| item.name.as_str())
-        .collect::<HashSet<_>>();
-    if !used.contains(desired) {
+    let taken = |name: &str| -> bool {
+        crate::repositories::attachment_repository::name_exists(&connection, "attach", name)
+            .unwrap_or(false)
+    };
+    if !taken(desired) {
         return desired.to_string();
     }
     let path = Path::new(desired);
@@ -1000,7 +873,7 @@ fn unique_attachment_name(context: &AttachmentContext, desired: &str) -> String 
             Some(extension) => format!("{stem} ({index}).{extension}"),
             None => format!("{stem} ({index})"),
         };
-        if !used.contains(candidate.as_str()) {
+        if !taken(&candidate) {
             return candidate;
         }
     }
@@ -1065,11 +938,193 @@ fn failure(path: &Path, message: String) -> ImportFileResult {
     }
 }
 
+/// 混合导入预扫描：只读分类，不创建节点或对象。
+///
+/// 与真正的导入共用同一套扩展名判定；Markdown 引用的本地文件先去重收集，
+/// 这样「被引用的附件」不会被误报成「不支持、将跳过」。
+pub fn scan_folder(folder_path: &str) -> AppResult<ImportScanResult> {
+    let root = Path::new(folder_path);
+    if !root.is_absolute() || !root.is_dir() {
+        return Err(AppError::validation("请选择要导入的文件夹"));
+    }
+    let root_canonical = root
+        .canonicalize()
+        .map_err(|_| AppError::validation("文件夹无法读取"))?;
+
+    let mut files = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    let mut visited = 0usize;
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > MAX_SCAN_DEPTH {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with('.') {
+                continue;
+            }
+            visited += 1;
+            if visited > MAX_SCAN_FILES {
+                return Err(AppError::validation(
+                    "文件夹内文件过多（超过 5 万），请分批导入",
+                ));
+            }
+            let path = entry.path();
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                stack.push((path, depth + 1));
+            } else if metadata.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+
+    let mut referenced: HashSet<PathBuf> = HashSet::new();
+    for file in &files {
+        if !MARKDOWN_EXTENSIONS.contains(&extension(file).as_str()) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        let base = file.parent().unwrap_or(root);
+        for dest in collect_markdown_refs(&text) {
+            if let Some(path) = resolve_markdown_reference(&root_canonical, base, &dest) {
+                referenced.insert(path);
+            }
+        }
+    }
+
+    let mut documents = 0usize;
+    let mut boards = 0usize;
+    let mut mindmaps = 0usize;
+    let mut attachments = 0usize;
+    let mut unsupported = Vec::new();
+    for file in &files {
+        if is_document_file(file) {
+            documents += 1;
+        } else if is_excalidraw_file(file) {
+            boards += 1;
+        } else if is_mindmap_file(file, file_name(file)) {
+            mindmaps += 1;
+        } else if is_import_metadata(file) {
+            // 整库导出的清单由导入器自己读取，不算用户内容。
+        } else {
+            let canonical = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
+            if referenced.contains(&canonical) {
+                attachments += 1;
+            } else {
+                unsupported.push(ImportScanSkippedFile {
+                    path: relative_display(root, file),
+                    extension: extension(file),
+                });
+            }
+        }
+    }
+    unsupported.sort_by(|left, right| left.path.cmp(&right.path));
+    let unsupported_count = unsupported.len();
+    unsupported.truncate(MAX_SCAN_REPORTED);
+
+    logging::info(
+        "import",
+        &format!(
+            "混合导入扫描 root={} files={} docs={documents} boards={boards} mindmaps={mindmaps} attachments={attachments} skipped={unsupported_count}",
+            root.display(),
+            files.len()
+        ),
+    );
+
+    Ok(ImportScanResult {
+        root: root.to_string_lossy().into_owned(),
+        total_files: files.len(),
+        documents,
+        boards,
+        mindmaps,
+        attachments,
+        unsupported_count,
+        unsupported,
+    })
+}
+
+fn collect_markdown_refs(text: &str) -> Vec<String> {
+    Parser::new_ext(text, Options::empty())
+        .filter_map(|event| match event {
+            Event::Start(Tag::Link { dest_url, .. })
+            | Event::Start(Tag::Image { dest_url, .. }) => Some(dest_url.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 解析 Markdown 里的本地引用；外链、锚点与目录外路径一律不算附件。
+fn resolve_markdown_reference(root: &Path, base: &Path, dest: &str) -> Option<PathBuf> {
+    let lower = dest.to_ascii_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+        || lower.starts_with("data:")
+        || lower.starts_with('#')
+    {
+        return None;
+    }
+    let without_query = dest.split(['#', '?']).next().unwrap_or_default();
+    let decoded = percent_encoding::percent_decode_str(without_query)
+        .decode_utf8()
+        .ok()?
+        .into_owned();
+    if decoded.trim().is_empty() {
+        return None;
+    }
+    let candidate = base.join(decoded.trim_start_matches("./"));
+    let canonical = candidate.canonicalize().ok()?;
+    (canonical.starts_with(root) && canonical.is_file()).then_some(canonical)
+}
+
+fn is_import_metadata(path: &Path) -> bool {
+    IMPORT_METADATA_FILES.contains(&file_name(path))
+}
+
+fn relative_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 fn is_supported(path: &Path) -> bool {
+    is_document_file(path) || is_excalidraw_file(path) || is_mindmap_file(path, file_name(path))
+}
+
+fn is_document_file(path: &Path) -> bool {
     let extension = extension(path);
     MARKDOWN_EXTENSIONS.contains(&extension.as_str())
         || WORD_EXTENSIONS.contains(&extension.as_str())
-        || EXCALIDRAW_EXTENSIONS.contains(&extension.as_str())
+        || PDF_EXTENSIONS.contains(&extension.as_str())
+}
+
+fn is_excalidraw_file(path: &Path) -> bool {
+    EXCALIDRAW_EXTENSIONS.contains(&extension(path).as_str())
+}
+
+fn is_mindmap_file(path: &Path, name: &str) -> bool {
+    matches!(extension(path).as_str(), "xmind" | "mm" | "opml")
+        || name.ends_with(".starris-mindmap.json")
+}
+
+fn file_name(path: &Path) -> &str {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
 }
 
 fn extension(path: &Path) -> String {
@@ -1077,4 +1132,25 @@ fn extension(path: &Path) -> String {
         .and_then(|extension| extension.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_size_guard_reads_metadata_only() {
+        let dir = tempfile::tempdir().expect("临时目录");
+        let path = dir.path().join("huge.md");
+        let file = fs::File::create(&path).expect("建文件");
+        file.set_len(MAX_TEXT_IMPORT_BYTES + 1).expect("写稀疏文件");
+        drop(file);
+        let error = ensure_import_size(&path, MAX_TEXT_IMPORT_BYTES, "Markdown ")
+            .expect_err("超限必须拒绝");
+        assert!(
+            format!("{error}").contains("过大"),
+            "错误信息要说明过大：{error}"
+        );
+        assert!(ensure_import_size(&path, u64::MAX, "Markdown ").is_ok());
+    }
 }

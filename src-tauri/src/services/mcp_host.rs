@@ -30,6 +30,12 @@ use crate::{logging, mcp};
 const DEFAULT_PORT: u16 = 47821;
 /// 请求体上限：MCP 只传 JSON 参数，4 MiB 足够且能挡住异常大包。
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
+/// 工具调用的最长等待时间（秒）。人审批准走桌面 UI 的带外流程，不在这 60 秒内等待；
+/// 超时只结束 HTTP 侧等待，阻塞任务不被取消，结果按“未知”回复客户端。
+const TOOL_CALL_TIMEOUT_SECS: u64 = 60;
+/// 快速开关时旧监听器可能尚未释放端口，重试绑定的最大次数与间隔（毫秒）。
+const BIND_MAX_ATTEMPTS: u32 = 5;
+const BIND_RETRY_INTERVAL_MS: u64 = 120;
 
 struct RunningServer {
     id: u64,
@@ -47,6 +53,22 @@ struct HostState {
 static HOST: LazyLock<Mutex<HostState>> = LazyLock::new(|| Mutex::new(HostState::default()));
 /// 当前令牌。请求线程每次读取，重置令牌无需重启监听。
 static TOKEN: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
+
+/// 加锁 `HOST`；锁中毒时仍取回内部值。
+///
+/// 用 `unwrap_or_else(PoisonError::into_inner)` 而非 `if let Ok(..)`/`unwrap_or_default`：
+/// 前者会静默丢状态更新、后者会凭空造出一个空值，两者都会让鉴权与状态展示失真。
+fn lock_host() -> std::sync::MutexGuard<'static, HostState> {
+    HOST.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 加锁 `TOKEN`；中毒时同样取回内部真实令牌，保证鉴权不被静默降级。
+fn lock_token() -> std::sync::MutexGuard<'static, String> {
+    TOKEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// 设置页展示用的 MCP 状态。
 #[derive(Debug, Serialize)]
@@ -93,16 +115,14 @@ fn generate_token() -> String {
 }
 
 fn set_error(message: Option<String>) {
-    if let Ok(mut host) = HOST.lock() {
-        host.error = message;
-    }
+    lock_host().error = message;
 }
 
 /// 当前状态（运行中 / 已停用 / 启动失败）。
 pub fn status(app: &AppHandle) -> AppResult<McpStatus> {
     let enabled = read_enabled(app)?;
     let (url, error) = {
-        let host = HOST.lock().map_err(|_| AppError::Internal)?;
+        let host = lock_host();
         (
             host.running.as_ref().map(|running| running.url.clone()),
             host.error.clone(),
@@ -118,9 +138,21 @@ pub fn status(app: &AppHandle) -> AppResult<McpStatus> {
     })
 }
 
-/// 启动时调用：默认开启时异步拉起服务；失败只记录状态，不阻塞窗口首帧。
+/// 启动时调用：开关读取成功且为开启时异步拉起服务；失败只记录状态，不阻塞窗口首帧。
+///
+/// 读取设置失败时按保守策略不启动（凡涉及网络暴露的能力默认关闭），并把原因写入日志，
+/// 用户可在设置页重新打开开关来显式启动。
 pub fn ensure_started(app: &AppHandle) {
-    let enabled = read_enabled(app).unwrap_or(true);
+    let enabled = match read_enabled(app) {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            logging::error(
+                "mcp",
+                &format!("读取 MCP 开关设置失败，按保守策略不启动服务：{error}"),
+            );
+            false
+        }
+    };
     if !enabled {
         return;
     }
@@ -166,40 +198,57 @@ pub fn regenerate_token(app: &AppHandle) -> AppResult<McpStatus> {
         let guard = state.global()?;
         settings_repository::set(&guard, SETTING_MCP_TOKEN, &token, now_ms())?;
     }
-    if let Ok(mut current) = TOKEN.lock() {
-        *current = token;
-    }
+    *lock_token() = token;
     logging::info("mcp", "MCP 访问令牌已重置");
     status(app)
 }
 
 /// 停止监听；正在处理的请求会在空闲后结束。
 fn stop() {
-    if let Ok(mut host) = HOST.lock()
-        && let Some(running) = host.running.take()
-    {
+    let mut host = lock_host();
+    if let Some(running) = host.running.take() {
         let _ = running.shutdown.send(());
     }
+}
+
+/// 绑定 127.0.0.1 上的监听端口；带有限次重试。
+///
+/// 快速开关时上一次 `axum::serve` 任务可能还没把旧监听器释放掉，直接 bind 会报
+/// EADDRINUSE。这里等待旧任务退出（监听器随 serve future 一起 drop），最多重试
+/// `BIND_MAX_ATTEMPTS` 次；仍失败则返回明确错误供设置页展示。
+async fn bind_with_retry(port: u16) -> AppResult<tokio::net::TcpListener> {
+    let mut last_error: Option<std::io::Error> = None;
+    for attempt in 1..=BIND_MAX_ATTEMPTS {
+        match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(listener) => return Ok(listener),
+            Err(error) => last_error = Some(error),
+        }
+        if attempt < BIND_MAX_ATTEMPTS {
+            tokio::time::sleep(std::time::Duration::from_millis(BIND_RETRY_INTERVAL_MS)).await;
+        }
+    }
+    Err(match last_error {
+        Some(error) => AppError::validation(format!(
+            "MCP 端口 {port} 无法监听，旧监听器可能仍在释放，请稍后重试：{error}"
+        )),
+        None => AppError::Internal,
+    })
 }
 
 /// 绑定端口并注册路由；已存在旧实例时先停掉。
 async fn start(app: &AppHandle) -> AppResult<()> {
     stop();
     let token = ensure_token(app)?;
-    if let Ok(mut current) = TOKEN.lock() {
-        *current = token;
-    }
+    *lock_token() = token;
     let port = std::env::var("STARRIS_MCP_PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .map_err(|error| AppError::validation(format!("MCP 端口 {port} 无法监听：{error}")))?;
+    let listener = bind_with_retry(port).await?;
     let url = format!("http://127.0.0.1:{port}/mcp");
     let (shutdown, receiver) = oneshot::channel();
     let id = {
-        let mut host = HOST.lock().map_err(|_| AppError::Internal)?;
+        let mut host = lock_host();
         host.next_id += 1;
         let id = host.next_id;
         host.running = Some(RunningServer {
@@ -221,10 +270,7 @@ async fn start(app: &AppHandle) -> AppResult<()> {
                 let _ = receiver.await;
             })
             .await;
-        let mut host = match HOST.lock() {
-            Ok(guard) => guard,
-            Err(_) => return,
-        };
+        let mut host = lock_host();
         // 只有仍是本次启动的实例才清空状态，避免旧任务把新服务标记为未运行。
         if host
             .running
@@ -265,6 +311,14 @@ async fn handle_rpc(State(ctx): State<Ctx>, headers: HeaderMap, body: Bytes) -> 
             json!({"jsonrpc": "2.0", "id": Value::Null, "error": {"code": -32700, "message": "Parse error"}}),
         );
     };
+    // JSON-RPC 批量（数组）或其它非对象消息：本服务只实现单条请求，必须显式回
+    // Invalid Request 信封（-32600），绝不能回 202 让客户端误以为批量已被执行。
+    if !message.is_object() {
+        return json_response(
+            StatusCode::OK,
+            json!({"jsonrpc": "2.0", "id": Value::Null, "error": {"code": -32600, "message": "Invalid Request：仅支持单条 JSON-RPC 请求对象，不支持批量数组"}}),
+        );
+    }
     // 通知（无 id）不需要响应；MCP 客户端只关心 202。
     let Some(id) = message.get("id").cloned() else {
         return StatusCode::ACCEPTED.into_response();
@@ -276,11 +330,32 @@ async fn handle_rpc(State(ctx): State<Ctx>, headers: HeaderMap, body: Bytes) -> 
         .to_string();
     let params = message.get("params").cloned().unwrap_or(Value::Null);
     let app = ctx.app.clone();
-    let outcome = tokio::task::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        mcp::dispatch(&state, &method, &params)
-    })
+    let method_for_log = method.clone();
+    // 给工具调用设超时上限，防止卡死的 SQLite 调用长期占用 handler 与阻塞线程池；
+    // 超时后不取消阻塞任务（无法安全取消），只告知客户端结果未知。
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(TOOL_CALL_TIMEOUT_SECS),
+        tokio::task::spawn_blocking(move || {
+            let state = app.state::<AppState>();
+            mcp::dispatch(&state, &method, &params)
+        }),
+    )
     .await;
+    let outcome = match outcome {
+        Err(_elapsed) => {
+            logging::error(
+                "mcp",
+                &format!(
+                    "MCP 方法 {method_for_log} 调用超过 {TOOL_CALL_TIMEOUT_SECS} 秒未返回，后台任务仍在运行"
+                ),
+            );
+            return json_response(
+                StatusCode::OK,
+                json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("操作超时（{} 秒）：请求可能仍在后台执行，最终结果未知，请先查询确认后再重试", TOOL_CALL_TIMEOUT_SECS)}}),
+            );
+        }
+        Ok(joined) => joined,
+    };
     match outcome {
         Ok(Ok(result)) => json_response(
             StatusCode::OK,
@@ -307,6 +382,9 @@ fn json_response(status: StatusCode, body: Value) -> Response {
 }
 
 /// Bearer 令牌校验；比较过程不因前缀相同而提前返回。
+///
+/// 令牌缺失/为空视为明确的错误状态：写入 `host.error`（设置页可见）并拒绝请求，
+/// 不再静默地让所有请求 401 而状态仍显示运行中。
 fn authorized(headers: &HeaderMap) -> bool {
     let header_value = headers
         .get(header::AUTHORIZATION)
@@ -315,8 +393,14 @@ fn authorized(headers: &HeaderMap) -> bool {
     let Some(presented) = header_value.strip_prefix("Bearer ") else {
         return false;
     };
-    let expected = TOKEN.lock().map(|guard| guard.clone()).unwrap_or_default();
-    !expected.is_empty() && constant_time_eq(presented.trim().as_bytes(), expected.as_bytes())
+    let expected = lock_token().clone();
+    if expected.is_empty() {
+        set_error(Some(
+            "MCP 访问令牌缺失，服务已拒绝所有请求；请在设置页重置令牌".to_string(),
+        ));
+        return false;
+    }
+    constant_time_eq(presented.trim().as_bytes(), expected.as_bytes())
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {

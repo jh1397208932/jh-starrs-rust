@@ -13,12 +13,7 @@ import {
   MINDMAP_SHORTCUT_ACTIONS,
 } from "../actions";
 import { useShortcutConfig } from "../ShortcutProvider";
-import {
-  bindingLabel,
-  findCrossScopeConflict,
-  findSameScopeConflict,
-  validateBinding,
-} from "../shortcutKeys";
+import { bindingLabel, findSameScopeConflict, validateBinding } from "../shortcutKeys";
 import type { ShortcutAction, ShortcutScope } from "../types";
 import { ShortcutRow } from "./ShortcutRow";
 
@@ -179,13 +174,6 @@ export function ShortcutsSettings() {
                   action.scope,
                   binding,
                 );
-                const cross = findCrossScopeConflict(
-                  ALL_SHORTCUT_ACTIONS,
-                  config.bindings,
-                  action.id,
-                  action.scope,
-                  binding,
-                );
                 return (
                   <ShortcutRow
                     key={action.id}
@@ -198,14 +186,6 @@ export function ShortcutsSettings() {
                         : same
                           ? t("与「{label}」冲突", { label: t(same.label) })
                           : null
-                    }
-                    warning={
-                      !same && cross
-                        ? t("与{scope}「{label}」重复，当前作用域优先", {
-                            scope: t(SCOPE_LABELS[cross.scope]),
-                            label: t(cross.label),
-                          })
-                        : null
                     }
                     onStartRecord={() => {
                       setRecordingId(action.id);

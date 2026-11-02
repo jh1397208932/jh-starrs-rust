@@ -13,6 +13,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Map, Value, json};
 
 use crate::db;
+use crate::domain::NodeType;
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::attachment::{AttachmentDto, AttachmentListQuery, DownloadAttachmentInput};
@@ -36,8 +37,8 @@ const MAX_EXPORT_FILE_BYTES: usize = 128 * 1024 * 1024;
 /// 单文档导出。
 pub fn export_document(state: &AppState, input: ExportDocumentInput) -> AppResult<ExportResult> {
     let node = node_service::get(state, &input.node_id)?;
-    if node.node_type != 2 && node.node_type != 4 {
-        return Err(AppError::validation("仅文档或表格支持导出"));
+    if node.node_type != 2 {
+        return Err(AppError::validation("仅文档支持导出"));
     }
     let mut dest = PathBuf::from(&input.dest_path);
     if !dest.is_absolute() {
@@ -113,6 +114,10 @@ pub fn export_knowledge_base(
 
     let attachment_context = AttachmentContext::from_state(state)?;
     let nodes = node_service::list(state, &kb.id)?;
+    for node in &nodes {
+        // 只接受当前存在的节点类型；库里出现未知/已下线的类型说明数据已损坏。
+        NodeType::from_i64(node.node_type)?;
+    }
     let mut children_by_parent: BTreeMap<Option<String>, Vec<NodeDto>> = BTreeMap::new();
     for node in &nodes {
         children_by_parent
@@ -196,7 +201,7 @@ pub fn export_knowledge_base(
     });
     let readme_path = root.join("导出说明.md");
     let readme = format!(
-        "# {} 导出\n\n- 格式：{}\n- 导出时间：{}\n- 文档树：与本目录结构一致\n- 附件节点：写在与文件树对应的位置\n- 文档附件：每个文档同级的 `attach/` 目录；未引用附件在 `_attachments/`\n- 画板：每个画板一个同名目录，含 `.excalidraw`、`.png`、`.svg`、`attach/` 与 `attachments.json`\n- 清单：`manifest.json` 记录全部文件与警告\n",
+        "# {} 导出\n\n- 格式：{}\n- 导出时间：{}\n- 文档树：与本目录结构一致\n- 附件节点：写在与文件树对应的位置\n- 文档附件：每个文档同级的 `attach/` 目录；未引用附件在 `_attachments/`\n- 画板：每个画板一个同名目录，含 `.excalidraw`、`.png`、`.svg` 与图片目录 `attach/`\n- 清单：`manifest.json` 记录全部文件与警告\n",
         kb.name,
         input.format.label(),
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
@@ -212,10 +217,7 @@ pub fn export_knowledge_base(
             "导出知识库 kb={} format={:?} docs={} boards={} files={} attachments={} root={}",
             kb.id,
             input.format,
-            nodes
-                .iter()
-                .filter(|node| node.node_type == 2 || node.node_type == 4)
-                .count(),
+            nodes.iter().filter(|node| node.node_type == 2).count(),
             result.boards.len(),
             result.files.len(),
             result.attachment_count,
@@ -257,7 +259,7 @@ fn export_children(
                     result,
                 )?;
             }
-            2 | 4 => {
+            2 => {
                 let stem =
                     unique_file_stem(dir, &safe_component(&node.title, "文档"), "md", &mut used);
                 let file_name = format!("{stem}.{}", format.extension());
@@ -286,7 +288,7 @@ fn export_children(
                 result.attachment_count += prepared.ctx.attachments.len();
                 result.files.extend(prepared.files);
             }
-            3 | 5 => {
+            3 => {
                 export_board(
                     state,
                     attachment_context,
@@ -319,28 +321,8 @@ fn export_children(
                 )?;
             }
             other => {
-                let stem =
-                    unique_file_stem(dir, &safe_component(&node.title, "节点"), "json", &mut used);
-                let path = dir.join(format!("{stem}.json"));
-                let metadata = json!({
-                    "id": node.id,
-                    "title": node.title,
-                    "type": other,
-                    "kind": node_kind(other),
-                    "path": node.path,
-                    "wordCount": node.word_count,
-                    "createdAt": node.created_at,
-                    "updatedAt": node.updated_at,
-                    "note": "该节点类型暂无可导出的正文，已导出元数据。",
-                });
-                fs::write(
-                    &path,
-                    serde_json::to_vec_pretty(&metadata).unwrap_or_default(),
-                )?;
-                result.files.push(ExportFileDto {
-                    path: db::paths::path_to_string(&path)?,
-                    kind: "metadata".to_string(),
-                });
+                logging::error("export", &format!("导出遇到未知节点类型 type={other}"));
+                return Err(AppError::validation("内容类型无效"));
             }
         }
     }
@@ -435,20 +417,17 @@ fn export_board(
 
     let attach_dir = board_dir.join("attach");
     fs::create_dir_all(&attach_dir)?;
-    let (image_ids, card_ids) = board_service::collect_object_ids(&snapshot.elements);
-    let mut object_ids = BTreeSet::new();
-    object_ids.extend(image_ids.iter().cloned());
-    object_ids.extend(card_ids);
+    let image_ids = board_service::collect_image_object_ids(&snapshot.elements);
+    let object_ids = image_ids.clone();
     let mut used_names = HashSet::new();
     let mut files_map = Map::new();
-    let mut attachment_rows = Vec::new();
 
     for object_id in object_ids {
         let meta = match attachment_service::get(context, &object_id) {
             Ok(meta) => meta,
             Err(error) => {
                 result.warnings.push(format!(
-                    "画板「{}」的图片或附件 {object_id} 不存在：{error}",
+                    "画板「{}」的图片 {object_id} 不存在：{error}",
                     node.title
                 ));
                 continue;
@@ -475,7 +454,7 @@ fn export_board(
         });
 
         let mime = meta.mime.clone();
-        // 只有原生 image 图元依赖 files 映射；文件卡片由 sidecar 恢复，避免重复内嵌。
+        // 画板图元只认原生 image；图片同时写入 files 映射，重新导入时可直接回填。
         if image_ids.contains(&object_id) && mime.starts_with("image/") {
             match attachment_service::read_image_object(context, &object_id, MAX_EMBED_IMAGE_BYTES)
             {
@@ -495,13 +474,6 @@ fn export_board(
                 )),
             }
         }
-        attachment_rows.push(json!({
-            "objectId": object_id,
-            "name": meta.name,
-            "mime": mime,
-            "size": meta.size,
-            "file": format!("attach/{name}"),
-        }));
     }
 
     let excalidraw = json!({
@@ -520,23 +492,6 @@ fn export_board(
     result.files.push(ExportFileDto {
         path: db::paths::path_to_string(&excalidraw_path)?,
         kind: "board".to_string(),
-    });
-
-    let sidecar_path = board_dir.join("attachments.json");
-    let sidecar = json!({
-        "type": "starris-board-attachments",
-        "version": 1,
-        "nodeId": node.id,
-        "title": node.title,
-        "attachments": attachment_rows,
-    });
-    fs::write(
-        &sidecar_path,
-        serde_json::to_vec_pretty(&sidecar).unwrap_or_default(),
-    )?;
-    result.files.push(ExportFileDto {
-        path: db::paths::path_to_string(&sidecar_path)?,
-        kind: "board-manifest".to_string(),
     });
 
     let png_path = board_dir.join(format!("{folder}.png"));
@@ -994,9 +949,8 @@ fn node_kind(node_type: i64) -> &'static str {
         1 => "folder",
         2 => "doc",
         3 => "board",
-        4 => "table",
-        5 => "flow",
         6 => "attachment",
+        7 => "mindmap",
         _ => "unknown",
     }
 }

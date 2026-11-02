@@ -14,6 +14,7 @@ pub mod exchange;
 pub mod history;
 pub mod library;
 pub mod mindmap;
+pub mod node_preview;
 pub mod search;
 pub mod template;
 
@@ -108,7 +109,7 @@ pub struct KnowledgeBaseDto {
     pub workspace_id: String,
     pub name: String,
     pub description: String,
-    /// 非文件夹节点数（文档/画板/表格/流程图）。
+    /// 非文件夹节点数（文档/画板/导图/附件）。
     pub doc_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -282,6 +283,16 @@ pub struct CreateAttachmentNodeInput {
     pub knowledge_base_id: String,
     pub parent_id: Option<String>,
     pub object_id: String,
+}
+
+/// 上传整个文件夹到文件树的入参。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderImportInput {
+    pub knowledge_base_id: String,
+    pub parent_id: Option<String>,
+    /// 本地目录绝对路径；目录内文件按层级上传
+    pub folder_path: String,
 }
 
 /// 修改节点入参；名称与收藏可选。

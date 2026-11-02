@@ -42,8 +42,6 @@ export interface DocLoadResult {
   wordCount: number;
   updatedAt: number;
   tree: BlockNode[];
-  /** 后端是否修复了历史脏数据（前端需自动补一次保存） */
-  normalized: boolean;
   /** 当前文档版本；保存时作为 baseVersion 回传 */
   version: number;
 }

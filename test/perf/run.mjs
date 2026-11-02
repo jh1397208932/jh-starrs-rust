@@ -2,7 +2,7 @@
 /**
  * 真机分场景性能采集（需求：docs/需求文档/2026-10-27-需求文档-渲染性能优化与动效.md）。
  *
- * 前置：`npm run tauri build -- --debug --no-bundle` 已产出「生产前端 + dev 档 Rust」的二进制。
+ * 前置：`VITE_FRAME_PROBE=1 npm run tauri build -- --debug --no-bundle` 已产出带帧探针的二进制。
  * 流程：编译 AX 辅助程序 → 包装 .app（隔离 STARRIS_HOME，STARRIS_LOG_LEVEL=debug）→
  *       引导建工作区/知识库 → 逐场景驱动真实交互 → 解析 logs/starris.log 中 perfProbe 读数 →
  *       按场景时间窗聚合出 report.md / report.json。
@@ -76,10 +76,12 @@ function prepareAppBundle() {
   fs.writeFileSync(
     APP_EXECUTABLE,
     `#!/bin/zsh
+# 输出日志硬上限 200MiB，避免卡死时的空转输出写满磁盘。
+ulimit -f 409600
 export STARRIS_HOME='${HOME}'
 export STARRIS_LOG_LEVEL=debug
 export STARRIS_MCP_PORT=47831
-exec '${APP_BINARY}' >> '${APP_LOG}' 2>&1
+exec '${APP_BINARY}' > '${APP_LOG}' 2>&1
 `,
   );
   fs.chmodSync(APP_EXECUTABLE, 0o755);
@@ -469,7 +471,7 @@ const scenarios = [
     seconds: 16,
     async run() {
       await act.press("Perf Board", { settle: 900 });
-      await waitForText("插入附件", { timeout: 20_000 });
+      await waitForText("组件库", { timeout: 20_000 });
       await sleep(1200);
       for (let round = 0; round < 6; round += 1) {
         const dx = 40 + round * 12;

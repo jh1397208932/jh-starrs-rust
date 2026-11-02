@@ -8,13 +8,14 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::errors::{AppError, AppResult};
+use crate::logging;
 use crate::models::board::BoardSaveInput;
 use crate::models::search::SearchNodesInput;
 use crate::models::{CreateNodeInput, SaveDocumentInput};
 use crate::repositories::ai_repository::{self, AiInboxRow, AiPermissions};
 use crate::services::{
-    board_service, document_service, knowledge_base_service, mindmap_service, node_service,
-    search_service,
+    ai_review, board_service, document_service, knowledge_base_service, mindmap_service,
+    node_service, search_service,
 };
 use crate::state::AppState;
 use crate::utils::{new_id, now_ms};
@@ -171,10 +172,10 @@ fn doc_replace_range_schema() -> Value {
     node_arg_required(
         json!({
             "start": {"type": "integer", "description": "起始下标（含）"},
-            "end": {"type": "integer", "description": "结束下标（不含）"},
+            "end": {"type": "integer", "description": "结束下标（不含）；必填，缺省不再当作 0 静默不删"},
             "blocks": blocks_property()
         }),
-        &["blocks"],
+        &["blocks", "end"],
     )
 }
 
@@ -456,7 +457,7 @@ pub fn decide(mode: &str, risk: AiRisk) -> Decision {
 
 /// 节点级工具按目标的实际类型选作用域；目标缺失或未知时退回工具声明。
 ///
-/// 节点类型：1 文件夹 / 2 文档 / 3 画板 / 4 表格 / 5 流程图 / 6 附件 / 7 思维导图。
+/// 节点类型：1 文件夹 / 2 文档 / 3 画板 / 6 附件 / 7 思维导图。
 /// 只有画板与思维导图有自己的作用域；其余（文件夹、文档、附件等树结构）跟随文档作用域。
 fn resolve_scope(state: &AppState, tool: &AiTool, args: &Value) -> AppResult<AiScope> {
     if !tool.name.starts_with("node_") {
@@ -569,11 +570,19 @@ pub fn execute(state: &AppState, tool_name: &str, args: &Value) -> AppResult<AiE
         }
         Decision::Enqueue => {
             let inbox_id = enqueue(state, tool_name, args, risk)?;
+            // 入队也要留痕：否则最终被拒绝的写入在审计里完全看不见。
+            // 取值受 ai_audit.outcome 的 CHECK 约束：入队是 'inbox'，不是自造的词。
+            record_audit(state, tool_name, args, risk, "inbox")?;
+            // 主界面弹出前后对比确认窗；渲染失败不影响待审项本身（设置页仍可处理）。
+            match ai_review::preview(state, &inbox_id, tool_name, args, risk.as_str()) {
+                Ok(preview) => ai_review::emit(&preview),
+                Err(error) => logging::error("ai", &format!("生成待审对比失败: {error}")),
+            }
             Ok(AiExecution {
                 status: "pending_review",
                 data: None,
                 inbox_id: Some(inbox_id),
-                message: Some("写入已进入待审区，等待人工确认".to_string()),
+                message: Some("写入已进入待审区，主界面等待人工确认".to_string()),
             })
         }
         Decision::Direct => {
@@ -611,7 +620,15 @@ fn enqueue(state: &AppState, tool_name: &str, args: &Value, risk: AiRisk) -> App
             created_at: now_ms(),
         },
     )?;
+    prune_history(&session.connection);
     Ok(id)
+}
+
+/// AI 历史写入后的收敛：只插不删的表按保留期与条数上限清理，失败只记日志、不影响主流程。
+fn prune_history(connection: &rusqlite::Connection) {
+    if let Err(error) = ai_repository::prune_history(connection, now_ms()) {
+        logging::error("ai", &format!("AI 历史清理失败: {error}"));
+    }
 }
 
 fn record_audit(
@@ -637,6 +654,7 @@ fn record_audit(
             created_at: now_ms(),
         },
     )?;
+    prune_history(&session.connection);
     Ok(())
 }
 
@@ -656,12 +674,37 @@ pub fn approve(state: &AppState, inbox_id: &str) -> AppResult<Value> {
     if claimed == 0 {
         return Err(AppError::conflict("该待审项已处理"));
     }
+    let workspace_id = session.workspace_id.clone();
     drop(guard);
+    // run_write 要自己取工作区锁，认领与执行之间不能一直握着它；
+    // 执行前再确认一次身份，避免用户在这空隙里切了工作区，把 A 的载荷写进 B。
+    {
+        let guard = state.workspace()?;
+        let same = guard
+            .as_ref()
+            .is_some_and(|session| session.workspace_id == workspace_id);
+        if !same {
+            if let Some(session) = guard.as_ref() {
+                let _ = ai_repository::fail_inbox(
+                    &session.connection,
+                    inbox_id,
+                    "工作区已切换，未执行",
+                    now_ms(),
+                );
+            }
+            return Err(AppError::conflict("工作区已切换，请回到原工作区后重新确认"));
+        }
+    }
     let result = run_write(state, &row.tool, &args);
     match result {
         Ok(value) => {
             let guard = state.workspace()?;
             let session = guard.as_ref().ok_or(AppError::NoActiveWorkspace)?;
+            if session.workspace_id != workspace_id {
+                // 写入已完成但工作区变了：审计必须留在它真正落库的那个库里。
+                logging::error("ai", "审批执行后工作区已切换，跳过审计回写");
+                return Ok(value);
+            }
             let risk = match row.risk.as_str() {
                 "high" => AiRisk::High,
                 "medium" => AiRisk::Medium,
@@ -683,10 +726,28 @@ pub fn approve(state: &AppState, inbox_id: &str) -> AppResult<Value> {
             Ok(value)
         }
         Err(error) => {
-            let guard = state.workspace()?;
-            let session = guard.as_ref().ok_or(AppError::NoActiveWorkspace)?;
             let message = error.to_string();
-            ai_repository::fail_inbox(&session.connection, inbox_id, &message, now_ms())?;
+            let guard = state.workspace()?;
+            match guard.as_ref() {
+                Some(session) if session.workspace_id == workspace_id => {
+                    ai_repository::fail_inbox(&session.connection, inbox_id, &message, now_ms())?;
+                }
+                // 写入失败后工作区已切换或已关闭：这条待审项在另一个库里（或无处可写），
+                // 拿当前连接去标记会把状态写进无关的库，也可能直接失败让记录卡在
+                // 「已认领但未执行」= 用户以为已生效。只记日志并把原因回给调用方。
+                other => {
+                    let note = match other {
+                        Some(session) => format!("工作区已切到 {}", session.workspace_id),
+                        None => "工作区已关闭".to_string(),
+                    };
+                    logging::error(
+                        "ai",
+                        &format!(
+                            "审批执行失败且{note}，待审项 {inbox_id} 无法回写失败状态：{message}"
+                        ),
+                    );
+                }
+            }
             Err(error)
         }
     }
@@ -823,11 +884,7 @@ fn run_write(state: &AppState, tool: &str, args: &Value) -> AppResult<Value> {
         }
         "doc_append_blocks" => {
             let node_id = require_str(args, "nodeId")?;
-            let blocks = args
-                .get("blocks")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            let blocks = bounded_array(args, "blocks")?;
             let loaded = document_service::load(state, node_id)?;
             ensure_version(args, loaded.version)?;
             let mut document = loaded.document;
@@ -871,12 +928,13 @@ fn run_write(state: &AppState, tool: &str, args: &Value) -> AppResult<Value> {
         "doc_replace_range" => {
             let node_id = require_str(args, "nodeId")?;
             let start = args.get("start").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let end = args.get("end").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let blocks = args
-                .get("blocks")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            // 缺 end 时旧实现按 0 处理，start..0 是空区间：白写一版、块却被丢掉。
+            let end = args
+                .get("end")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| AppError::validation("doc_replace_range 需要显式 end"))?
+                as usize;
+            let blocks = bounded_array(args, "blocks")?;
             let loaded = document_service::load(state, node_id)?;
             ensure_version(args, loaded.version)?;
             let mut document = loaded.document;
@@ -904,11 +962,7 @@ fn run_write(state: &AppState, tool: &str, args: &Value) -> AppResult<Value> {
         }
         "board_add_elements" => {
             let node_id = require_str(args, "nodeId")?;
-            let specs = args
-                .get("elements")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            let specs = bounded_array(args, "elements")?;
             let loaded = board_service::load(state, node_id)?;
             ensure_version(args, loaded.version)?;
             let mut elements = loaded.elements.as_array().cloned().unwrap_or_default();
@@ -967,11 +1021,7 @@ fn run_write(state: &AppState, tool: &str, args: &Value) -> AppResult<Value> {
         "doc_insert_after_block" => {
             let node_id = require_str(args, "nodeId")?;
             let block_id = require_str(args, "blockId")?;
-            let blocks = args
-                .get("blocks")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            let blocks = bounded_array(args, "blocks")?;
             if blocks.is_empty() {
                 return Err(AppError::validation("缺少要插入的段落"));
             }
@@ -1028,6 +1078,12 @@ fn run_write(state: &AppState, tool: &str, args: &Value) -> AppResult<Value> {
                 .unwrap_or_default();
             if ids.is_empty() {
                 return Err(AppError::validation("缺少要删除的元素 id"));
+            }
+            if ids.len() > MAX_WRITE_ITEMS {
+                return Err(AppError::validation(format!(
+                    "elementIds 最多 {MAX_WRITE_ITEMS} 项，收到 {} 项",
+                    ids.len()
+                )));
             }
             let loaded = board_service::load(state, node_id)?;
             ensure_version(args, loaded.version)?;
@@ -1112,6 +1168,28 @@ fn require_str<'a>(args: &'a Value, key: &str) -> AppResult<&'a str> {
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| AppError::validation(format!("缺少参数 {key}")))
+}
+
+/// 单次写入允许的条目上限。
+///
+/// MCP 参数来自外部客户端，不设上限时一次调用就能塞进任意多个块或元素，
+/// 把整篇文档重写的耗时和内存都变成调用方可控的。
+const MAX_WRITE_ITEMS: usize = 500;
+
+/// 取一个有界数组参数；缺失或空返回空表，超上限直接报错而不是静默截断。
+fn bounded_array(args: &Value, key: &str) -> AppResult<Vec<Value>> {
+    let items = args
+        .get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if items.len() > MAX_WRITE_ITEMS {
+        return Err(AppError::validation(format!(
+            "{key} 最多 {MAX_WRITE_ITEMS} 项，收到 {} 项",
+            items.len()
+        )));
+    }
+    Ok(items)
 }
 
 fn ensure_version(args: &Value, current: i64) -> AppResult<()> {

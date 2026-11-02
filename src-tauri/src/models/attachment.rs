@@ -10,6 +10,8 @@ pub const STATUS_DELETED: &str = "deleted";
 pub const SCOPE_LIBRARY: &str = "library";
 /// 由文档/画板/附件节点产生，失去引用后进入孤儿流程。
 pub const SCOPE_NODE: &str = "node";
+/// 文档内嵌预览图的内部逻辑目录；不出现在附件选择器里。
+pub const PREVIEW_LOGICAL_PATH: &str = "__preview";
 /// 大对象存储类型。
 pub const KIND_BIG: &str = "big";
 /// pack 小对象存储类型。
@@ -271,6 +273,8 @@ pub struct AttachmentStatsDto {
     pub unlinked_count: i64,
     /// 回收站附件数。
     pub trash_count: i64,
+    /// 软删除（回收站）附件的逻辑字节数；物理对象仍留在 pack/big 中。
+    pub trash_bytes: i64,
     /// storage 目录中可统计的实际文件字节数。
     pub disk_bytes: i64,
     /// 存储所在磁盘剩余字节；无法读取时为 None。
@@ -278,6 +282,33 @@ pub struct AttachmentStatsDto {
     /// 孤儿/回收站/死 pack 的可回收字节估算。
     pub reclaimable_bytes: i64,
     /// 最近一次维护时间（Unix 毫秒）。
+    pub last_maintenance_at: Option<i64>,
+}
+
+/// 当前工作区的分类磁盘占用（Settings 存储页 IPC 输出）。
+///
+/// 口径详见 `attachment_service::workspace_storage_stats` 的注释；
+/// `trash_bytes` 的物理对象已含在 `attachment_bytes` 内，不计入 `total_bytes` 之外的份额。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceStorageStatsDto {
+    /// 工作区总字节 = databaseBytes + attachmentBytes + tempBytes + quarantineBytes。
+    pub total_bytes: i64,
+    /// SQLite 主文件与 `-wal`、`-shm` 伴生文件的字节数。
+    pub database_bytes: i64,
+    /// 附件物理对象（pack + big）在磁盘上的实际字节数。
+    pub attachment_bytes: i64,
+    /// 软删除（回收站）附件的逻辑字节数；物理对象仍留在附件字节内。
+    pub trash_bytes: i64,
+    /// storage/tmp 上传暂存区残留文件字节数。
+    pub temp_bytes: i64,
+    /// storage/quarantine 孤儿对象隔离区字节数。
+    pub quarantine_bytes: i64,
+    /// 可回收空间估算（回收站 + 孤儿 + 死 pack 字节）。
+    pub reclaimable_bytes: i64,
+    /// 存储所在磁盘剩余字节；无法读取时为 None。
+    pub disk_free_bytes: Option<i64>,
+    /// 最近一次维护时间（Unix 毫秒）；从未执行为 None。
     pub last_maintenance_at: Option<i64>,
 }
 

@@ -23,7 +23,7 @@ pub struct PreparedDocument {
     pub document: Value,
     /// 顶层块（hash 基于规范化 JSON）。
     pub blocks: Vec<ExtractedBlock>,
-    /// 是否修复了历史脏数据（前端据此自动补一次保存）。
+    /// 规范化是否改动了输入；写入前必须为规范形态，加载时改动即视为旧格式脏数据。
     pub changed: bool,
 }
 
@@ -31,7 +31,7 @@ pub struct PreparedDocument {
 ///
 /// 规则（前后端共同遵守的唯一权威实现）：
 /// - 根必须是 `type=doc`，`content` 缺失/null 视为空数组；
-/// - `emoji` 节点必须带非空 `name`，否则删除（历史 `:null:` 脏数据）；
+/// - `emoji` 节点必须带非空 `name`，否则删除；
 /// - 删除值为 null 的 `attrs` 项、空 marks 与空 text；
 /// - 保持其余节点/属性不变。
 ///
@@ -89,6 +89,103 @@ pub fn prepare_document(document: &Value) -> AppResult<PreparedDocument> {
         blocks,
         changed,
     })
+}
+
+/// 校验正文是否已经是 [`prepare_document`] 的规范输出。
+///
+/// 加载路径只需要"能不能原样用"，不需要规范化副本：这里与 `prepare_document`
+/// 共用同一套规则但只做校验——任何会被规范化改动的内容都直接拒绝，避免
+/// 每次打开文档都复制整棵树并逐块序列化算哈希。
+pub fn validate_document(document: &Value) -> AppResult<()> {
+    let root = document.as_object().ok_or_else(invalid_document)?;
+    if root.get("type").and_then(Value::as_str) != Some("doc") {
+        return Err(invalid_document());
+    }
+    let content = root.get("content").ok_or_else(invalid_document)?;
+    let blocks = content.as_array().ok_or_else(invalid_document)?;
+    for (key, value) in root {
+        if key.as_str() != "content" && value.is_null() {
+            return Err(invalid_document());
+        }
+    }
+    for block in blocks {
+        if !block.is_object() {
+            return Err(invalid_document());
+        }
+        validate_node(block)?;
+    }
+    Ok(())
+}
+
+fn invalid_document() -> AppError {
+    AppError::validation("文档内容不符合当前格式，请删除该文档后重新创建")
+}
+
+/// 与 [`normalize_node`] 逐条对应：命中任一"会被改动/被删除"的条件即拒绝。
+fn validate_node(value: &Value) -> AppResult<()> {
+    let object = value.as_object().ok_or_else(invalid_document)?;
+    let node_type = object
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if node_type == "emoji" {
+        let name = object
+            .get("attrs")
+            .and_then(|attrs| attrs.get("name"))
+            .and_then(Value::as_str);
+        if name.is_none_or(|name| name.trim().is_empty()) {
+            return Err(invalid_document());
+        }
+    }
+    for (key, child) in object {
+        match key.as_str() {
+            "attrs" => match child {
+                Value::Null => return Err(invalid_document()),
+                Value::Object(attrs) if attrs.is_empty() || attrs.values().any(Value::is_null) => {
+                    return Err(invalid_document());
+                }
+                Value::Object(_) => {}
+                _ => {}
+            },
+            "marks" => match child {
+                Value::Null => return Err(invalid_document()),
+                Value::Array(marks) => {
+                    if marks.is_empty() {
+                        return Err(invalid_document());
+                    }
+                    for mark in marks {
+                        validate_node(mark)?;
+                    }
+                }
+                _ => {}
+            },
+            "content" => match child {
+                Value::Null => return Err(invalid_document()),
+                Value::Array(children) => {
+                    if children.is_empty() && node_type != "doc" {
+                        return Err(invalid_document());
+                    }
+                    for child in children {
+                        validate_node(child)?;
+                    }
+                }
+                _ => {}
+            },
+            "text" => match child {
+                Value::Null => return Err(invalid_document()),
+                Value::String(text) if node_type == "text" && text.is_empty() => {
+                    return Err(invalid_document());
+                }
+                _ => {}
+            },
+            _ => {
+                if child.is_null() {
+                    return Err(invalid_document());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn extract_normalized_blocks(document: &Value) -> AppResult<Vec<ExtractedBlock>> {
@@ -149,6 +246,8 @@ fn normalize_node(value: &Value, changed: &mut bool) -> Option<Value> {
                     }
                     if !cleaned.is_empty() {
                         normalized.insert(key.clone(), Value::Object(cleaned));
+                    } else {
+                        *changed = true;
                     }
                 }
                 _ => {
@@ -417,6 +516,7 @@ fn render_block(node: &Value, indent: usize, out: &mut String) {
             out.push_str("\n\n");
         }
         "attachmentBlock" => render_attachment_block(node, out),
+        "boardEmbed" | "mindmapEmbed" => render_embed_placeholder(node, out),
         "table" => render_table(node, out),
         "details" => {
             let summary = children(node)
@@ -653,6 +753,28 @@ fn render_attachment_block(node: &Value, out: &mut String) {
     out.push('\n');
 }
 
+/// 内嵌预览在 Markdown 里只能留可读占位；图片字节不随文档正文导出。
+fn render_embed_placeholder(node: &Value, out: &mut String) {
+    let label = if node.get("type").and_then(Value::as_str) == Some("boardEmbed") {
+        "画板"
+    } else {
+        "思维导图"
+    };
+    let title = node
+        .get("attrs")
+        .and_then(|attrs| attrs.get("title"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    out.push_str("> ");
+    out.push_str(label);
+    if !title.is_empty() {
+        out.push('：');
+        out.push_str(title);
+    }
+    out.push_str("（内嵌预览，请在 Starris 中查看）\n\n");
+}
+
 fn apply_marks(text: &str, marks: Option<&Vec<Value>>) -> String {
     let Some(marks) = marks else {
         return escape_inline(text);
@@ -868,6 +990,48 @@ mod tests {
         );
         let second = prepare_document(&prepared.document).expect("幂等");
         assert!(!second.changed, "规范化必须幂等");
+    }
+
+    /// 加载校验必须与写入规范化同判：prepare 会改动/报错的输入，validate 一律拒绝。
+    #[test]
+    fn validate_document_agrees_with_prepare_changed() {
+        let cases = vec![
+            json!({"type":"doc","content":[]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"正常"}]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","attrs":{"textAlign":"center"},"content":[{"type":"text","text":"x","marks":[{"type":"bold"}]}]}]}),
+            json!({"type":"paragraph"}),
+            json!({"type":"doc"}),
+            json!({"type":"doc","content":null}),
+            json!({"type":"doc","content":{}}),
+            json!({"type":"doc","content":["not-a-block"]}),
+            json!({"type":"doc","extra":null,"content":[]}),
+            json!({"type":"doc","content":[{"type":"paragraph","attrs":null}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","attrs":{}}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","attrs":{"textAlign":null}}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":""}]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","marks":[],"text":"x"}]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"emoji","attrs":{"name":null}}]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"emoji","attrs":{"name":"smile"}}]}]}),
+            json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"a"},3]}]}),
+            json!([{"type":"paragraph"}]),
+        ];
+        for document in cases {
+            let prepared = prepare_document(&document);
+            let expected = prepared.as_ref().is_ok_and(|value| !value.changed);
+            let accepted = validate_document(&document).is_ok();
+            assert_eq!(
+                accepted, expected,
+                "validate 与 prepare 判定不一致: {document}"
+            );
+            if accepted {
+                let prepared = prepared.expect("已判定可接受");
+                assert_eq!(
+                    prepared.document, document,
+                    "可接受的正文必须原样等于规范输出"
+                );
+            }
+        }
     }
 
     #[test]

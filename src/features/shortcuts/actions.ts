@@ -43,7 +43,6 @@ export const EDITOR_SHORTCUT_ACTIONS: ShortcutAction[] = [
 
 /** 画板自有动作；通过 Excalidraw 公共 API 执行。 */
 export const BOARD_SHORTCUT_ACTIONS: ShortcutAction[] = [
-  { id: "board.insertAttachment", label: "插入附件", scope: "board", defaultBinding: "Mod+Shift+A" },
   { id: "board.openLibrary", label: "组件库", scope: "board", defaultBinding: "Mod+Shift+L" },
   { id: "board.exportPng", label: "导出 PNG", scope: "board", defaultBinding: "Mod+Shift+E" },
   { id: "board.save", label: "保存画板", scope: "board", defaultBinding: "Mod+S" },

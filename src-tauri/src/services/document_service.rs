@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::domain::NodeType;
 use crate::domain::block_plan::{self, ExistingBlock};
-use crate::domain::document::{count_text_chars, prepare_document, to_markdown};
+use crate::domain::document::{count_text_chars, prepare_document, to_markdown, validate_document};
 use crate::errors::{AppError, AppResult};
 use crate::logging;
 use crate::models::SaveDocumentInput;
@@ -25,6 +25,17 @@ use crate::services::document_meta_service::{self, DocMetaPayload};
 use crate::state::{AppState, WorkspaceSession};
 use crate::utils::{new_id, now_ms};
 
+/// 单篇文档正文上限；与画板 32 MiB 对齐，避免异常载荷把工作区库撑大。
+const MAX_DOCUMENT_BYTES: usize = 32 * 1024 * 1024;
+
+/// 校验正文序列化后的体积；超限直接拒绝，不做截断。
+fn ensure_document_size(bytes: usize) -> AppResult<()> {
+    if bytes > MAX_DOCUMENT_BYTES {
+        return Err(AppError::validation("文档内容过大"));
+    }
+    Ok(())
+}
+
 /// 加载文档正文与块树缓存。
 pub fn load(state: &AppState, node_id: &str) -> AppResult<DocLoadResult> {
     with_session(state, |session| {
@@ -33,24 +44,19 @@ pub fn load(state: &AppState, node_id: &str) -> AppResult<DocLoadResult> {
             .ok_or_else(|| AppError::not_found("文档不存在"))?;
         require_document(node.node_type)?;
         let parsed = parse_document(&node.content)?;
-        let prepared = prepare_document(&parsed)?;
-        let normalized = prepared.changed;
-        let word_count = if normalized {
-            count_text_chars(&prepared.document)
-        } else {
-            node.word_count
-        };
+        // 保存路径已经把正文写成规范形态；加载时只需校验，不再复制整棵树做规范化。
+        validate_document(&parsed)?;
         document_meta_service::backfill_if_missing(
             connection,
             &session.db_path,
             node_id,
-            &prepared.document,
+            &parsed,
             node.update_time,
         )?;
         let tree = repository::list_blocks(connection, node_id)?;
         Ok(DocLoadResult {
-            document: prepared.document,
-            word_count,
+            document: parsed,
+            word_count: node.word_count,
             updated_at: node.update_time,
             tree: tree
                 .into_iter()
@@ -60,14 +66,30 @@ pub fn load(state: &AppState, node_id: &str) -> AppResult<DocLoadResult> {
                     order: block.order,
                 })
                 .collect(),
-            normalized,
             version: node.doc_version,
         })
     })
 }
 
 /// 保存文档：哈希顶层块 → 差量计划 → 单事务写库 → 返回增量结果。
+///
+/// 数据库瞬时错误（磁盘抖动、锁抖动）会让整个事务回滚。这类错误先重开一次工作区连接再重试：
+/// 长时间运行的连接在外部写入把 WAL/SHM 换掉之后会一直返回 I/O 错误，换连接即可恢复。
+/// 永久性错误重试一次也不会改变结果，代价有界（一次事务）；前端仍保留 dirty 状态兜底。
 pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResult> {
+    match save_once(state, &input) {
+        Err(AppError::Database) => {
+            if let Err(error) = state.reopen_workspace() {
+                logging::error("document", &format!("重开工作区连接失败: {error}"));
+                return Err(AppError::Database);
+            }
+            save_once(state, &input)
+        }
+        result => result,
+    }
+}
+
+fn save_once(state: &AppState, input: &SaveDocumentInput) -> AppResult<DocSaveResult> {
     with_session(state, |session| {
         let db_path = session.db_path.clone();
         let connection = &mut session.connection;
@@ -106,7 +128,11 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
             logging::error("document", &format!("文档序列化失败: {error}"));
             AppError::Internal
         })?;
+        ensure_document_size(content.len())?;
         let updated_at = now_ms();
+        // Markdown 只生成一次：写锁内要写检索索引、提交后还要写后台元数据，两处共用。
+        // 放在拿写锁之前生成，缩短写事务持有时间（冲突时多算一次，代价可忽略）。
+        let markdown = to_markdown(&prepared.document);
         // 立即拿写锁：保存先读块树再写，若用 DEFERRED 会在后台元数据持有
         // RESERVED 时无法升级事务，SQLite 会立刻返回 BUSY 而不等待 busy_timeout。
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -182,7 +208,7 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
             &transaction,
             &input.node_id,
             &node.title,
-            &to_markdown(&prepared.document),
+            &markdown,
             &node.knowledge_base_id,
             node.node_type,
             updated_at,
@@ -206,7 +232,7 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
 
         document_meta_service::schedule_write(
             db_path,
-            DocMetaPayload::from_document(&input.node_id, &prepared.document, updated_at),
+            DocMetaPayload::for_save(&input.node_id, markdown, content, updated_at),
         );
 
         logging::info(
@@ -253,8 +279,8 @@ pub fn save(state: &AppState, input: SaveDocumentInput) -> AppResult<DocSaveResu
 
 fn require_document(node_type: i64) -> AppResult<()> {
     match NodeType::from_i64(node_type)? {
-        NodeType::Doc | NodeType::Table => Ok(()),
-        _ => Err(AppError::validation("只有文档或表格节点支持正文存储")),
+        NodeType::Doc => Ok(()),
+        _ => Err(AppError::validation("只有文档节点支持正文存储")),
     }
 }
 
@@ -276,4 +302,16 @@ fn with_session<T>(
     let mut guard = state.workspace()?;
     let session = guard.as_mut().ok_or(AppError::NoActiveWorkspace)?;
     action(session)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn document_size_guard_accepts_limit_and_rejects_above() {
+        assert!(ensure_document_size(MAX_DOCUMENT_BYTES).is_ok());
+        let error = ensure_document_size(MAX_DOCUMENT_BYTES + 1).expect_err("超限必须拒绝");
+        assert_eq!(format!("{error}"), "文档内容过大");
+    }
 }

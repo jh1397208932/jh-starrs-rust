@@ -16,8 +16,6 @@ export interface MoreMenuProps {
   onAllExport: () => void;
   /** 打开导入弹窗（根级） */
   onImport: () => void;
-  /** 直接导入思维导图文件 */
-  onImportMindmap: () => void;
   /** 打开组件库管理 */
   onOpenLibrary: () => void;
   /** 打开备份与恢复 */
@@ -39,7 +37,6 @@ export function MoreMenu({
   onOpenSettings,
   onAllExport,
   onImport,
-  onImportMindmap,
   onOpenLibrary,
   onBackup,
   onTemplates,
@@ -72,10 +69,6 @@ export function MoreMenu({
         <DropdownMenuItem onSelect={onImport}>
           <FileUp />
           {t("导入…")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onImportMindmap}>
-          <FileUp />
-          {t("导入思维导图…")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onNodeTrash}>

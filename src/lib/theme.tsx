@@ -44,10 +44,32 @@ export const THEME_LABELS: Record<ThemeName, string> = {
 const DEFAULT_THEME: ThemeName = "mist";
 const DEFAULT_MODE: ThemeMode = "light";
 
-/** 第十一轮「雾光笺」设计语言版本；旧默认主题 sunset 无版本号时一次性升级到 mist */
-const DESIGN_VERSION = "2";
-/** 上一版默认主题（用户未主动改主题时曾自动写入该值） */
-const LEGACY_DEFAULT_THEME: ThemeName = "sunset";
+/** 首屏镜像：index.html 的启动脚本会先读它，避免 splash 与上次明暗不一致。 */
+const APPEARANCE_MIRROR_KEY = "starris.appearance";
+
+interface AppearanceMirror {
+  theme: ThemeName;
+  mode: ThemeMode;
+}
+
+function readAppearanceMirror(): AppearanceMirror | null {
+  try {
+    const raw = localStorage.getItem(APPEARANCE_MIRROR_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<AppearanceMirror>;
+    const theme = (THEME_NAMES as readonly string[]).includes(value.theme ?? "")
+      ? (value.theme as ThemeName)
+      : null;
+    const mode = (THEME_MODES as readonly string[]).includes(value.mode ?? "")
+      ? (value.mode as ThemeMode)
+      : null;
+    return theme && mode ? { theme, mode } : null;
+  } catch {
+    return null;
+  }
+}
+
+const INITIAL_APPEARANCE = readAppearanceMirror();
 
 interface ThemeContextValue {
   theme: ThemeName;
@@ -106,8 +128,8 @@ function applyWithCircularReveal(update: () => void, x: number, y: number) {
  * （不支持的平台自动降级为直接切换，行为与旧版一致）。
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeName>(DEFAULT_THEME);
-  const [mode, setModeState] = useState<ThemeMode>(DEFAULT_MODE);
+  const [theme, setThemeState] = useState<ThemeName>(INITIAL_APPEARANCE?.theme ?? DEFAULT_THEME);
+  const [mode, setModeState] = useState<ThemeMode>(INITIAL_APPEARANCE?.mode ?? DEFAULT_MODE);
   /** 最近一次指针按下位置（视口坐标），作为揭示圆心 */
   const pointerOrigin = useRef({ x: 0, y: 0 });
   /** 是否已完成记忆读取；完成前不写盘，避免用默认值覆盖用户设置 */
@@ -131,12 +153,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .then((memory) => {
         const storedTheme = memory[MEMORY_KEYS.theme];
         const storedMode = memory[MEMORY_KEYS.mode];
-        const hasDesignVersion = Boolean(memory[MEMORY_KEYS.designVersion]);
-        // 旧版默认主题 sunset 从未被主动选择过：随设计语言版本一次性升级到 mist。
-        const migrateLegacyDefault = !hasDesignVersion && storedTheme === LEGACY_DEFAULT_THEME;
-        const nextTheme = migrateLegacyDefault
-          ? DEFAULT_THEME
-          : storedTheme && (THEME_NAMES as readonly string[]).includes(storedTheme)
+        const nextTheme =
+          storedTheme && (THEME_NAMES as readonly string[]).includes(storedTheme)
             ? (storedTheme as ThemeName)
             : DEFAULT_THEME;
         const nextMode =
@@ -147,15 +165,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         lastSaved.current = { theme: nextTheme, mode: nextMode };
         setThemeState(nextTheme);
         setModeState(nextMode);
-        if (migrateLegacyDefault) {
-          void saveMemory({
-            [MEMORY_KEYS.theme]: nextTheme,
-            [MEMORY_KEYS.mode]: nextMode,
-            [MEMORY_KEYS.designVersion]: DESIGN_VERSION,
-          }).catch(() => {
-            // 迁移写入失败不阻断本次显示；下次启动会再次尝试。
-          });
-        }
       })
       .catch(() => {
         // 全局库不可用时不阻断使用：本次以默认外观运行，下一次修改会重新尝试保存。
@@ -163,13 +172,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  // 属性与首屏镜像一起更新：下次启动时 index.html 的脚本能在 IPC 之前恢复明暗。
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-  }, [theme]);
-
-  useEffect(() => {
     document.documentElement.dataset.mode = mode;
-  }, [mode]);
+    try {
+      localStorage.setItem(APPEARANCE_MIRROR_KEY, JSON.stringify({ theme, mode } satisfies AppearanceMirror));
+    } catch {
+      // 隐私模式/配额不足：只影响首屏镜像，不影响本次外观。
+    }
+  }, [theme, mode]);
 
   // 记忆写入：去抖 150ms，合并连续点击；落盘失败不阻断当前换肤。
   useEffect(() => {
@@ -180,7 +192,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       void saveMemory({
         [MEMORY_KEYS.theme]: theme,
         [MEMORY_KEYS.mode]: mode,
-        [MEMORY_KEYS.designVersion]: DESIGN_VERSION,
       }).catch(() => {
         // 主题已在内存生效；保存失败时下次修改会再次尝试。
       });

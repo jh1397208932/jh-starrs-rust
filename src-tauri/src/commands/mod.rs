@@ -17,6 +17,7 @@ pub mod mcp;
 pub mod memory;
 pub mod mindmap;
 pub mod node;
+pub mod preview;
 pub mod search;
 pub mod template;
 pub mod workspace;

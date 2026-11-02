@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { memo, type ReactNode, useEffect, useState } from "react";
 import { getNodeNetwork } from "@/api/search";
 import { MagicCard } from "@/components/common/motion/MagicCard";
 import { NumberTicker } from "@/components/common/motion/NumberTicker";
@@ -37,7 +37,7 @@ interface FieldRow {
  * 背景 bg-card；激活段 = bg-card + shadow-sm + 650 字重（原型 .seg）；
  * 字数用 NumberTicker 弹簧滚动；「相关」项为 MagicCard 渐变边卡片（悬浮聚光）。
  */
-export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps) {
+export const InfoPanel = memo(function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<InfoTab>("info");
   const [backlinks, setBacklinks] = useState<NetworkItem[]>([]);
@@ -203,4 +203,4 @@ export function InfoPanel({ node, kb, onBackToInfo, onOpenNode }: InfoPanelProps
       </div>
     </div>
   );
-}
+});

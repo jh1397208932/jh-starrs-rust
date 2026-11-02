@@ -9,11 +9,13 @@ import {
   Heading2,
   Heading3,
   ImagePlus,
+  LayoutDashboard,
   List,
   ListChecks,
   ListOrdered,
   Loader2,
   Minus,
+  Network,
   Paperclip,
   Pilcrow,
   Quote,
@@ -21,7 +23,8 @@ import {
   SquareCode,
   Table2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onFindRequested } from "@/api/app";
 import { isConflictError, toErrorMessage } from "@/api/client";
 import { loadDocument } from "@/api/document";
@@ -32,8 +35,10 @@ import { Button } from "@/components/ui/button";
 import { setEditorShortcutHandlers } from "@/features/shortcuts/shortcutRuntime";
 import { formatTimestamp } from "@/features/workspace/utils/tree";
 import { useI18n } from "@/lib/i18n";
+import { EASE_STANDARD } from "@/lib/motion";
 import { CAPTION_CLS, cn } from "@/lib/utils";
 import type { NodeItem } from "@/types/notebook";
+import type { PreviewKind } from "@/types/preview";
 import { registerActivePersistence, unregisterActivePersistence } from "../activeDocument";
 import { activateOutline, deactivateOutline, publishOutline } from "../editorOutline";
 import { createEditorExtensions } from "../extensions/editorExtensions";
@@ -49,6 +54,7 @@ import {
 } from "../utils/attachmentUpload";
 import { clearDraft, type DocumentDraft, readDraft, saveDraft } from "../utils/documentDraft";
 import { BlockHandle } from "./BlockHandle";
+import { DocEmbedPickerDialog } from "./DocEmbedPickerDialog";
 import { DocFindBar } from "./DocFindBar";
 import { DocHistoryDialog } from "./DocHistoryDialog";
 import { DocPageBar } from "./DocPageBar";
@@ -119,20 +125,24 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 }
 
 export interface DocEditorProps {
-  /** 节点类型：表格复用同一编辑器，仅页头标识不同 */
-  kind?: "doc" | "table";
   node: NodeItem | null;
   title: string;
+  /** 当前知识库的平表节点；内嵌画板/导图选择器使用 */
+  nodes: NodeItem[];
   /** 所在知识库名（页头面包屑上级） */
   kbName: string | null;
   /** 当前节点是否已收藏 */
   starred: boolean;
   /** 信息浮窗是否展开 */
   infoOpen: boolean;
+  /** 大纲浮窗是否展开（与信息互斥） */
+  outlineOpen: boolean;
   /** 切换收藏状态 */
   onToggleStar: () => void;
   /** 打开 / 收起信息浮窗 */
   onToggleInfo: () => void;
+  /** 打开 / 收起大纲浮窗（与信息互斥） */
+  onToggleOutline: () => void;
   /** 打开分享与导出弹窗 */
   onShare: () => void;
   /** 触发打印 */
@@ -144,15 +154,17 @@ export interface DocEditorProps {
 }
 
 /** 文档编辑器：加载正文、块级自动保存、气泡/右键/Slash 菜单与拖拽手柄。 */
-export function DocEditor({
-  kind = "doc",
+function DocEditorImpl({
   node,
   title,
+  nodes,
   kbName,
   starred,
   infoOpen,
+  outlineOpen,
   onToggleStar,
   onToggleInfo,
+  onToggleOutline,
   onShare,
   onPrint,
   onOpenKb,
@@ -166,11 +178,28 @@ export function DocEditor({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
+  const [embedPickerKind, setEmbedPickerKind] = useState<PreviewKind | null>(null);
   const [draftPrompt, setDraftPrompt] = useState<DocumentDraft | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftDirtyRef = useRef(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
+  const liveCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * 字数只是展示值：按 250ms 合帧刷新。
+   *
+   * 以前每个字符都 setLiveCount → 整个编辑器（页头/工具栏/查找条/大纲挂载）每键重渲染一次，
+   * 而 characters() 本身还要遍历全文。合帧后打字路径只剩编辑器的自身事务。
+   */
+  const syncLiveCount = useCallback((current: Editor) => {
+    if (liveCountTimerRef.current !== null) return;
+    liveCountTimerRef.current = setTimeout(() => {
+      liveCountTimerRef.current = null;
+      if (current.isDestroyed) return;
+      setLiveCount(current.storage.characterCount.characters());
+    }, 250);
+  }, []);
   const [uploadingCount, setUploadingCount] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -203,16 +232,24 @@ export function DocEditor({
   const onSelectionUpdateRef = useRef<(current: Editor) => void>(() => undefined);
   const keyDownRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
 
+  // editorProps 每次渲染换新对象会让 tiptap 的 compareOptions 判定"选项变了"，
+  // 于是每次保存状态/字数刷新都跑一遍 setOptions。这里只在语言变化（文案值变化）时换引用。
+  const editorLabel = t("文档正文");
+  const editorProps = useMemo(
+    () => ({
+      attributes: {
+        class: "tiptap min-h-full focus:outline-none",
+        "aria-label": editorLabel,
+      },
+      handleKeyDown: (_view: unknown, event: KeyboardEvent) => keyDownRef.current(event),
+    }),
+    [editorLabel],
+  );
+
   const editor = useEditor({
     extensions,
     content: EMPTY_DOC,
-    editorProps: {
-      attributes: {
-        class: "tiptap min-h-full focus:outline-none",
-        "aria-label": kind === "table" ? t("表格正文") : t("文档正文"),
-      },
-      handleKeyDown: (_view, event) => keyDownRef.current(event),
-    },
+    editorProps,
     onUpdate: ({ editor: current }) => onUpdateRef.current(current),
     onSelectionUpdate: ({ editor: current }) => onSelectionUpdateRef.current(current),
   });
@@ -221,6 +258,11 @@ export function DocEditor({
     onSaved: (result) => {
       setConflict(null);
       setDraftPrompt(null);
+      draftDirtyRef.current = false;
+      if (draftTimerRef.current) {
+        clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
       if (node?.id) {
         clearDraft(node.id);
         onDocumentSaved?.(node.id, {
@@ -269,12 +311,18 @@ export function DocEditor({
   useEffect(() => {
     setFindOpen(false);
     setDraftPrompt(null);
+    draftDirtyRef.current = false;
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
     editor?.commands.clearFind();
   }, [node?.id, editor]);
 
   // 卸载时取消尚未落盘的草稿定时器。
   useEffect(
     () => () => {
+      if (liveCountTimerRef.current !== null) clearTimeout(liveCountTimerRef.current);
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     },
     [],
@@ -627,6 +675,24 @@ export function DocEditor({
         run: (current) => pickAttachments(currentInsertPos(current)),
       },
       {
+        id: "boardEmbed",
+        label: t("画板图"),
+        group: t("插入"),
+        description: t("引用画板预览"),
+        icon: LayoutDashboard,
+        keywords: ["board", "canvas", "画板"],
+        run: () => setEmbedPickerKind("board"),
+      },
+      {
+        id: "mindmapEmbed",
+        label: t("思维导图"),
+        group: t("插入"),
+        description: t("引用导图预览"),
+        icon: Network,
+        keywords: ["mindmap", "导图"],
+        run: () => setEmbedPickerKind("mindmap"),
+      },
+      {
         id: "emoji",
         label: t("表情"),
         group: t("插入"),
@@ -655,16 +721,19 @@ export function DocEditor({
 
   onUpdateRef.current = (current) => {
     if (suppressRef.current) return;
-    setLiveCount(current.storage.characterCount.characters());
+    syncLiveCount(current);
     syncSlash(current, true);
     persistence.markDirty();
     if (node?.id) {
+      const draftNodeId = node.id;
+      draftDirtyRef.current = true;
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-      // 草稿仅用于崩溃恢复；长文档 getJSON+stringify 每 500ms 一次会拖慢打字（B6），
-      // 放宽到 2s，崩溃最多丢最近 2s 输入。
+      // 草稿仅用于崩溃恢复；正常保存成功会清掉 dirty 并取消这个定时器，
+      // 避免“保存后又写一份更晚的草稿”，下次打开必弹恢复提示。
       draftTimerRef.current = setTimeout(() => {
         draftTimerRef.current = null;
-        saveDraft(node.id, current.getJSON());
+        if (!draftDirtyRef.current || current.isDestroyed) return;
+        saveDraft(draftNodeId, current.getJSON());
       }, 2000);
     }
   };
@@ -804,8 +873,6 @@ export function DocEditor({
         });
         // setContent 走 emitUpdate:false，TOC 不会自行刷新；显式发布一次，页头目录在首次打开时即可用。
         editor.commands.updateTableOfContents();
-        // 后端修复了历史 `:null:`/null attrs：自动补一次保存，让块树与正文同步。
-        if (loaded.normalized) persistence.markDirty();
       } catch (error) {
         if (cancelled || sequence !== docSeqRef.current) return;
         persistence.beginDocument(null);
@@ -877,18 +944,19 @@ export function DocEditor({
               kbName={kbName}
               starred={starred}
               infoOpen={infoOpen}
+              outlineOpen={outlineOpen}
               onToggleStar={onToggleStar}
               onToggleInfo={onToggleInfo}
+              onToggleOutline={onToggleOutline}
               onShare={onShare}
               onPrint={onPrint}
               onHistory={() => setHistoryOpen(true)}
               onOpenKb={onOpenKb}
             />
             <div className="mb-3 flex items-center gap-2">
-              <Badge variant="doc">{kind === "table" ? t("表格") : t("文档")}</Badge>
+              <Badge variant="doc">{t("文档")}</Badge>
               <SaveIndicator status={persistence.status} onRetry={() => void persistence.retry()} />
             </div>
-            {findOpen && <DocFindBar editor={editor} onClose={() => setFindOpen(false)} />}
             <h1 className="doc-editor-title">{title}</h1>
             <div className={cn(CAPTION_CLS, "doc-editor-meta")}>
               <span>
@@ -924,6 +992,7 @@ export function DocEditor({
                     suppressRef.current = true;
                     editor.commands.setContent(draftPrompt.document, { emitUpdate: false });
                     suppressRef.current = false;
+                    draftDirtyRef.current = true;
                     persistence.markDirty();
                     setDraftPrompt(null);
                   }}
@@ -1007,6 +1076,22 @@ export function DocEditor({
         </div>
       </div>
 
+      {/* 查找条浮在编辑区右上角，不占文档流；窄窗口由 CSS 下移避开页头操作。 */}
+      <AnimatePresence initial={false}>
+        {findOpen && (
+          <motion.div
+            key="find-bar"
+            className="doc-find-float"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16, ease: EASE_STANDARD }}
+          >
+            <DocFindBar editor={editor} onClose={() => setFindOpen(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {!loading && <EditorBubbleMenu editor={editor} onError={reportError} />}
 
       {slash && (
@@ -1049,6 +1134,32 @@ export function DocEditor({
           }}
         />
       )}
+
+      <DocEmbedPickerDialog
+        open={embedPickerKind !== null}
+        kind={embedPickerKind ?? "board"}
+        nodes={nodes}
+        onOpenChange={(open) => {
+          if (!open) setEmbedPickerKind(null);
+        }}
+        onSelect={(target) => {
+          const current = persistence.editorRef.current ?? editor;
+          if (current) {
+            if (embedPickerKind === "board") {
+              current.chain().focus().setBoardEmbed({ nodeId: target.id, title: target.title }).run();
+            } else {
+              current.chain().focus().setMindmapEmbed({ nodeId: target.id, title: target.title }).run();
+            }
+          }
+          setEmbedPickerKind(null);
+        }}
+      />
     </div>
   );
 }
+
+/**
+ * 视图入口：props 全部是稳定引用（nodeId/标题/稳定回调和已收敛的 nodes），
+ * 外层 store 的无关更新（别的节点保存、侧栏开关）不再连带重渲染画布/编辑器。
+ */
+export const DocEditor = memo(DocEditorImpl);

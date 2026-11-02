@@ -5,10 +5,104 @@
       <link rel="icon" type="image/svg+xml" href="/vite.svg" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>星屿 Starris</title>
+      <style>
+        /* 首屏 splash：在 React/令牌 CSS 到达前就画出与主界面一致的底色，避免白屏。 */
+        html,
+        body {
+          margin: 0;
+          height: 100%;
+          background: #fcfdfc;
+          color: #1d201f;
+          font-family:
+            system-ui,
+            -apple-system,
+            "PingFang SC",
+            "Microsoft YaHei",
+            sans-serif;
+        }
+        html[data-mode="dark"],
+        html[data-mode="dark"] body {
+          background: #141817;
+          color: #e7ecea;
+        }
+        #starris-splash {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: grid;
+          place-items: center;
+          background: inherit;
+          -webkit-user-select: none;
+          user-select: none;
+        }
+        #starris-splash .splash-mark {
+          display: grid;
+          gap: 14px;
+          place-items: center;
+          opacity: 0.9;
+          animation: splash-breathe 1.6s ease-in-out infinite;
+        }
+        #starris-splash .splash-glyph {
+          display: grid;
+          width: 52px;
+          height: 52px;
+          place-items: center;
+          border: 1px solid rgba(200, 169, 110, 0.45);
+          border-radius: 16px;
+          background: rgba(200, 169, 110, 0.1);
+          color: #c8a96e;
+          font-size: 24px;
+          line-height: 1;
+        }
+        #starris-splash .splash-name {
+          font-size: 12px;
+          letter-spacing: 0.32em;
+          color: currentColor;
+          opacity: 0.55;
+        }
+        @keyframes splash-breathe {
+          0%,
+          100% {
+            opacity: 0.55;
+            transform: scale(0.985);
+          }
+          50% {
+            opacity: 0.95;
+            transform: scale(1);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #starris-splash .splash-mark {
+            animation: none;
+          }
+        }
+      </style>
+      <script>
+        // 主题镜像在 IPC 读取 SQLite 之前就能用，保证 splash 的明暗与上次一致。
+        try {
+          const raw = localStorage.getItem("starris.appearance");
+          const saved = raw ? JSON.parse(raw) : null;
+          if (saved && (saved.mode === "dark" || saved.mode === "light")) {
+            document.documentElement.dataset.mode = saved.mode;
+          }
+          if (saved && typeof saved.theme === "string") {
+            document.documentElement.dataset.theme = saved.theme;
+          }
+        } catch {
+          // 隐私模式/损坏值：保持默认浅色。
+        }
+      </script>
     </head>
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+    <body>
+      <div id="root">
+        <div id="starris-splash" role="status" aria-label="正在启动星屿">
+          <div class="splash-mark">
+            <span class="splash-glyph">✦</span>
+            <span class="splash-name">STARRIS</span>
+          </div>
+        </div>
+      </div>
+      <script type="module" src="/src/main.tsx"></script>
+    </body>
+  </html>

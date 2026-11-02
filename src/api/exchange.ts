@@ -11,6 +11,7 @@ import type {
   ExportResult,
   ImportDocumentsParams,
   ImportResult,
+  ImportScanResult,
   WriteExportFileParams,
 } from "@/types/exchange";
 
@@ -70,6 +71,16 @@ export async function importDocuments(params: ImportDocumentsParams): Promise<Im
       preserveHierarchy: params.preserveHierarchy,
     },
   });
+}
+
+/**
+ * 混合导入预扫描：只读分类，列出会导入的文档/画板/导图/附件与将跳过的文件。
+ * @param folderPath 用户选择的文件夹绝对路径
+ * @returns 分类计数与跳过项
+ * @example const scan = await scanImportFolder("/Users/me/笔记");
+ */
+export async function scanImportFolder(folderPath: string): Promise<ImportScanResult> {
+  return invokeCommand<ImportScanResult>("import_scan_folder", { folderPath });
 }
 
 /**

@@ -93,6 +93,7 @@ export function MindmapWorkspace({ nodeId, state, onError, handlers, groupAction
           onSelectionChange={(id, additive) => {
             clearSelection();
             setSelectedId(id);
+            // 选中主题即切换详情面板内容；面板本身是否展开仍由用户控制（未打开时保持关闭）。
             if (!id) setInspectorOpen(false);
             if (!id) {
               setSelectionSet([]);
@@ -176,6 +177,8 @@ export function MindmapWorkspace({ nodeId, state, onError, handlers, groupAction
             clearSelection();
             setSelectedId(id);
             setSelectionSet([id]);
+            // 在大纲里点行就是为了看细节：直接把右侧详情面板打开，不再要求再点一次工具栏。
+            setInspectorOpen(true);
           }}
           focusTopic={focusTopic}
           commit={commit}

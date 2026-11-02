@@ -66,7 +66,7 @@ function buildTree(rootId: string, total: number): MindmapTopic {
 
 function makeContent(structure: MindmapContent["sheet"]["structure"], total: number): MindmapContent {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sheet: {
       id: "bench-sheet",
       structure,

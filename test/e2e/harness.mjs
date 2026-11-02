@@ -143,6 +143,27 @@ export class TestContext {
     );
   }
 
+  /**
+   * 轮询多条文本，返回最先出现的一条。
+   *
+   * 提示条只留 3 秒，串行 `waitForText(A).catch(等 B)` 在 A 不出现时会先白等满超时、
+   * 再扑空已经消失的 B；两条文案没有共同子串时只能并行轮询。
+   */
+  async waitForAnyText(texts, { timeout = 20_000, interval = 150 } = {}) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      for (const text of texts) {
+        try {
+          if ((await this.find(text)).count > 0) return text;
+        } catch {
+          // AX 瞬时不可读时下一轮重试
+        }
+      }
+      await sleep(interval);
+    }
+    throw new Error(`等待文本超时（任一条都未出现）：${texts.join(" / ")}`);
+  }
+
   async waitForGone(text, { timeout = 10_000, interval = 200 } = {}) {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
@@ -370,6 +391,26 @@ export class TestContext {
     await sleep(220);
   }
 
+  /** 是否还有系统模态 sheet（文件面板的「前往文件夹」等）。 */
+  async hasNativeSheet() {
+    try {
+      const tree = this.ax._call(["tree"]);
+      return (tree?.matches ?? []).some((match) => match.role === "AXSheet");
+    } catch {
+      return false;
+    }
+  }
+
+  /** 等系统模态 sheet 关闭；保存/打开面板关闭有动画，过早进入下一步会点到残留 sheet。 */
+  async waitForNoSheet({ timeout = 3000 } = {}) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (!(await this.hasNativeSheet())) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
   /** 处理系统打开/保存面板：Cmd+Shift+G 输入路径，再按面板按钮。 */
   async nativePath(pathValue, { button = "Open", settle = 500 } = {}) {
     this.metrics.dialogs += 1;
@@ -389,11 +430,16 @@ export class TestContext {
       // 面板/附属 sheet 处于模态循环时 AX 查询可能整树为空（2026-10-26 现场），
       // 但 CGEvent 按键仍会送达：盲走「粘贴路径 + 两次回车 + 点按钮」，由后续断言验证结果。
       this.notes.push("系统面板未响应 AX，按盲序列继续前往文件夹");
+      await this.key("cmd+a");
       await this.paste(pathValue);
       await this.key("return");
-      await sleep(350);
+      await sleep(600);
       await this.key("return");
       await sleep(settle);
+      if (!(await this.waitForNoSheet({ timeout: 1800 }))) {
+        await this.key("return");
+        await sleep(500);
+      }
       try {
         await this.press(button, { timeout: 4000, settle });
       } catch {
@@ -401,27 +447,55 @@ export class TestContext {
       }
       return;
     }
+    // 先把路径框里可能残留的旧内容全选替换，避免拼成 z/Users/... 这种无效路径。
+    await this.key("cmd+a");
     await this.paste(pathValue);
     await this.key("return");
-    await sleep(350);
+    await sleep(600);
     await this.key("return");
     await sleep(settle);
+    // Go to 面板可能仍在；再回一次车提交，随后等它关闭，避免下一个用例被 sheet 挡死。
+    if (!(await this.waitForNoSheet({ timeout: 1800 }))) {
+      await this.key("return");
+      await sleep(500);
+    }
     try {
       await this.press(button, { timeout: 4000, settle });
     } catch {
       // 某些面板在第二次 Return 后已经提交。
     }
+    if (!(await this.waitForNoSheet({ timeout: 2500 }))) {
+      await this.key("escape");
+      await sleep(300);
+    }
   }
 
   async screenshot(name) {
-    const window = this.ax.window();
     const target = path.join(this.screenshotDir, `${name}.png`);
-    const result = spawnSync("screencapture", ["-x", "-l", String(window.windowId), target], {
-      encoding: "utf8",
-    });
-    if (result.status !== 0) throw new Error(`截图失败：${result.stderr}`);
-    this.metrics.screenshots += 1;
-    return target;
+    let lastError = "";
+    // 窗口刚显示/切换 Space 时 windowId 可能短暂失效；重取窗口并重试，不能让一张截图打断整条用例。
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        this.ax.activate();
+      } catch {
+        // 激活失败时仍尝试截图；下一次重试会重新激活。
+      }
+      await sleep(attempt === 0 ? 120 : 320);
+      try {
+        const window = this.ax.window();
+        const result = spawnSync("screencapture", ["-x", "-l", String(window.windowId), target], {
+          encoding: "utf8",
+        });
+        if (result.status === 0) {
+          this.metrics.screenshots += 1;
+          return target;
+        }
+        lastError = result.stderr || `screencapture 退出码 ${result.status}`;
+      } catch (error) {
+        lastError = error?.message ?? String(error);
+      }
+    }
+    throw new Error(`截图失败：${lastError}`);
   }
 
   file(relative) {
@@ -476,20 +550,65 @@ export class TestContext {
     return JSON.parse(fs.readFileSync(this.file(relative), "utf8"));
   }
 
+  /** 读取本轮应用日志尾部（`${STARRIS_HOME}/logs/starris.log`）。 */
+  appLogLines(limit = 400) {
+    const logPath = path.join(this.homePath, "logs/starris.log");
+    if (!fs.existsSync(logPath)) return [];
+    return fs
+      .readFileSync(logPath, "utf8")
+      .trimEnd()
+      .split("\n")
+      .slice(-limit);
+  }
+
+  /**
+   * 等待应用日志出现匹配行。
+   * @param {RegExp} pattern 匹配规则
+   * @returns {Promise<string>} 命中的整行
+   */
+  async waitForLog(pattern, { timeout = 15_000, interval = 200 } = {}) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const hit = this.appLogLines().find((line) => pattern.test(line));
+      if (hit) return hit;
+      await sleep(interval);
+    }
+    throw new Error(`等待日志超时：${pattern}`);
+  }
+
   db(sql, params = []) {
     return this._query(path.join(this.workspacePath, "db/workspace.sqlite3"), sql, params);
   }
 
   /** 直接执行工作区 SQL；仅用于构造并发/冲突前置条件，业务操作仍走 UI。 */
   exec(sql, params = []) {
+    return this._writer().prepare(sql).run(...params);
+  }
+
+  /**
+   * 整轮复用一条外部写连接。
+   *
+   * 每次 open/close 会让 SQLite 在关闭时做一次收尾检查点，并可能删掉 `-wal`；
+   * 应用侧的长连接随后会一直返回 `disk I/O error`（2026-10-29 全量 e2e 现场：
+   * 98/99 两例连续三轮复现）。外部连接保持常开，就不会在会话中途触发收尾检查点。
+   */
+  _writer() {
     const databasePath = path.join(this.workspacePath, "db/workspace.sqlite3");
     assert.ok(fs.existsSync(databasePath), `数据库不存在：${databasePath}`);
-    const db = new DatabaseSync(databasePath);
-    try {
-      return db.prepare(sql).run(...params);
-    } finally {
-      db.close();
+    if (!this._writerConn || this._writerPath !== databasePath) {
+      this._writerConn?.close();
+      this._writerConn = new DatabaseSync(databasePath);
+      this._writerConn.exec("PRAGMA busy_timeout=5000");
+      this._writerPath = databasePath;
     }
+    return this._writerConn;
+  }
+
+  /** 收尾释放外部写连接。 */
+  closeWriter() {
+    this._writerConn?.close();
+    this._writerConn = null;
+    this._writerPath = null;
   }
 
   globalDb(sql, params = []) {

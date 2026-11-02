@@ -55,9 +55,39 @@ export default {
       "知识库的新建/切换/管理集中在工作区浮层，管理弹窗支持行内操作与删除确认。新建知识库需要先开浮层再开弹窗；对高频切换可以接受，对连续创建则偏重。收藏页和小记都是一键入口，小记仍复用新建弹窗（可改标题），符合“快速记录”但还能再简化成直接创建。",
   },
   async run(ctx) {
+    // Radix 弹出层偶尔吞掉 AXPress；补一次坐标点击，避免整条用例因浮层没打开而失败。
+    const openWorkspaceSwitch = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await ctx.press("切换工作区", { settle: 280 });
+        try {
+          await ctx.expectText("新建知识库", { timeout: 2200 });
+          return;
+        } catch {
+          // 走坐标回退
+        }
+        const matches = await ctx.find("切换工作区");
+        const target =
+          matches.matches.find((match) => match.role === "AXButton") ?? matches.matches[0];
+        if (target) {
+          await ctx.click(
+            target.point.x + target.size.width / 2,
+            target.point.y + target.size.height / 2,
+            "回退点击工作区切换",
+          );
+          try {
+            await ctx.expectText("新建知识库", { timeout: 2200 });
+            return;
+          } catch {
+            // 下一轮重试
+          }
+        }
+        await ctx.key("escape");
+      }
+      throw new Error("工作区切换浮层未打开");
+    };
+
     // 新建测试知识库
-    await ctx.press("切换工作区");
-    await ctx.expectText("新建知识库");
+    await openWorkspaceSwitch();
     await ctx.press("新建知识库");
     await ctx.expectText("知识库");
     await ctx.fill("例如：产品灵感库", "E2E KB");
@@ -71,12 +101,12 @@ export default {
     await ctx.screenshot("workspace-kb-created");
 
     // 切回默认知识库
-    await ctx.press("切换工作区");
+    await openWorkspaceSwitch();
     await ctx.press("默认知识库");
     await ctx.expectText("E2E Doc", { timeout: 10_000 });
 
     // 删除测试知识库
-    await ctx.press("切换工作区");
+    await openWorkspaceSwitch();
     await ctx.press("管理知识库");
     await ctx.expectText("知识库管理");
     await ctx.press("E2E KB 操作");
@@ -93,7 +123,7 @@ export default {
     await ctx.press("关闭");
 
     // 管理工作区
-    await ctx.press("切换工作区");
+    await openWorkspaceSwitch();
     await ctx.press("管理工作区");
     await ctx.expectText("工作区管理");
     await ctx.expectText("E2E 工作区");

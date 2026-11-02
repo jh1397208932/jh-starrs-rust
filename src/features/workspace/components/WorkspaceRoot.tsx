@@ -88,7 +88,7 @@ export function WorkspaceRoot() {
   if (!store.currentWorkspace) {
     return (
       <>
-        <div className="h-full bg-background" />
+        <div className="anim-fade-in h-full bg-background/70" />
         <WorkspaceOnboarding
           workspaces={store.workspaces}
           onCreateWorkspace={() => setDialog({ type: "createWorkspace" })}

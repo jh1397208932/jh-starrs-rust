@@ -1,23 +1,32 @@
 import {
   Background,
   BackgroundVariant,
-  type Edge,
+  getBezierPath,
+  getSmoothStepPath,
   type Node,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  ViewportPortal,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { MindmapContent, MindmapEdgeStyle, MindmapFile, MindmapLayout } from "@/types/mindmap";
+import { useI18n } from "@/lib/i18n";
+import type {
+  ConnectorSide,
+  MindmapContent,
+  MindmapEdgeStyle,
+  MindmapFile,
+  MindmapLayout,
+} from "@/types/mindmap";
 import { useMindmapFlowViewport } from "../hooks/useMindmapFlowViewport";
+import { buildTreeConnectors } from "../utils/connectors";
 import { resolveDrop } from "../utils/dropTarget";
 import { buildFlowNodes } from "../utils/flowNodes";
 import { hitTestFrame } from "../utils/frameHit";
-import { MindmapEdge } from "./MindmapEdge";
 import { MindmapFrameNode } from "./MindmapFrameNode";
-import { MindmapRelationshipEdge } from "./MindmapRelationEdges";
 import { MindmapTopicNode } from "./MindmapTopicNode";
 
 interface MindmapCanvasProps {
@@ -48,7 +57,13 @@ const nodeTypes = {
   mindmapTopic: MindmapTopicNode,
   mindmapFrame: MindmapFrameNode,
 };
-const edgeTypes = { mindmap: MindmapEdge, mindmapRelation: MindmapRelationshipEdge };
+// 自绘连线把方向映射成 React Flow 的曲线锚点，保证与旧 edge 的曲率一致。
+const POSITION_BY_SIDE: Record<ConnectorSide, Position> = {
+  left: Position.Left,
+  right: Position.Right,
+  up: Position.Top,
+  down: Position.Bottom,
+};
 
 /** React Flow 画布适配层；树语义仍由父组件持有。 */
 export function MindmapCanvas(props: MindmapCanvasProps) {
@@ -89,7 +104,11 @@ function MindmapCanvasInner({
   // 若动画常驻会在每次重挂时重播，看起来像闪烁。
   const enteredIdsRef = useRef<Set<string>>(new Set());
   const enterTimerRef = useRef<number | null>(null);
+  // 正在拖拽的节点：重建节点时保留 React Flow 的实时坐标，
+  // 否则拖拽中因选中态变化触发的重建会把节点拉回布局旧位置（表现为“只在拖动前后生效”）。
+  const draggingIdRef = useRef<string | null>(null);
   const { getIntersectingNodes, screenToFlowPosition } = useReactFlow();
+  const { t } = useI18n();
   const edgeStyle: MindmapEdgeStyle = content.sheet.edgeStyle ?? "curve";
   const background = content.sheet.background ?? "dots";
 
@@ -120,11 +139,20 @@ function MindmapCanvasInner({
       enteredIdsRef.current.add(node.id);
       fresh.add(node.id);
     }
-    setNodes(
-      fresh.size > 0
-        ? built.map((node) => (fresh.has(node.id) ? { ...node, className: "mindmap-node-enter" } : node))
-        : built,
-    );
+    setNodes((current) => {
+      const livePositions = new Map(current.map((node) => [node.id, node.position]));
+      const next =
+        fresh.size > 0
+          ? built.map((node) => (fresh.has(node.id) ? { ...node, className: "mindmap-node-enter" } : node))
+          : built;
+      const draggingId = draggingIdRef.current;
+      if (!draggingId) return next;
+      return next.map((node) => {
+        if (node.id !== draggingId) return node;
+        const live = livePositions.get(node.id);
+        return live ? { ...node, position: live } : node;
+      });
+    });
     if (fresh.size > 0) {
       if (enterTimerRef.current !== null) window.clearTimeout(enterTimerRef.current);
       enterTimerRef.current = window.setTimeout(() => {
@@ -153,40 +181,48 @@ function MindmapCanvasInner({
     containerRef,
   });
 
-  const edges = useMemo<Edge[]>(() => {
-    const treeEdges: Edge[] = layout.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: "mindmap",
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-      data: { branchIndex: edge.branchIndex, depth: edge.depth, edgeStyle },
-      selectable: false,
-    }));
-    const relationEdges: Edge[] = (content.relationships ?? []).map((relationship) => ({
-      id: `relationship:${relationship.id}`,
-      source: relationship.from,
-      target: relationship.to,
-      type: "mindmapRelation",
-      data: (() => {
-        const geometry = layout.relationships.find((item) => item.id === relationship.id);
-        return {
-          label: relationship.label,
-          color: relationship.color,
-          path: geometry?.path,
-          fromX: geometry?.fromX,
-          fromY: geometry?.fromY,
-          toX: geometry?.toX,
-          toY: geometry?.toY,
+  // 连线自绘：端点只由布局坐标决定，节点不在视口内也照样画（React Flow 的 edge 通道会静默丢线）。
+  const treePaths = useMemo(
+    () =>
+      buildTreeConnectors(layout).map((connector) => {
+        const options = {
+          sourceX: connector.source.x,
+          sourceY: connector.source.y,
+          sourcePosition: POSITION_BY_SIDE[connector.source.side],
+          targetX: connector.target.x,
+          targetY: connector.target.y,
+          targetPosition: POSITION_BY_SIDE[connector.target.side],
         };
-      })(),
-      selectable: true,
-      selected: selectedRelationshipId === relationship.id,
-      zIndex: 1,
-    }));
-    return [...treeEdges, ...relationEdges];
-  }, [content.relationships, edgeStyle, layout.edges, layout.relationships, selectedRelationshipId]);
+        const [path] =
+          edgeStyle === "polyline"
+            ? getSmoothStepPath({ ...options, borderRadius: 8 })
+            : getBezierPath({ ...options, curvature: 0.28 });
+        return {
+          id: connector.id,
+          path,
+          branchIndex: connector.branchIndex,
+          depth: connector.depth,
+        };
+      }),
+    [edgeStyle, layout],
+  );
+
+  const relationPaths = useMemo(
+    () =>
+      layout.relationships.map((relationship) => ({
+        id: relationship.id,
+        path: relationship.path,
+        label: relationship.label,
+        labelX: (relationship.fromX + relationship.toX) / 2,
+        labelY: (relationship.fromY + relationship.toY) / 2,
+        color:
+          relationship.color && relationship.color !== "auto"
+            ? relationship.color
+            : "var(--mindmap-relation)",
+        selected: selectedRelationshipId === relationship.id,
+      })),
+    [layout.relationships, selectedRelationshipId],
+  );
 
   const onNodeDragStop = useCallback(
     (_: MouseEvent | TouchEvent, dragged: Node) => {
@@ -199,6 +235,8 @@ function MindmapCanvasInner({
           .filter((candidate) => candidate.type === "mindmapTopic")
           .map((candidate) => candidate.id),
       });
+      // 先结束“拖拽中”标记，再提交落位：随后的布局刷新才允许把节点放到新位置。
+      draggingIdRef.current = null;
       if (decision.kind === "reparent") onMoveUnder(dragged.id, decision.targetId);
       else if (decision.kind === "freeAttach") onFreeAttach(dragged.id, decision.targetId);
       else if (decision.kind === "reorder") onReorder(dragged.id, decision.index);
@@ -211,10 +249,11 @@ function MindmapCanvasInner({
     <div ref={containerRef} className="mindmap-canvas" data-structure={content.sheet.structure}>
       <ReactFlow
         nodes={nodes}
-        edges={edges}
         nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
+        onNodeDragStart={(_, node) => {
+          draggingIdRef.current = node.id;
+        }}
         onNodeDragStop={onNodeDragStop}
         onMoveStart={(event) => {
           if (event) markUserMoved();
@@ -242,12 +281,6 @@ function MindmapCanvasInner({
           }
           onSelectionChange(null);
         }}
-        onEdgeClick={(_, edge) => {
-          if (edge.type === "mindmapRelation") {
-            onSelectionChange(null);
-            onRelationshipSelect(edge.id.replace("relationship:", ""));
-          }
-        }}
         onMoveEnd={(_, viewport) => onViewportChange(viewport)}
         onlyRenderVisibleElements
         minZoom={0.12}
@@ -259,6 +292,77 @@ function MindmapCanvasInner({
         selectionOnDrag={false}
         proOptions={{ hideAttribution: true }}
       >
+        <ViewportPortal>
+          <svg className="mindmap-connectors" aria-hidden="true">
+            {treePaths.map((treePath) => (
+              <path
+                key={treePath.id}
+                d={treePath.path}
+                className="mindmap-edge"
+                stroke={`var(--mindmap-branch-${treePath.branchIndex % 6})`}
+                strokeWidth={Math.max(1.25, 3 - treePath.depth * 0.35)}
+              />
+            ))}
+            {relationPaths.map((relation) => {
+              const selectRelation = () => {
+                onSelectionChange(null);
+                onRelationshipSelect(relation.id);
+              };
+              return (
+                <g key={relation.id}>
+                  {/* biome-ignore lint/a11y/useSemanticElements: SVG 笔画不能换成 <button>；键盘可达性已由 role+tabIndex+onKeyDown 承担 */}
+                  <path
+                    d={relation.path}
+                    className={relation.selected ? "mindmap-relation is-selected" : "mindmap-relation"}
+                    stroke={relation.color}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={relation.label || t("关系线")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      selectRelation();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      selectRelation();
+                    }}
+                  />
+                  {relation.label ? (
+                    <foreignObject
+                      className="mindmap-relation__label-box"
+                      requiredExtensions="http://www.w3.org/1999/xhtml"
+                      x={relation.labelX - 100}
+                      y={relation.labelY - 12}
+                      width={200}
+                      height={24}
+                    >
+                      <div
+                        className={
+                          relation.selected
+                            ? "mindmap-relation__label is-selected"
+                            : "mindmap-relation__label"
+                        }
+                        style={{ borderColor: relation.color }}
+                      >
+                        {relation.label}
+                      </div>
+                    </foreignObject>
+                  ) : (
+                    <circle
+                      cx={relation.labelX}
+                      cy={relation.labelY}
+                      r={3}
+                      fill={relation.color}
+                      opacity={relation.selected ? 1 : 0.55}
+                    />
+                  )}
+                  <title>{t("关系线")}</title>
+                </g>
+              );
+            })}
+          </svg>
+        </ViewportPortal>
         {background === "plain" ? null : (
           <Background
             variant={background === "grid" ? BackgroundVariant.Lines : BackgroundVariant.Dots}

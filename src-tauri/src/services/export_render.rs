@@ -322,6 +322,11 @@ fn add_docx_block(mut docx: Docx, block: &Value, ctx: &RenderContext, indent: us
                 }
             }
         }
+        "boardEmbed" | "mindmapEmbed" => {
+            docx = docx.add_paragraph(
+                Paragraph::new().add_run(Run::new().add_text(embed_placeholder_text(block))),
+            );
+        }
         "table" => {
             let rows = children(block)
                 .iter()
@@ -681,6 +686,13 @@ fn render_html_block(ctx: &RenderContext, node: &Value, out: &mut String) {
             }
             out.push_str("</div>");
         }
+        "boardEmbed" | "mindmapEmbed" => {
+            let _ = write!(
+                out,
+                "<figure class=\"embed-placeholder\"><figcaption>{}</figcaption><p>内嵌预览，请在 Starris 中查看。</p></figure>",
+                encode_text(&embed_placeholder_text(node))
+            );
+        }
         "table" => {
             out.push_str("<table>");
             for row in children(node) {
@@ -830,6 +842,25 @@ fn children(node: &Value) -> &[Value] {
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default()
+}
+
+/// 内嵌预览的导出占位：不静默丢块，也不在导出里伪造图片。
+fn embed_placeholder_text(node: &Value) -> String {
+    let label = if node.get("type").and_then(Value::as_str) == Some("boardEmbed") {
+        "画板"
+    } else {
+        "思维导图"
+    };
+    let title = attrs(node)
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    if title.is_empty() {
+        format!("{label}（内嵌预览，请在 Starris 中查看）")
+    } else {
+        format!("{label}：{title}（内嵌预览，请在 Starris 中查看）")
+    }
 }
 
 fn attrs(node: &Value) -> &serde_json::Map<String, Value> {

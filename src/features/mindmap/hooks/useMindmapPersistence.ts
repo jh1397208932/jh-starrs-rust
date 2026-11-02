@@ -19,6 +19,8 @@ const CONTENT_MAX_WAIT_MS = 5_000;
 const VIEWPORT_DEBOUNCE_MS = 1_200;
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 10_000;
+/** flush 的最长等待：切标签/切库时不能无限等一条打字期的保存链。 */
+const FLUSH_MAX_WAIT_MS = 8_000;
 
 interface UseMindmapPersistenceOptions {
   nodeId: string;
@@ -136,7 +138,13 @@ export function useMindmapPersistence({
         inFlightRef.current = null;
         if (pendingRef.current) {
           pendingRef.current = false;
-          void saveNow();
+          // 不能背靠背立刻再存：打字快于保存时会形成零间隔的保存串（每次全树 IPC + 全文索引重建）。
+          // 退回同一套防抖，下一次保存至少隔一个 CONTENT_DEBOUNCE_MS。
+          if (contentTimerRef.current !== null) window.clearTimeout(contentTimerRef.current);
+          contentTimerRef.current = window.setTimeout(() => {
+            contentTimerRef.current = null;
+            void saveNow();
+          }, CONTENT_DEBOUNCE_MS);
         }
       }
     })();
@@ -165,9 +173,10 @@ export function useMindmapPersistence({
       maxWaitRef.current = null;
     }
     // 在途保存可能正带着旧内容；等它结束后 pending 逻辑会再存一次最新内容，
-    // 所以这里要循环等待，直到没有在途任务且 dirty 清空。
+    // 所以这里要循环等待，直到没有在途任务或到达上限（打字期这条链可能一直有在途任务）。
     let failed = false;
-    while (savingRef.current && inFlightRef.current) {
+    const deadline = Date.now() + FLUSH_MAX_WAIT_MS;
+    while (savingRef.current && inFlightRef.current && Date.now() < deadline) {
       const ok = await inFlightRef.current;
       if (!ok) failed = true;
     }

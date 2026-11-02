@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { t } from "@/lib/i18n";
 import type { NodeItem, TabItem } from "@/types/notebook";
+import { planCloseTab, planSyncTabs } from "../utils/tabSession";
 
 /**
  * 标签页会话状态：标签组 / 激活页 / 开闭 / 收藏虚拟页。
@@ -11,6 +12,12 @@ import type { NodeItem, TabItem } from "@/types/notebook";
 export function useTabSession() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeTabId, setActiveTabId] = useState("");
+  // 纯计划函数需要「更新前」的标签组与激活页；用 ref 读取，
+  // 不再在 setState 更新函数里调另一个 setState（并发渲染下更新函数会被重复执行）。
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [tabs, activeTabId]);
 
@@ -42,14 +49,9 @@ export function useTabSession() {
    * @param id 目标标签页 id
    */
   const closeTab = useCallback((id: string) => {
-    setTabs((prev) => {
-      const index = prev.findIndex((tab) => tab.id === id);
-      const next = prev.filter((tab) => tab.id !== id);
-      setActiveTabId((current) =>
-        current === id ? (next[Math.min(index, next.length - 1)]?.id ?? "") : current,
-      );
-      return next;
-    });
+    const plan = planCloseTab(tabsRef.current, activeTabIdRef.current, id);
+    setTabs(plan.tabs);
+    if (plan.activateId !== null) setActiveTabId(plan.activateId);
   }, []);
 
   /**
@@ -58,37 +60,10 @@ export function useTabSession() {
    * @param nodes 当前知识库平表节点
    */
   const syncTabs = useCallback((nodes: NodeItem[]) => {
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    setTabs((prev) => {
-      let changed = false;
-      const next: TabItem[] = [];
-      for (const tab of prev) {
-        if (tab.nodeId === null) {
-          next.push(tab);
-          continue;
-        }
-        const node = byId.get(tab.nodeId);
-        if (!node) {
-          changed = true;
-          continue;
-        }
-        if (node.kind === "folder") {
-          changed = true;
-          continue;
-        }
-        if (node.kind !== tab.kind || node.title !== tab.title) {
-          changed = true;
-          next.push({ ...tab, kind: node.kind, title: node.title });
-        } else {
-          next.push(tab);
-        }
-      }
-      if (!changed) return prev;
-      setActiveTabId((current) =>
-        next.some((tab) => tab.id === current) ? current : (next[next.length - 1]?.id ?? ""),
-      );
-      return next;
-    });
+    const plan = planSyncTabs(tabsRef.current, nodes, activeTabIdRef.current);
+    if (!plan.changed) return;
+    setTabs(plan.tabs);
+    if (plan.activateId !== null) setActiveTabId(plan.activateId);
   }, []);
 
   /** 切换工作区/知识库时清空标签，避免跨库引用。 */

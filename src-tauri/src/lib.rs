@@ -59,14 +59,23 @@ pub fn run() {
             app.set_menu(menu::build(app.handle(), &locale)?)?;
             app.manage(state);
             bootstrap::spawn_startup(app.handle().clone());
+            // 待审对比弹窗由 MCP 线程推送，这里先绑好主窗口的 AppHandle。
+            services::ai_review::bind(app.handle().clone());
             // MCP 是客户端能力：进程内起本机 HTTP 服务，随窗口启动；失败只记录状态。
             services::mcp_host::ensure_started(app.handle());
             services::attachment_maintenance_service::spawn_watchdog(app.handle().clone());
-            // 开发/打包启动都把主窗口带到前台，避免后台启动时窗口不可交互。
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            // 窗口默认隐藏（tauri.conf visible:false）：前端在 HTML splash 画出首帧后再显示。
+            // 兜底：前端脚本失败时 6s 后仍显示，避免应用“启动了却看不见窗口”。
+            let reveal_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(6));
+                if let Some(window) = reveal_handle.get_webview_window("main")
+                    && !window.is_visible().unwrap_or(false)
+                {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            });
 
             // Windows/Linux：移除系统窗口装饰（macOS 依赖 Overlay 保留红绿灯，勿动）
             #[cfg(not(target_os = "macos"))]
@@ -84,6 +93,7 @@ pub fn run() {
             commands::ai::ai_inbox_list,
             commands::ai::ai_inbox_approve,
             commands::ai::ai_inbox_reject,
+            commands::ai::ai_review_preview,
             commands::ai::ai_audit_list,
             commands::mcp::mcp_status,
             commands::mcp::mcp_set_enabled,
@@ -131,6 +141,9 @@ pub fn run() {
             commands::board::board_load,
             commands::board::board_save,
             commands::board::board_save_viewport,
+            commands::preview::board_image,
+            commands::preview::mindmap_image,
+            commands::preview::node_preview_save,
             commands::mindmap::mindmap_load,
             commands::mindmap::mindmap_save,
             commands::mindmap::mindmap_save_viewport,
@@ -147,11 +160,14 @@ pub fn run() {
             commands::dialog::dialog_pick_export_file,
             commands::dialog::dialog_pick_export_dir,
             commands::import::import_documents,
+            commands::import::import_scan_folder,
             commands::attachment::attachment_upload,
             commands::attachment::attachment_upload_to_tree,
+            commands::attachment::attachment_upload_folder,
             commands::attachment::attachment_list,
             commands::attachment::attachment_get,
             commands::attachment::attachment_get_by_node,
+            commands::attachment::attachment_preview,
             commands::attachment::attachment_update,
             commands::attachment::attachment_delete,
             commands::attachment::attachment_download,
@@ -164,6 +180,7 @@ pub fn run() {
             commands::attachment::attachment_update_maintenance_settings,
             commands::attachment::attachment_upload_bytes,
             commands::attachment::attachment_read_bytes,
+            commands::attachment::workspace_storage_stats,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

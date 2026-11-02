@@ -29,6 +29,8 @@ struct WordCtx<'a> {
     attachment_count: usize,
     notes: Vec<(String, Vec<Value>)>,
     asset_prefix: String,
+    /// 是否把内嵌图片写进附件库；预览用 false，保证只看一眼不会新增对象。
+    persist_assets: bool,
 }
 
 /// 解析 Word 文件；支持 `.docx/.docm/.dotx/.dotm/.doc`。
@@ -36,6 +38,20 @@ pub fn parse_word(
     context: &AttachmentContext,
     source: &Path,
     asset_prefix: &str,
+) -> AppResult<ParsedWord> {
+    parse_word_with(context, source, asset_prefix, true)
+}
+
+/// 预览用：与导入同一套解析，但不把内嵌图片写进附件库。
+pub fn parse_word_preview(context: &AttachmentContext, source: &Path) -> AppResult<Vec<Value>> {
+    Ok(parse_word_with(context, source, "preview", false)?.blocks)
+}
+
+fn parse_word_with(
+    context: &AttachmentContext,
+    source: &Path,
+    asset_prefix: &str,
+    persist_assets: bool,
 ) -> AppResult<ParsedWord> {
     let document = office_oxide::Document::open(source).map_err(|error| {
         logging::error("import.word", &format!("Word 解析失败: {error}"));
@@ -48,6 +64,7 @@ pub fn parse_word(
         attachment_count: 0,
         notes: Vec::new(),
         asset_prefix: asset_prefix.to_string(),
+        persist_assets,
     };
     let mut blocks = map_document(&ir, &mut ctx);
     if !ctx.notes.is_empty() {
@@ -384,6 +401,9 @@ fn map_table_cell(cell: &TableCell, header: bool, ctx: &mut WordCtx<'_>) -> Valu
 }
 
 fn map_image(image: &Image, ctx: &mut WordCtx<'_>) -> Value {
+    if !ctx.persist_assets {
+        return json!({"type": "paragraph", "content": [text("[图片]")]});
+    }
     let name = format!(
         "{}-image-{}.{}",
         ctx.asset_prefix,

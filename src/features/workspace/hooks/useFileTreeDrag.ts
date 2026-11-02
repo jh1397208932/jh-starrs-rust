@@ -1,8 +1,23 @@
-import { type DragEvent, useCallback, useMemo, useRef, useState } from "react";
+import { type MotionValue, useMotionValue } from "motion/react";
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toErrorMessage } from "@/api/client";
 import { t } from "@/lib/i18n";
 import type { NodeItem } from "@/types/notebook";
 import { resolveDropTarget, resolveRootDrop } from "../utils/tree";
+
+/** 常驻文档的透明拖影元素：WKWebView 只认文档内元素作为 setDragImage 的替身。 */
+let transparentGhost: HTMLImageElement | null = null;
+function getTransparentGhost(): HTMLImageElement {
+  if (transparentGhost) return transparentGhost;
+  const img = document.createElement("img");
+  img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  img.alt = "";
+  img.style.cssText =
+    "position:fixed;top:-2000px;left:-2000px;width:1px;height:1px;opacity:0;pointer-events:none;";
+  document.body.appendChild(img);
+  transparentGhost = img;
+  return img;
+}
 
 /** 行内落点：节点前 / 节点后 / 文件夹内部 */
 export type DropPosition = "before" | "after" | "inside";
@@ -26,6 +41,9 @@ export interface FileTreeDragOptions {
 export interface FileTreeDragController {
   draggedId: string | null;
   dropHint: DropHint | null;
+  /** 拖拽牌坐标（MotionValue：跟手更新不触发 React 重渲染） */
+  chipX: MotionValue<number>;
+  chipY: MotionValue<number>;
   handleDragStart: (event: DragEvent<HTMLButtonElement>, node: NodeItem) => void;
   handleDragEnd: () => void;
   handleRowDragOver: (event: DragEvent<HTMLButtonElement>, target: NodeItem) => void;
@@ -47,8 +65,40 @@ export function useFileTreeDrag({
   onError,
   onExpand,
 }: FileTreeDragOptions): FileTreeDragController {
+  // nodes 每次自动保存都会换新数组；用 ref 读最新值，拖拽回调才能保持稳定引用，
+  // 否则控制器对象跟着换新，FileTreeRow 的行级 memo 会在每次保存时被整树击穿。
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<DropHint | null>(null);
+  // 拖拽牌：dragover 每帧多次触发，合帧写入 MotionValue，避免重渲染。
+  const chipX = useMotionValue(0);
+  const chipY = useMotionValue(0);
+  const chipFrame = useRef(0);
+  const moveChip = useCallback(
+    (clientX: number, clientY: number) => {
+      if (chipFrame.current) return;
+      chipFrame.current = requestAnimationFrame(() => {
+        chipFrame.current = 0;
+        chipX.set(clientX + 14);
+        chipY.set(clientY + 12);
+      });
+    },
+    [chipX, chipY],
+  );
+  useEffect(
+    () => () => {
+      if (chipFrame.current) cancelAnimationFrame(chipFrame.current);
+    },
+    [],
+  );
+  // 行间/空白区的 dragover 不会冒泡到具体行：拖动期间在 document 上补跟手，避免拖拽牌冻结。
+  useEffect(() => {
+    if (!draggedId) return;
+    const handleDragOver = (event: globalThis.DragEvent) => moveChip(event.clientX, event.clientY);
+    document.addEventListener("dragover", handleDragOver);
+    return () => document.removeEventListener("dragover", handleDragOver);
+  }, [draggedId, moveChip]);
   // dragover 事件每帧触发一次以上；镜像最新 hint，落点未变化时保持引用（React bail-out），
   // 避免每次 dragover 都重渲染整棵文件树（2026-10-27 真机性能任务 B4）。
   const dropHintRef = useRef<DropHint | null>(null);
@@ -84,13 +134,18 @@ export function useFileTreeDrag({
       updateHint(null);
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", node.id);
+      // 隐藏系统拖影，改用自绘拖拽牌（WKWebView 里系统拖影像网页截图，质感差）。
+      event.dataTransfer.setDragImage(getTransparentGhost(), 0, 0);
+      moveChip(event.clientX, event.clientY);
     },
-    [updateHint],
+    [moveChip, updateHint],
   );
 
   const handleRowDragOver = useCallback(
     (event: DragEvent<HTMLButtonElement>, target: NodeItem) => {
-      if (!draggedId || draggedId === target.id) return;
+      if (!draggedId) return;
+      moveChip(event.clientX, event.clientY);
+      if (draggedId === target.id) return;
       event.preventDefault();
       event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
@@ -111,7 +166,7 @@ export function useFileTreeDrag({
         event.dataTransfer.dropEffect = "move";
         return;
       }
-      const resolved = resolveDropTarget(nodes, draggedId, target.id, position);
+      const resolved = resolveDropTarget(nodesRef.current, draggedId, target.id, position);
       if (!resolved) {
         event.dataTransfer.dropEffect = "none";
         updateHint(null);
@@ -120,7 +175,7 @@ export function useFileTreeDrag({
       event.dataTransfer.dropEffect = "move";
       updateHint({ targetId: target.id, position });
     },
-    [draggedId, nodes, updateHint],
+    [draggedId, moveChip, updateHint],
   );
 
   const handleRowDragLeave = useCallback(
@@ -144,7 +199,7 @@ export function useFileTreeDrag({
         return;
       }
       if (hint.position === "inside") onExpand(target.id);
-      const resolved = resolveDropTarget(nodes, movingId, target.id, hint.position);
+      const resolved = resolveDropTarget(nodesRef.current, movingId, target.id, hint.position);
       clear();
       if (!resolved) {
         onError(t("不能放到这里"));
@@ -152,17 +207,18 @@ export function useFileTreeDrag({
       }
       void runMove(movingId, resolved.parentId, resolved.index);
     },
-    [clear, draggedId, nodes, onExpand, onError, runMove],
+    [clear, draggedId, onExpand, onError, runMove],
   );
 
   const handleRootDragOver = useCallback(
     (event: DragEvent<HTMLFieldSetElement>) => {
       if (!draggedId) return;
       event.preventDefault();
+      moveChip(event.clientX, event.clientY);
       event.dataTransfer.dropEffect = "move";
       updateHint({ targetId: null, position: "root" });
     },
-    [draggedId, updateHint],
+    [draggedId, moveChip, updateHint],
   );
 
   const handleRootDrop = useCallback(
@@ -170,11 +226,11 @@ export function useFileTreeDrag({
       event.preventDefault();
       const movingId = draggedId;
       if (!movingId) return;
-      const target = resolveRootDrop(nodes, movingId);
+      const target = resolveRootDrop(nodesRef.current, movingId);
       clear();
       void runMove(movingId, target.parentId, target.index);
     },
-    [clear, draggedId, nodes, runMove],
+    [clear, draggedId, runMove],
   );
 
   // 控制器对象引用稳定：只有拖拽状态变化时才换新对象，配合 memo(FileTreeRow) 避免整树重渲染。
@@ -182,6 +238,8 @@ export function useFileTreeDrag({
     () => ({
       draggedId,
       dropHint,
+      chipX,
+      chipY,
       handleDragStart,
       handleDragEnd: clear,
       handleRowDragOver,
@@ -193,6 +251,8 @@ export function useFileTreeDrag({
     [
       draggedId,
       dropHint,
+      chipX,
+      chipY,
       clear,
       handleDragStart,
       handleRowDragOver,

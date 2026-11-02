@@ -4,6 +4,8 @@
  * - 攒批：缓冲 300ms 或满 16 条时统一冲刷，减少 IPC 次数；
  * - 页面隐藏 / 卸载时立即冲刷，避免退出前丢失；
  * - 等级门控在 Rust 层（`STARRIS_LOG_LEVEL`），`logDebug` 在 info 档不会落盘；
+ * - 生产构建（`vite build`）里 `import.meta.env.DEV === false`，`logDebug` 直接返回，
+ *   既不攒批也不发 IPC（配合 esbuild drop 只保留 info/error 级事实日志）；
  * - 发送失败静默，日志永不阻断 UI。
  */
 
@@ -18,6 +20,8 @@ interface LogEntry {
 
 const FLUSH_DELAY_MS = 300;
 const FLUSH_MAX_ENTRIES = 16;
+/** 缓冲上限：IPC 卡住时丢弃最旧的日志，避免日志队列无上限占用内存（日志只是诊断数据）。 */
+const QUEUE_MAX_ENTRIES = 200;
 
 let queue: LogEntry[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -26,6 +30,9 @@ let listenersInstalled = false;
 /** 把日志放入缓冲；缓冲满时立即冲刷。 */
 function enqueue(entry: LogEntry): void {
   queue.push(entry);
+  if (queue.length > QUEUE_MAX_ENTRIES) {
+    queue.splice(0, queue.length - QUEUE_MAX_ENTRIES);
+  }
   if (queue.length >= FLUSH_MAX_ENTRIES) {
     flush();
     return;
@@ -70,12 +77,14 @@ export function logInfo(source: string, message: string): void {
 }
 
 /**
- * 记录排查细节日志；仅当 `STARRIS_LOG_LEVEL=debug` 时落盘。
+ * 记录排查细节日志；仅开发构建调用，且仅当 `STARRIS_LOG_LEVEL=debug` 时落盘。
+ * 生产构建会整段裁剪（`import.meta.env.DEV === false`），不会产生 IPC 开销。
  * @param source 来源模块名
  * @param message 单行消息
  * @example logDebug("perf", "缓存命中 count=12")
  */
 export function logDebug(source: string, message: string): void {
+  if (!import.meta.env.DEV) return;
   installFlushListeners();
   enqueue({ level: "debug", source, message });
 }

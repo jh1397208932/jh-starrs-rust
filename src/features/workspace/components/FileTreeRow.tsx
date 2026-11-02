@@ -11,7 +11,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { EASE_STANDARD } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { NodeItem, TreeNode } from "@/types/notebook";
+import type { NodeItem, TreeNode, UploadMode } from "@/types/notebook";
 import type { FileTreeDragController } from "../hooks/useFileTreeDrag";
 
 export interface FileTreeRowProps {
@@ -28,7 +28,7 @@ export interface FileTreeRowProps {
   /** 导入到此文件夹 */
   onImportToFolder: (parent: NodeItem) => void;
   /** 上传附件到此文件夹 */
-  onUploadAttachment: (parent: NodeItem) => void;
+  onUploadAttachment: (parent: NodeItem, mode?: UploadMode) => void;
 }
 
 /**
@@ -55,6 +55,7 @@ export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
       style={{ pointerEvents: isPresent ? undefined : "none" }}
     >
       <div
+        data-node-id={node.id}
         data-selected={selected}
         className={cn(
           "tree-row group relative mb-0.5 flex h-8 items-center",
@@ -63,12 +64,6 @@ export const FileTreeRow = memo(function FileTreeRow(props: FileTreeRowProps) {
           hint === "inside" && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
         )}
       >
-        {hint === "before" && (
-          <span className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-primary" />
-        )}
-        {hint === "after" && (
-          <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
-        )}
         <button
           type="button"
           draggable
