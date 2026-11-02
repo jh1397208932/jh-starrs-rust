@@ -54,10 +54,8 @@ export function useBoardLibraryInsertion(
       // 连续点击插入时按 48px 阶梯错开，避免多个组件精确叠在画布中心。
       const cascade = origin ? 0 : (insertIndexRef.current % 5) * 48;
       if (!origin) insertIndexRef.current += 1;
-      const centerX =
-        origin?.x ?? appState.width / (2 * appState.zoom.value) - appState.scrollX + cascade;
-      const centerY =
-        origin?.y ?? appState.height / (2 * appState.zoom.value) - appState.scrollY + cascade;
+      const centerX = origin?.x ?? appState.width / (2 * appState.zoom.value) - appState.scrollX + cascade;
+      const centerY = origin?.y ?? appState.height / (2 * appState.zoom.value) - appState.scrollY + cascade;
       const minX = Math.min(...restored.map((element) => element.x));
       const minY = Math.min(...restored.map((element) => element.y));
       const maxX = Math.max(...restored.map((element) => element.x + element.width));
