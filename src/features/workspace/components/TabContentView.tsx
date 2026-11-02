@@ -5,6 +5,7 @@ import { AttachmentNodeView } from "@/features/attachments/components/Attachment
 import { BoardView } from "@/features/board/components/BoardView";
 import { DocEditor } from "@/features/editor/components/DocEditor";
 import { MindmapView } from "@/features/mindmap/components/MindmapView";
+import { bindingLabel } from "@/features/shortcuts/shortcutKeys";
 import { useI18n } from "@/lib/i18n";
 import type { NodeItem, TabItem } from "@/types/notebook";
 import { StarredList } from "./StarredList";
@@ -119,7 +120,7 @@ export const TabContentView = memo(function TabContentView({
         <button type="button" onClick={() => onCreateDoc(t("未命名文档"))} className="empty-cta">
           <Plus className="size-4" />
           {t("新建文档")}
-          <span className="empty-cta__kbd">⌘N</span>
+          <span className="empty-cta__kbd">{bindingLabel("Mod+N")}</span>
         </button>
       </EmptyState>
     );

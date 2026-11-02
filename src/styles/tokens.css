@@ -22,8 +22,8 @@
   --radius-lg: 18px;
 
   /* 字体栈：系统中文优先；标题另有宋体编辑感（仅空态/品牌使用） */
-  --font-ui: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
-  --font-display: "Songti SC", "STSong", "Noto Serif SC", ui-serif, Georgia, "Times New Roman", serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Songti SC", "STSong", "Noto Serif SC", "SimSun", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
   /* 动效（设计语言 §6）：三档时长 × 动效系数；标准缓动 = 强减速无过冲，弹性只给开关/点睛元素。
@@ -116,6 +116,12 @@
     inset 0 1px 0 rgb(255 255 255 / .9),
     0 1px 2px rgb(28 43 39 / .04),
     0 18px 44px -28px rgb(28 43 39 / .22);
+
+  /* 自绘窗口控制（Windows/Linux）：中性悬停 + Win11 关闭红，随主题自适应。 */
+  --window-control-hover: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --window-control-active: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --window-close-hover: #C42B1C;
+  --window-close-active: #B22A1B;
 }
 
 /* ============================================================

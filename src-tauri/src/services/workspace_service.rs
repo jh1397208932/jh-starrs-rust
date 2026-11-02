@@ -367,13 +367,50 @@ fn require_record(state: &AppState, workspace_id: &str) -> AppResult<WorkspaceRe
         .ok_or_else(|| AppError::not_found("工作区不存在或已被移除"))
 }
 
-/// 目录为空判定：macOS 的 `.DS_Store` 视为系统噪音，不阻止创建。
+/// 目录为空判定：各平台的文件管理器噪音文件不阻止创建。
+///
+/// macOS 的 `.DS_Store`、Windows 的 `Thumbs.db` / `desktop.ini` 都是
+/// 系统自动生成、用户不感知的元数据，不应让「空文件夹」判定失败。
 fn is_effectively_empty(path: &Path) -> AppResult<bool> {
     let mut entries = fs::read_dir(path)?;
     Ok(entries.all(|entry| {
         entry
             .ok()
-            .map(|item| item.file_name() == ".DS_Store")
+            .map(|item| is_system_noise_file(&item.file_name()))
             .unwrap_or(false)
     }))
+}
+
+/// 判断是否为文件管理器的系统噪音文件（大小写不敏感，兼顾跨平台搬移）。
+fn is_system_noise_file(name: &std::ffi::OsStr) -> bool {
+    let text = name.to_string_lossy();
+    text == ".DS_Store"
+        || text.eq_ignore_ascii_case("Thumbs.db")
+        || text.eq_ignore_ascii_case("desktop.ini")
+}
+
+#[cfg(test)]
+mod platform_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    /// 各平台文件管理器噪声文件不应阻止“空文件夹”判定。
+    #[test]
+    fn system_noise_files_are_ignored() {
+        for name in [
+            ".DS_Store",
+            "Thumbs.db",
+            "thumbs.DB",
+            "desktop.ini",
+            "Desktop.INI",
+        ] {
+            assert!(
+                is_system_noise_file(OsStr::new(name)),
+                "{name} 应视为系统噪音"
+            );
+        }
+        for name in ["note.md", "Thumbs.db.bak", "desktop.ini.txt", "image.png"] {
+            assert!(!is_system_noise_file(OsStr::new(name)), "{name} 不应被忽略");
+        }
+    }
 }

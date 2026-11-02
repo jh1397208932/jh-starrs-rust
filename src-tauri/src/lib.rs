@@ -56,7 +56,10 @@ pub fn run() {
                 )?
                 .unwrap_or_else(|| "zh-CN".to_string())
             };
-            app.set_menu(menu::build(app.handle(), &locale)?)?;
+            // macOS 挂原生菜单（Quit/Find 走自定义事件）；Windows/Linux 无边框窗口不挂菜单栏。
+            if let Some(native_menu) = menu::build(app.handle(), &locale)? {
+                app.set_menu(native_menu)?;
+            }
             app.manage(state);
             bootstrap::spawn_startup(app.handle().clone());
             // 待审对比弹窗由 MCP 线程推送，这里先绑好主窗口的 AppHandle。

@@ -18,13 +18,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 透明窗口依赖 macos-private-api；该 feature 必须留在主表——tauri-build 的清单校验只在主表
+# 找不到 tauri 时才回退 target 表，且回退后无差别检查所有 target 段落，Windows 构建必报错。
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-libc = "0.2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 uuid = { version = "1", features = ["v7"] }
 chrono = "0.4"
@@ -46,6 +47,14 @@ quick-xml = { version = "0.42", default-features = false }
 axum = "0.8"
 tokio = { version = "1", features = ["net", "sync", "time"] }
 pdf-inspector = "1.25.2"
+
+[target.'cfg(unix)'.dependencies]
+# Unix 平台读取磁盘可用空间（附件统计）。
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Windows 平台读取磁盘可用空间（附件统计）；只启用文件系统子集，控制体积。
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tempfile = "3"

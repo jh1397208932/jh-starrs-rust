@@ -96,11 +96,19 @@ JS 预设唯一来源 `src/lib/motion.ts`（与 tokens.css 同源）；CSS 工�
 - **工作区入口**：透明品牌行，logo 26px（32px 命中盒）+ 两行文字；hover / `data-state=open` 时背景 `sidebar-active 55%`；右侧 `ChevronsUpDown` 只在 hover/focus 出现。禁止白底、边框、阴影或大圆角卡片。
 - **红绿灯**：`TrafficLightSlot` 只保留 76px 拖拽注入区，**不再画胶囊底座**；左上角不出现任何孤立浅色块。
 
-## 6. 窗口层规范（macOS/Windows 差异）
+## 6. 窗口层规范（macOS / Windows / Linux 差异，2026-10-31 更新）
 
-- macOS：`titleBarStyle:"Overlay"` 保留系统红绿灯，`trafficLightPosition {x:12, y:16}`（44px 拖拽带内垂直居中）；红绿灯槽位统一使用 `TrafficLightSlot` 组件（76px 宽拖拽注入区，**不画胶囊底座**——浅色纸面上会形成孤立白块）。
-- Windows：Rust 侧 `set_decorations(false)` 无边框，右上角自绘最小化/最大化/关闭（lucide 图标，关闭 hover 红）。
-- 拖拽：`data-tauri-drag-region`；红绿灯槽位与窗口栏弹性区均可拖拽。
+- **macOS**：`tauri.macos.conf.json` 中 `titleBarStyle:"Overlay"` 保留系统红绿灯，`trafficLightPosition {x:12, y:16}`（44px 拖拽带内垂直居中）；红绿灯槽位统一使用 `TrafficLightSlot` 组件（76px 宽拖拽注入区，**不画胶囊底座**——浅色纸面上会形成孤立白块）。
+- **Windows / Linux**：`tauri.windows.conf.json` 中 `decorations:false`、`shadow:true` 无边框（Windows 11 由系统阴影提供圆角与 1px 边框，Windows 10 为直角）；`src-tauri/src/lib.rs` 在非 macOS 启动时再次调用 `set_decorations(false)` 兜底。右上角使用 `WindowControls` 组件自绘三枚系统按钮：
+  - 命中区 46×32，贴齐顶栏右缘（顶栏 44px，上下居中），无圆角、无间距，符合 Windows 标题栏习惯；
+  - 最小化 = 10×10 水平线；最大化 = 单层方框；还原 = 前后叠放双方框（由窗口 `resize` 事件驱动，系统双击/贴边/快捷键改变尺寸后同步）；
+  - 普通按钮 hover `--window-control-hover`（前景 7%）、active 12%；关闭按钮 hover `#C42B1C`、active `#B22A1B` 且图标转白；
+  - 三枚按钮均有中文 `aria-label` 与 `role="toolbar"` 分组；浏览器 dev 无 Tauri 窗口时降级为 Toast。
+- **拖拽**：`data-tauri-drag-region`；macOS 红绿灯槽位、Windows 侧栏顶部 44px 拖拽带、窗口栏弹性区均可拖拽。双击最大化由 Tauri 内置 drag region 处理（Windows/Linux `mousedown detail=2` → `internal_toggle_maximize`；macOS 在 `mouseup` 且指针未移动时触发），组件不再额外挂 `onDoubleClick`，避免一次双击触发两次切换。
+- **侧栏对齐**：macOS 用 44px 红绿灯槽位；Windows 用同高空拖拽带，保证品牌行与右侧标签栏在同一水平基线。
+- **启动 / 引导 / 错误页**：这些页面没有 `WindowBar`，非 macOS 由 `WindowChromeOverlay` 在右上角补同一组窗口按钮，并提供 44px 拖拽带；否则无边框窗口在首次启动时无法用鼠标拖动或关闭。
+- **顶层菜单**：macOS 挂原生菜单（Quit / Find 自定义事件）；Windows/Linux 无边框窗口不挂原生菜单栏，全部动作走应用内快捷键与自绘按钮，避免菜单栏与自绘顶栏重叠。
+- **快捷键文案**：所有 `⌘/⌥/⇧` 展示统一经 `lib/platform.ts` 转成 `Ctrl/Alt/Shift`；组件不再手写平台符号。Linux 与未知平台按 Windows 处理（Ctrl + 自绘控制）。
 
 ## 7. 信息浮窗（文档附加层）
 

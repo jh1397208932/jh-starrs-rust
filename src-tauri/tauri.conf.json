@@ -18,19 +18,8 @@
         "height": 800,
         "minWidth": 960,
         "minHeight": 600,
-        "visible": false,
-        "titleBarStyle": "Overlay",
-        "trafficLightPosition": {
-          "x": 12,
-          "y": 16
-        },
-        "hiddenTitle": true,
-        "transparent": true,
-        "windowEffects": {
-          "effects": ["underWindowBackground"],
-          "state": "followsWindowActiveState",
-          "radius": 12
-        }
+        "center": true,
+        "visible": false
       }
     ],
     "security": {
@@ -40,15 +29,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "app",
-      "dmg"
-    ],
-    "windows": {
-      "webviewInstallMode": {
-        "type": "embedBootstrapper"
-      }
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -59,24 +39,6 @@
     "category": "Productivity",
     "shortDescription": "本地优先的知识库、文档与画板",
     "longDescription": "星屿 Starris 是一款本地优先的桌面知识库：文档、画板、表格、流程图、附件与全文检索都保存在用户自己的文件夹中。",
-    "copyright": "Copyright © 2026 Starris",
-    "macOS": {
-      "bundleName": "星屿",
-      "minimumSystemVersion": "12.0",
-      "dmg": {
-        "windowSize": {
-          "width": 660,
-          "height": 400
-        },
-        "appPosition": {
-          "x": 180,
-          "y": 170
-        },
-        "applicationFolderPosition": {
-          "x": 480,
-          "y": 170
-        }
-      }
-    }
+    "copyright": "Copyright © 2026 Starris"
   }
 }

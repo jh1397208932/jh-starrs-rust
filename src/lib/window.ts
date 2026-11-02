@@ -9,6 +9,7 @@ export const windowActions = {
   minimize: () => getCurrentWindow().minimize(),
   toggleMaximize: () => getCurrentWindow().toggleMaximize(),
   close: () => getCurrentWindow().close(),
+  isMaximized: () => getCurrentWindow().isMaximized(),
 };
 
 /**
@@ -45,4 +46,32 @@ export function runWindowAction(
   } catch {
     fallback(label);
   }
+}
+
+/**
+ * 订阅窗口最大化状态：先回推一次当前值，之后在尺寸变化时刷新。
+ *
+ * WebView2/WKWebView 在拖拽缩放、双击标题栏、系统贴边时都会触发 resize，
+ * 自绘标题栏据此切换「最大化 / 还原」图标。
+ *
+ * @param listener 状态回调（true = 最大化）
+ * @returns 取消订阅函数；浏览器 dev 下为空实现
+ * @example const off = await subscribeWindowMaximized(setMaximized);
+ */
+export async function subscribeWindowMaximized(listener: (maximized: boolean) => void): Promise<() => void> {
+  const current = getCurrentWindow();
+  let unlisten: (() => void) | undefined;
+  try {
+    listener(await current.isMaximized());
+    unlisten = await current.onResized(async () => {
+      try {
+        listener(await current.isMaximized());
+      } catch {
+        // 窗口销毁中的 resize 回调失败可忽略。
+      }
+    });
+  } catch {
+    // 浏览器 dev 没有 Tauri 窗口：保持默认未最大化。
+  }
+  return () => unlisten?.();
 }

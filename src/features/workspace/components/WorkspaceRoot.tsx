@@ -8,6 +8,7 @@ import { useAppCloseGuard } from "../hooks/useAppCloseGuard";
 import { useWorkspaceDialogActions } from "../hooks/useWorkspaceDialogActions";
 import { useWorkspaceStore } from "../hooks/useWorkspaceStore";
 import type { AppDialogState, WorkspaceDialogKind } from "../types";
+import { WindowChromeOverlay } from "./WindowChromeOverlay";
 import { WorkspaceBootScreen } from "./WorkspaceBootScreen";
 import { WorkspaceDialogs } from "./WorkspaceDialogs";
 import { WorkspaceMain } from "./WorkspaceMain";
@@ -71,6 +72,7 @@ export function WorkspaceRoot() {
     return (
       <>
         <WorkspaceBootScreen mode="loading" />
+        <WindowChromeOverlay onWindowFallback={showToast} />
         <AppToast toast={toast} />
       </>
     );
@@ -80,6 +82,7 @@ export function WorkspaceRoot() {
     return (
       <>
         <WorkspaceBootScreen mode="error" message={store.error} onRetry={retry} />
+        <WindowChromeOverlay onWindowFallback={showToast} />
         <AppToast toast={toast} />
       </>
     );
@@ -95,6 +98,7 @@ export function WorkspaceRoot() {
           onOpenWorkspace={openExistingWorkspace}
           onSwitchWorkspace={switchWorkspace}
         />
+        <WindowChromeOverlay onWindowFallback={showToast} />
         <WorkspaceDialogs
           open={workspaceDialogKind}
           onOpenChange={(kind) => setDialog(kind ? { type: kind } : null)}

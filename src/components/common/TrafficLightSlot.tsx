@@ -1,5 +1,4 @@
-/** macOS 运行环境判定（SSR/无 navigator 时视为非 mac） */
-const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Macintosh");
+import { IS_MAC } from "@/lib/platform";
 
 /**
  * 红绿灯槽位（仅 macOS 渲染）：76px 宽的窗口拖拽注入区。
@@ -11,7 +10,7 @@ const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("
  * @param className 槽位高度类，如 "h-[44px]"（侧栏顶带）或 "h-full"（窗口栏回补）
  */
 export function TrafficLightSlot({ className = "" }: { className?: string }) {
-  if (!isMac) return null;
+  if (!IS_MAC) return null;
 
   return <div data-tauri-drag-region className={`w-[76px] shrink-0 ${className}`} aria-hidden="true" />;
 }

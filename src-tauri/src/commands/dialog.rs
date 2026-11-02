@@ -169,34 +169,44 @@ mod tests {
     use super::{issue, resolve_directory, resolve_file, resolve_write};
     use crate::errors::AppError;
 
+    /// 测试路径必须使用平台临时目录；Windows 上 `/tmp` 不是绝对路径。
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(name)
+    }
+
     #[test]
     fn file_grant_is_single_use_and_bound_to_selected_path() {
-        let grant = issue(std::path::PathBuf::from("/tmp/starris-export.md"), false).expect("签发");
-        let wrong = resolve_write(&grant.token, "/tmp/other.md").expect_err("路径不一致必须拒绝");
+        let selected = temp_path("starris-export.md");
+        let grant = issue(selected.clone(), false).expect("签发");
+        let wrong_path = temp_path("other.md");
+        let wrong = resolve_write(&grant.token, &wrong_path.to_string_lossy())
+            .expect_err("路径不一致必须拒绝");
         assert!(matches!(wrong, AppError::Validation(_)));
         let used = resolve_file(&grant.token).expect("首次消费");
-        assert_eq!(used, std::path::PathBuf::from("/tmp/starris-export.md"));
+        assert_eq!(used, selected);
         assert!(resolve_file(&grant.token).is_err(), "令牌必须一次即焚");
     }
 
     #[test]
     fn directory_grant_allows_descendants_but_not_siblings() {
-        let root = std::path::PathBuf::from("/tmp/starris-export");
+        let root = temp_path("starris-export");
         let grant = issue(root.clone(), true).expect("签发");
-        let child = resolve_write(&grant.token, "/tmp/starris-export/kb/a.png").expect("后代可写");
-        assert_eq!(
-            child,
-            std::path::PathBuf::from("/tmp/starris-export/kb/a.png")
-        );
-        let outside = resolve_write(&grant.token, "/tmp/other/a.png").expect_err("越界必须拒绝");
+        let child_path = root.join("kb").join("a.png");
+        let child = resolve_write(&grant.token, &child_path.to_string_lossy()).expect("后代可写");
+        assert_eq!(child, child_path);
+        let outside_path = temp_path("starris-other").join("a.png");
+        let outside =
+            resolve_write(&grant.token, &outside_path.to_string_lossy()).expect_err("越界必须拒绝");
         assert!(matches!(outside, AppError::Validation(_)));
         assert_eq!(resolve_directory(&grant.token).expect("目录校验"), root);
     }
 
     #[test]
     fn directory_grant_rejects_parent_dir_escape() {
-        let grant = issue(std::path::PathBuf::from("/tmp/starris-export"), true).expect("签发");
-        let escaped = resolve_write(&grant.token, "/tmp/starris-export/../evil.txt")
+        let root = temp_path("starris-export");
+        let grant = issue(root.clone(), true).expect("签发");
+        let escaped_path = root.join("..").join("evil.txt");
+        let escaped = resolve_write(&grant.token, &escaped_path.to_string_lossy())
             .expect_err("`..` 前缀绕过必须拒绝");
         assert!(matches!(escaped, AppError::Validation(_)));
     }

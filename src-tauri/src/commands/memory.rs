@@ -23,8 +23,10 @@ pub fn memory_save(
 ) -> AppResult<()> {
     memory_service::save(state.inner(), &entries)?;
     if let Some(locale) = entries.get(crate::models::SETTING_LOCALE) {
-        let menu = crate::menu::build(&app, locale).map_err(|_| AppError::Internal)?;
-        app.set_menu(menu).map_err(|_| AppError::Internal)?;
+        // 仅 macOS 有原生菜单；其他平台 build 返回 None，无需重挂。
+        if let Some(menu) = crate::menu::build(&app, locale).map_err(|_| AppError::Internal)? {
+            app.set_menu(menu).map_err(|_| AppError::Internal)?;
+        }
     }
     Ok(())
 }

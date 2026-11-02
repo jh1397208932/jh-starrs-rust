@@ -25,6 +25,7 @@
     "package:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
     "test:mcp": "node test/mcp/smoke.mjs",
     "build:prod:win": "tauri build --target x86_64-pc-windows-msvc --bundles nsis",
+    "package:win": "tauri build --bundles nsis",
     "check:mindmap-colors": "node scripts/check-mindmap-palette.mjs",
     "check:no-legacy": "node scripts/check-no-legacy.mjs"
   },
